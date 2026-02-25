@@ -5,7 +5,7 @@ from pathlib import Path
 # --- Paths ---
 PROJECT_ROOT: Path = Path(__file__).parent.parent
 CHROMA_DATA_DIR: Path = PROJECT_ROOT / "chroma_data"
-TESSERACT_CMD: str = "tesseract"  # Override if not on PATH, e.g. r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+TESSERACT_CMD: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # --- PDF Extraction ---
 OCR_TEXT_LENGTH_THRESHOLD: int = 100  # Pages with fewer chars trigger OCR fallback
