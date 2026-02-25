@@ -1,4 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+pip-wheel-metadata/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+credit_analyzer.egg-info/
+
+# Pytest
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDEs and editors
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# C extensions
+*.so
+*.pyd
 credit_agreement.pdf
 __pycache__/
 *.pyc
+uv.lock
+*.egg-info/
+.claude/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.vscode/
 
