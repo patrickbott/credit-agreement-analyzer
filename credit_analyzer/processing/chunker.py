@@ -1,0 +1,368 @@
+"""Section-aware chunking for credit agreement text."""
+
+from __future__ import annotations
+
+import re
+import uuid
+from dataclasses import dataclass
+
+import tiktoken
+
+from credit_analyzer.config import (
+    CHUNK_MAX_TOKENS,
+    CHUNK_OVERLAP_TOKENS,
+    CHUNK_TARGET_TOKENS,
+    MIN_DEFINITION_CHUNK_TOKENS,
+    TIKTOKEN_ENCODING,
+)
+from credit_analyzer.processing.definitions import DefinitionsIndex
+from credit_analyzer.processing.section_detector import DocumentSection
+
+
+@dataclass
+class Chunk:
+    """A retrieval-ready chunk of credit agreement text with metadata."""
+
+    chunk_id: str
+    text: str
+    section_id: str
+    section_title: str
+    article_number: int
+    article_title: str
+    section_type: str
+    chunk_type: str  # "text" | "table" | "definition"
+    page_numbers: list[int]
+    defined_terms_present: list[str]
+    chunk_index: int  # position within the section
+    token_count: int
+
+
+# Paragraph split pattern: double newline or subsection markers like (a), (b)
+_PARAGRAPH_SPLIT = re.compile(r"\n\s*\n|\n\s*(?=\([a-z]\)|\([ivx]+\))")
+
+
+def _count_tokens(text: str, encoding: tiktoken.Encoding) -> int:
+    """Count tokens in text using the given tiktoken encoding.
+
+    Args:
+        text: The text to tokenize.
+        encoding: The tiktoken encoding instance.
+
+    Returns:
+        Number of tokens.
+    """
+    return len(encoding.encode(text))
+
+
+def _generate_chunk_id() -> str:
+    """Generate a unique chunk ID.
+
+    Returns:
+        A short UUID-based string.
+    """
+    return uuid.uuid4().hex[:12]
+
+
+class Chunker:
+    """Converts document sections into retrieval-ready chunks.
+
+    Handles definitions, tables, and regular text differently:
+    - Each defined term becomes its own chunk (small ones are grouped).
+    - Each table becomes its own chunk with surrounding context.
+    - Regular text is split at paragraph boundaries with overlap.
+    """
+
+    def __init__(self) -> None:
+        self._encoding = tiktoken.get_encoding(TIKTOKEN_ENCODING)
+
+    def chunk_document(
+        self,
+        sections: list[DocumentSection],
+        definitions_index: DefinitionsIndex,
+    ) -> list[Chunk]:
+        """Chunk all sections of a document.
+
+        Args:
+            sections: The detected document sections.
+            definitions_index: The parsed definitions for term detection.
+
+        Returns:
+            List of Chunk objects ready for embedding and retrieval.
+        """
+        all_chunks: list[Chunk] = []
+
+        for section in sections:
+            if section.section_type == "definitions":
+                chunks = self._chunk_definitions(section, definitions_index)
+            else:
+                chunks = self._chunk_section(section, definitions_index)
+            all_chunks.extend(chunks)
+
+        return all_chunks
+
+    def _chunk_definitions(
+        self,
+        section: DocumentSection,
+        definitions_index: DefinitionsIndex,
+    ) -> list[Chunk]:
+        """Chunk a definitions section: one chunk per term, small ones grouped.
+
+        Args:
+            section: The definitions section.
+            definitions_index: Parsed definitions.
+
+        Returns:
+            List of definition chunks.
+        """
+        chunks: list[Chunk] = []
+        chunk_index = 0
+
+        # Group small definitions together
+        small_buffer: list[str] = []
+        small_terms: list[str] = []
+        small_tokens = 0
+
+        for term, definition in definitions_index.definitions.items():
+            token_count = _count_tokens(definition, self._encoding)
+
+            if token_count >= MIN_DEFINITION_CHUNK_TOKENS:
+                # Flush any accumulated small definitions first
+                if small_buffer:
+                    chunks.append(
+                        self._make_definition_chunk(
+                            section,
+                            "\n\n".join(small_buffer),
+                            small_terms,
+                            chunk_index,
+                        )
+                    )
+                    chunk_index += 1
+                    small_buffer = []
+                    small_terms = []
+                    small_tokens = 0
+
+                # This definition is big enough for its own chunk
+                chunks.append(
+                    self._make_definition_chunk(
+                        section, definition, [term], chunk_index
+                    )
+                )
+                chunk_index += 1
+            else:
+                # Accumulate small definitions
+                # Flush if adding this one would exceed target
+                if small_tokens + token_count > CHUNK_TARGET_TOKENS and small_buffer:
+                    chunks.append(
+                        self._make_definition_chunk(
+                            section,
+                            "\n\n".join(small_buffer),
+                            small_terms,
+                            chunk_index,
+                        )
+                    )
+                    chunk_index += 1
+                    small_buffer = []
+                    small_terms = []
+                    small_tokens = 0
+
+                small_buffer.append(definition)
+                small_terms.append(term)
+                small_tokens += token_count
+
+        # Flush remaining small definitions
+        if small_buffer:
+            chunks.append(
+                self._make_definition_chunk(
+                    section,
+                    "\n\n".join(small_buffer),
+                    small_terms,
+                    chunk_index,
+                )
+            )
+
+        return chunks
+
+    def _make_definition_chunk(
+        self,
+        section: DocumentSection,
+        text: str,
+        terms: list[str],
+        chunk_index: int,
+    ) -> Chunk:
+        """Build a Chunk for one or more definitions.
+
+        Args:
+            section: The parent definitions section.
+            text: The chunk text content.
+            terms: Defined terms included in this chunk.
+            chunk_index: Position index within the section.
+
+        Returns:
+            A definition-type Chunk.
+        """
+        return Chunk(
+            chunk_id=_generate_chunk_id(),
+            text=text,
+            section_id=section.section_id,
+            section_title=section.section_title,
+            article_number=section.article_number,
+            article_title=section.article_title,
+            section_type=section.section_type,
+            chunk_type="definition",
+            page_numbers=list(range(section.page_start, section.page_end + 1)),
+            defined_terms_present=terms,
+            chunk_index=chunk_index,
+            token_count=_count_tokens(text, self._encoding),
+        )
+
+    def _chunk_section(
+        self,
+        section: DocumentSection,
+        definitions_index: DefinitionsIndex,
+    ) -> list[Chunk]:
+        """Chunk a non-definitions section: tables split out, text split at paragraphs.
+
+        Args:
+            section: The document section.
+            definitions_index: For detecting defined terms in chunks.
+
+        Returns:
+            List of chunks for this section.
+        """
+        chunks: list[Chunk] = []
+        chunk_index = 0
+
+        # Handle tables as separate chunks
+        for table_md in section.tables:
+            terms = definitions_index.find_terms_in_text(table_md)
+            chunks.append(
+                Chunk(
+                    chunk_id=_generate_chunk_id(),
+                    text=table_md,
+                    section_id=section.section_id,
+                    section_title=section.section_title,
+                    article_number=section.article_number,
+                    article_title=section.article_title,
+                    section_type=section.section_type,
+                    chunk_type="table",
+                    page_numbers=list(
+                        range(section.page_start, section.page_end + 1)
+                    ),
+                    defined_terms_present=terms,
+                    chunk_index=chunk_index,
+                    token_count=_count_tokens(table_md, self._encoding),
+                )
+            )
+            chunk_index += 1
+
+        # Chunk the main text
+        text = section.text.strip()
+        if not text:
+            return chunks
+
+        text_tokens = _count_tokens(text, self._encoding)
+
+        if text_tokens <= CHUNK_TARGET_TOKENS:
+            # Fits in one chunk
+            terms = definitions_index.find_terms_in_text(text)
+            chunks.append(
+                Chunk(
+                    chunk_id=_generate_chunk_id(),
+                    text=text,
+                    section_id=section.section_id,
+                    section_title=section.section_title,
+                    article_number=section.article_number,
+                    article_title=section.article_title,
+                    section_type=section.section_type,
+                    chunk_type="text",
+                    page_numbers=list(
+                        range(section.page_start, section.page_end + 1)
+                    ),
+                    defined_terms_present=terms,
+                    chunk_index=chunk_index,
+                    token_count=text_tokens,
+                )
+            )
+        else:
+            # Split at paragraph boundaries
+            text_chunks = self._split_text(text)
+            for split_text in text_chunks:
+                terms = definitions_index.find_terms_in_text(split_text)
+                chunks.append(
+                    Chunk(
+                        chunk_id=_generate_chunk_id(),
+                        text=split_text,
+                        section_id=section.section_id,
+                        section_title=section.section_title,
+                        article_number=section.article_number,
+                        article_title=section.article_title,
+                        section_type=section.section_type,
+                        chunk_type="text",
+                        page_numbers=list(
+                            range(section.page_start, section.page_end + 1)
+                        ),
+                        defined_terms_present=terms,
+                        chunk_index=chunk_index,
+                        token_count=_count_tokens(split_text, self._encoding),
+                    )
+                )
+                chunk_index += 1
+
+        return chunks
+
+    def _split_text(self, text: str) -> list[str]:
+        """Split text at paragraph boundaries with overlap.
+
+        Splits at double newlines or subsection markers, then merges
+        paragraphs into chunks that stay under the target token limit.
+        Applies overlap from the end of the previous chunk.
+
+        Args:
+            text: The text to split.
+
+        Returns:
+            List of chunk text strings.
+        """
+        paragraphs = [p.strip() for p in _PARAGRAPH_SPLIT.split(text) if p.strip()]
+
+        if not paragraphs:
+            return [text] if text.strip() else []
+
+        chunks: list[str] = []
+        current_parts: list[str] = []
+        current_tokens = 0
+
+        for para in paragraphs:
+            para_tokens = _count_tokens(para, self._encoding)
+
+            # If a single paragraph exceeds max, include it as-is (don't split mid-sentence)
+            if para_tokens > CHUNK_MAX_TOKENS and not current_parts:
+                chunks.append(para)
+                continue
+
+            if current_tokens + para_tokens > CHUNK_TARGET_TOKENS and current_parts:
+                # Flush current chunk
+                chunk_text = "\n\n".join(current_parts)
+                chunks.append(chunk_text)
+
+                # Build overlap: take paragraphs from the end of the current chunk
+                overlap_parts: list[str] = []
+                overlap_tokens = 0
+                for prev_para in reversed(current_parts):
+                    prev_tokens = _count_tokens(prev_para, self._encoding)
+                    if overlap_tokens + prev_tokens > CHUNK_OVERLAP_TOKENS:
+                        break
+                    overlap_parts.insert(0, prev_para)
+                    overlap_tokens += prev_tokens
+
+                current_parts = overlap_parts + [para]
+                current_tokens = overlap_tokens + para_tokens
+            else:
+                current_parts.append(para)
+                current_tokens += para_tokens
+
+        # Flush remaining
+        if current_parts:
+            chunks.append("\n\n".join(current_parts))
+
+        return chunks
