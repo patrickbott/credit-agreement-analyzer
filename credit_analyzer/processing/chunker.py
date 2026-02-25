@@ -37,8 +37,11 @@ class Chunk:
     token_count: int
 
 
-# Paragraph split pattern: double newline or subsection markers like (a), (b)
-_PARAGRAPH_SPLIT = re.compile(r"\n\s*\n|\n\s*(?=\([a-z]\)|\([ivx]+\))")
+# Paragraph split patterns, tried in order of preference.
+# Primary: double newline or subsection markers like (a), (b)
+_PARAGRAPH_SPLIT_DOUBLE = re.compile(r"\n\s*\n|\n\s*(?=\([a-z]\)|\([ivx]+\))")
+# Fallback: single newline (some PDFs have no double newlines)
+_PARAGRAPH_SPLIT_SINGLE = re.compile(r"\n")
 
 
 def _count_tokens(text: str, encoding: tiktoken.Encoding) -> int:
@@ -323,7 +326,12 @@ class Chunker:
         Returns:
             List of chunk text strings.
         """
-        paragraphs = [p.strip() for p in _PARAGRAPH_SPLIT.split(text) if p.strip()]
+        # Try splitting on double newlines first; if that produces only 1 part,
+        # fall back to single newlines (common in PDFs with no blank lines).
+        parts = [p.strip() for p in _PARAGRAPH_SPLIT_DOUBLE.split(text) if p.strip()]
+        if len(parts) <= 1:
+            parts = [p.strip() for p in _PARAGRAPH_SPLIT_SINGLE.split(text) if p.strip()]
+        paragraphs = parts
 
         if not paragraphs:
             return [text] if text.strip() else []

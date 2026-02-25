@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence, cast
+from typing import Any, cast
 
-import fitz  # pymupdf
+import fitz  # pyright: ignore[reportMissingTypeStubs]
 import pdfplumber
 import pdfplumber.page
-import pytesseract
+import pytesseract  # pyright: ignore[reportMissingTypeStubs]
 from PIL import Image
 
 from credit_analyzer.config import OCR_TEXT_LENGTH_THRESHOLD, TESSERACT_CMD
@@ -60,13 +61,20 @@ def _table_to_markdown(table: Sequence[Sequence[str | None]]) -> str:
     return "\n".join(parts)
 
 
-def _ocr_page(fitz_page: fitz.Page) -> str:
-    """Render a fitz page to an image and run Tesseract OCR on it."""
+def _ocr_page(fitz_page: Any) -> str:
+    """Render a fitz page to an image and run Tesseract OCR on it.
+
+    Args:
+        fitz_page: A fitz.Page object (typed as Any due to missing stubs).
+
+    Returns:
+        OCR-extracted text string.
+    """
     mat = fitz.Matrix(2.0, 2.0)  # 2x scale for better OCR accuracy
     pix = fitz_page.get_pixmap(matrix=mat)
     img = Image.open(io.BytesIO(pix.tobytes("png")))
-    text: str = pytesseract.image_to_string(img)
-    return text
+    result = cast(str, pytesseract.image_to_string(img))  # pyright: ignore[reportUnknownMemberType]
+    return result
 
 
 def _extract_tables_from_page(plumber_page: pdfplumber.page.Page) -> list[str]:
@@ -97,7 +105,6 @@ class PDFExtractor:
 
         Raises:
             FileNotFoundError: If the PDF does not exist.
-            fitz.FileDataError: If the PDF cannot be opened.
         """
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -106,17 +113,15 @@ class PDFExtractor:
         ocr_count = 0
         digital_count = 0
 
-        fitz_doc = fitz.open(str(pdf_path))
+        fitz_doc: Any = fitz.open(str(pdf_path))
         plumber_doc = pdfplumber.open(str(pdf_path))
 
         try:
             for page_idx in range(len(fitz_doc)):
-                fitz_page = fitz_doc[page_idx]
-                plumber_page = cast(pdfplumber.page.Page, plumber_doc.pages[page_idx])
+                fitz_page: Any = fitz_doc[page_idx]
+                plumber_page = plumber_doc.pages[page_idx]
                 page_number = page_idx + 1
 
-                # fitz stubs get_text() as str | list | dict depending on mode arg;
-                # called with no args (default "text" mode) it always returns str
                 raw_text = cast(str, fitz_page.get_text())
                 is_ocr = False
 

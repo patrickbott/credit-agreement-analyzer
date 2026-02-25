@@ -40,16 +40,19 @@ _SECTION_TYPE_KEYWORDS: tuple[tuple[str, SectionType], ...] = (
     ("events of default", "events_of_default"),
     ("definition", "definitions"),
     ("defined terms", "definitions"),
-    ("condition", "conditions"),
     ("conditions precedent", "conditions"),
+    ("condition", "conditions"),
     ("representation", "representations"),
     ("warranties", "representations"),
+    ("amount and terms", "facility_terms"),
     ("the credit", "facility_terms"),
     ("the loan", "facility_terms"),
     ("amounts and terms", "facility_terms"),
     ("commitments", "facility_terms"),
-    ("agent", "agents"),
+    ("letters of credit", "facility_terms"),
     ("administrative agent", "agents"),
+    ("the agent", "agents"),
+    ("agent", "agents"),
     ("miscellaneous", "miscellaneous"),
     ("general provisions", "miscellaneous"),
     ("guaranty", "guaranty"),
@@ -61,27 +64,37 @@ _SECTION_TYPE_KEYWORDS: tuple[tuple[str, SectionType], ...] = (
     ("schedule", "schedules"),
 )
 
-# Regex for article headers.
-# Matches patterns like:
-#   ARTICLE VII - NEGATIVE COVENANTS
-#   ARTICLE 7 -- Negative Covenants
-#   Article VII
-#   ARTICLE VII\nNEGATIVE COVENANTS
+# Top-level header patterns. We try multiple formats and pick whichever matches.
+#
+# Format 1: ARTICLE [ROMAN/NUMBER] [separator] [TITLE]
+#   e.g. "ARTICLE VII - NEGATIVE COVENANTS", "ARTICLE VII\nNEGATIVE COVENANTS"
+#
+# Format 2: SECTION [NUMBER] [TITLE]  (used as a top-level header when all-caps)
+#   e.g. "SECTION 7 NEGATIVE COVENANTS"
+#
+# Both formats require the entire line to be mostly uppercase to distinguish
+# top-level headers from sub-section references like "Section 7.01 Liens".
+
 _ARTICLE_PATTERN = re.compile(
     r"(?:^|\n)\s*"
     r"ARTICLE\s+([IVXLCDM]+|\d+)"
     r"\s*[:\-\x97\u2014\u2013.]*\s*\n?\s*"
-    # Keep titles on a single line; using explicit space avoids consuming the next header line.
     r"([A-Z][A-Za-z0-9 ,&()'/-]+)",
     re.MULTILINE,
 )
 
-# Regex for section headers within articles.
-# Matches patterns like:
-#   Section 7.06  Restricted Payments
-#   SECTION 7.06. Restricted Payments
-#   7.06 Restricted Payments
-_SECTION_HEADER_PATTERN = re.compile(
+_TOPLEVEL_SECTION_PATTERN = re.compile(
+    r"(?:^|\n)\s*"
+    r"SECTION\s+(\d+)"
+    r"\s+"
+    r"([A-Z][A-Z0-9 ,&()'/-]+)",
+    re.MULTILINE,
+)
+
+# Sub-section headers within a top-level article/section.
+# Matches: "Section 7.06 Restricted Payments", "SECTION 7.06. Restricted Payments",
+#           "7.06 Restricted Payments" (number.number at line start)
+_SUBSECTION_HEADER_PATTERN = re.compile(
     r"(?:^|\n)\s*"
     r"(?:SECTION|Section)?\s*"
     r"(\d+\.\d+)"
@@ -112,7 +125,7 @@ _ROMAN_VALUES: tuple[tuple[str, int], ...] = (
 class DocumentSection:
     """A structural section detected in a credit agreement."""
 
-    section_id: str  # e.g. "7.06" or "ARTICLE_7" for article-level
+    section_id: str  # e.g. "7.06" or "SECTION_7" for top-level
     article_number: int
     section_title: str
     article_title: str
@@ -139,7 +152,6 @@ def _roman_to_int(roman: str) -> int:
             result += value
             remaining = remaining[len(numeral) :]
     if remaining:
-        # Leftover characters means it wasn't a clean Roman numeral
         return 0
     return result
 
@@ -191,9 +203,7 @@ def _offset_to_page(offset: int, page_offsets: tuple[int, ...]) -> int:
     return 1
 
 
-def _collect_tables_for_pages(
-    document: ExtractedDocument, page_start: int, page_end: int
-) -> list[str]:
+def _collect_tables_for_pages(document: ExtractedDocument, page_start: int, page_end: int) -> list[str]:
     """Gather all table markdown strings from pages in the given range.
 
     Args:
@@ -213,7 +223,7 @@ def _collect_tables_for_pages(
 
 @dataclass
 class _ArticleBoundary:
-    """Internal representation of a detected article."""
+    """Internal representation of a detected top-level article/section."""
 
     article_number: int
     article_title: str
@@ -225,9 +235,13 @@ class _ArticleBoundary:
 class SectionDetector:
     """Detects article and section boundaries in a credit agreement.
 
-    Uses regex patterns to identify ARTICLE and Section headers, then
-    classifies each article by type. Falls back to treating the entire
-    document as a single section if no articles are detected.
+    Supports two common header formats:
+    - "ARTICLE VII NEGATIVE COVENANTS" (traditional)
+    - "SECTION 7 NEGATIVE COVENANTS" (alternate, all-caps top-level)
+
+    Within each top-level header, detects numbered sub-sections like "7.01 Liens".
+    Falls back to treating the entire document as a single section if
+    no headers are detected.
     """
 
     def detect_sections(self, document: ExtractedDocument) -> list[DocumentSection]:
@@ -253,7 +267,7 @@ class SectionDetector:
         sections: list[DocumentSection] = []
         for article in articles:
             article_text = full_text[article.text_start : article.text_end]
-            article_sections = self._detect_sections_in_article(
+            article_sections = self._detect_subsections_in_article(
                 article, article_text, full_text, page_offsets, document
             )
             if article_sections:
@@ -261,30 +275,24 @@ class SectionDetector:
             else:
                 # No sub-sections found; treat entire article as one section
                 page_start = _offset_to_page(article.text_start, page_offsets)
-                page_end = _offset_to_page(
-                    max(article.text_end - 1, article.text_start), page_offsets
-                )
+                page_end = _offset_to_page(max(article.text_end - 1, article.text_start), page_offsets)
                 sections.append(
                     DocumentSection(
-                        section_id=f"ARTICLE_{article.article_number}",
+                        section_id=f"SECTION_{article.article_number}",
                         article_number=article.article_number,
                         section_title=article.article_title.strip(),
                         article_title=article.article_title.strip(),
                         text=article_text,
                         page_start=page_start,
                         page_end=page_end,
-                        tables=_collect_tables_for_pages(
-                            document, page_start, page_end
-                        ),
+                        tables=_collect_tables_for_pages(document, page_start, page_end),
                         section_type=article.section_type,
                     )
                 )
 
         return sections
 
-    def _build_full_text(
-        self, document: ExtractedDocument
-    ) -> tuple[str, tuple[int, ...]]:
+    def _build_full_text(self, document: ExtractedDocument) -> tuple[str, tuple[int, ...]]:
         """Concatenate all page texts and track page character offsets.
 
         Args:
@@ -307,7 +315,10 @@ class SectionDetector:
         return full_text, tuple(offsets)
 
     def _detect_articles(self, full_text: str) -> list[_ArticleBoundary]:
-        """Find all article headers in the full text.
+        """Find all top-level headers in the full text.
+
+        Tries the ARTICLE pattern first. If that finds nothing, tries
+        the SECTION N TITLE pattern (all-caps top-level sections).
 
         Args:
             full_text: Concatenated document text.
@@ -315,37 +326,51 @@ class SectionDetector:
         Returns:
             List of _ArticleBoundary objects sorted by position.
         """
-        matches = list(_ARTICLE_PATTERN.finditer(full_text))
+        # Try ARTICLE pattern first
+        articles = self._extract_boundaries(_ARTICLE_PATTERN, full_text)
+        if articles:
+            return articles
+
+        # Fall back to SECTION N TITLE pattern
+        return self._extract_boundaries(_TOPLEVEL_SECTION_PATTERN, full_text)
+
+    def _extract_boundaries(self, pattern: re.Pattern[str], full_text: str) -> list[_ArticleBoundary]:
+        """Extract article boundaries from regex matches.
+
+        Args:
+            pattern: Compiled regex with group(1)=number, group(2)=title.
+            full_text: The full document text.
+
+        Returns:
+            List of _ArticleBoundary objects, deduplicated by article number.
+        """
+        matches = list(pattern.finditer(full_text))
         if not matches:
             return []
 
-        articles: list[_ArticleBoundary] = []
-        seen_numbers: set[int] = set()
+        # Build a dict keyed by article number. Later occurrences overwrite
+        # earlier ones, so TOC entries (which come first) are replaced by the
+        # real body headers.
+        by_number: dict[int, _ArticleBoundary] = {}
 
         for match in matches:
             article_num = _parse_article_number(match.group(1))
             if article_num == 0:
                 continue
 
-            # Skip duplicate article numbers (likely TOC references)
-            if article_num in seen_numbers:
-                continue
-            seen_numbers.add(article_num)
-
             title = match.group(2).strip().rstrip(",").strip()
-            articles.append(
-                _ArticleBoundary(
-                    article_number=article_num,
-                    article_title=title,
-                    section_type=_classify_section_type(title),
-                    text_start=match.start(),
-                    text_end=0,  # set later
-                )
+            by_number[article_num] = _ArticleBoundary(
+                article_number=article_num,
+                article_title=title,
+                section_type=_classify_section_type(title),
+                text_start=match.start(),
+                text_end=0,  # set later
             )
 
-        return articles
+        # Return sorted by position in the document
+        return sorted(by_number.values(), key=lambda a: a.text_start)
 
-    def _detect_sections_in_article(
+    def _detect_subsections_in_article(
         self,
         article: _ArticleBoundary,
         article_text: str,
@@ -353,7 +378,7 @@ class SectionDetector:
         page_offsets: tuple[int, ...],
         document: ExtractedDocument,
     ) -> list[DocumentSection]:
-        """Find numbered sections within an article.
+        """Find numbered sub-sections within a top-level article/section.
 
         Args:
             article: The parent article boundary.
@@ -365,9 +390,9 @@ class SectionDetector:
         Returns:
             List of DocumentSection objects for sub-sections, or empty if none found.
         """
-        matches = list(_SECTION_HEADER_PATTERN.finditer(article_text))
+        matches = list(_SUBSECTION_HEADER_PATTERN.finditer(article_text))
 
-        # Filter to only sections belonging to this article
+        # Filter to only sub-sections belonging to this article (e.g. "7." prefix)
         article_prefix = f"{article.article_number}."
         matches = [m for m in matches if m.group(1).startswith(article_prefix)]
 
@@ -379,19 +404,13 @@ class SectionDetector:
             section_id = match.group(1)
             section_title = match.group(2).strip().rstrip(".")
 
-            # Section text runs from this match to the next match (or end of article)
             text_start_in_article = match.start()
-            # Use the section number start for page attribution so leading newlines
-            # (which may belong to the prior page) do not shift page_start backward.
+            # Use the section number start for page attribution
             header_start_in_article = match.start(1)
-            if i + 1 < len(matches):
-                text_end_in_article = matches[i + 1].start()
-            else:
-                text_end_in_article = len(article_text)
+            text_end_in_article = matches[i + 1].start() if i + 1 < len(matches) else len(article_text)
 
             section_text = article_text[text_start_in_article:text_end_in_article]
 
-            # Convert offsets back to full-text offsets for page lookup
             abs_start = article.text_start + header_start_in_article
             abs_end = article.text_start + text_end_in_article
             page_start = _offset_to_page(abs_start, page_offsets)
@@ -413,10 +432,8 @@ class SectionDetector:
 
         return sections
 
-    def _fallback_single_section(
-        self, document: ExtractedDocument, full_text: str
-    ) -> list[DocumentSection]:
-        """Fallback when no articles are detected: return the entire document as one section.
+    def _fallback_single_section(self, document: ExtractedDocument, full_text: str) -> list[DocumentSection]:
+        """Fallback when no headers are detected: return the entire document as one section.
 
         Args:
             document: The source document.

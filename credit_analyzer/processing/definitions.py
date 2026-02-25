@@ -3,22 +3,31 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from credit_analyzer.processing.section_detector import DocumentSection
 
-# Pattern to match defined terms: "Term" means / "Term" shall mean / "Term" has the meaning
-# Captures the quoted term name.
+# Pattern to match defined terms in two styles:
+#   Style 1 (colon): "Term": ... or \u201cTerm\u201d: ...
+#   Style 2 (verb):  "Term" means ... or \u201cTerm\u201d means ...
+# Group 1 = smart-quote colon, Group 2 = straight-quote colon,
+# Group 3 = smart-quote verb, Group 4 = straight-quote verb.
 _DEFINED_TERM_PATTERN = re.compile(
-    r'\u201c([A-Za-z][A-Za-z0-9\s\-/,()&]+?)\u201d'  # smart quotes
+    # Style 1: quoted term followed by colon (no verb required)
+    r'\u201c([A-Za-z][A-Za-z0-9\s\-/,()&]+?)\u201d\s*:'
     r"|"
-    r'"([A-Za-z][A-Za-z0-9\s\-/,()&]+?)"',  # straight quotes
+    r'"([A-Za-z][A-Za-z0-9\s\-/,()&]+?)"\s*:'
+    r"|"
+    # Style 2: quoted term followed by definition verb
+    r'\u201c([A-Za-z][A-Za-z0-9\s\-/,()&]+?)\u201d'
+    r"|"
+    r'"([A-Za-z][A-Za-z0-9\s\-/,()&]+?)"',
 )
 
-# Verbs that follow a defined term to confirm it's actually a definition
+# Verbs that follow a defined term (used only for Style 2 matches).
 _DEFINITION_VERBS = re.compile(
-    r"\s+(?:means?|shall\s+mean|has\s+the\s+meaning|is\s+defined\s+as|refers?\s+to)",
+    r"\s*(?:means?|shall\s+mean|has\s+the\s+meaning|is\s+defined\s+as|refers?\s+to)",
     re.IGNORECASE,
 )
 
@@ -112,10 +121,7 @@ class DefinitionsParser:
         for i, (term, start) in enumerate(term_positions):
             # Definition text runs from the start of this term's line
             # to the start of the next term
-            if i + 1 < len(term_positions):
-                end = term_positions[i + 1][1]
-            else:
-                end = len(text)
+            end = term_positions[i + 1][1] if i + 1 < len(term_positions) else len(text)
 
             raw_definition = text[start:end].strip()
             # Clean up: remove trailing whitespace and incomplete sentences
@@ -139,8 +145,13 @@ class DefinitionsParser:
         seen_terms: set[str] = set()
 
         for match in _DEFINED_TERM_PATTERN.finditer(text):
-            # Group 1 = smart quotes, Group 2 = straight quotes
+            # Groups 1-2 = colon style (smart/straight), no verb needed
+            # Groups 3-4 = verb style (smart/straight), verb required
             term = match.group(1) or match.group(2)
+            needs_verb = False
+            if term is None:
+                term = match.group(3) or match.group(4)
+                needs_verb = True
             if term is None:
                 continue
 
@@ -148,10 +159,11 @@ class DefinitionsParser:
             if not term:
                 continue
 
-            # Check that a definition verb follows the closing quote
-            after_quote = text[match.end() : match.end() + 50]
-            if not _DEFINITION_VERBS.match(after_quote):
-                continue
+            # Verb-style matches must have a definition verb after the quote
+            if needs_verb:
+                after_quote = text[match.end() : match.end() + 50]
+                if not _DEFINITION_VERBS.match(after_quote):
+                    continue
 
             # Skip duplicates (keep first occurrence)
             if term in seen_terms:
