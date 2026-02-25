@@ -177,6 +177,35 @@ def test_get_definitions_for_terms_empty() -> None:
     assert index.get_definitions_for_terms([]) == {}
 
 
+def test_parse_colon_style_straight_quotes() -> None:
+    """'"Term": definition' format (colon, no verb) is recognized."""
+    text = (
+        '"ABR": for any day, a rate per annum.\n\n'
+        '"Benchmark": the applicable rate.\n'
+    )
+    section = _make_definitions_section(text)
+    parser = DefinitionsParser()
+    index = parser.parse(section)
+
+    assert "ABR" in index.definitions
+    assert "Benchmark" in index.definitions
+    assert "rate per annum" in index.definitions["ABR"]
+
+
+def test_parse_colon_style_smart_quotes() -> None:
+    """Smart-quote colon style is recognized."""
+    text = (
+        "\u201cBank Levy\u201d: means any Tax payable by any Recipient.\n\n"
+        "\u201cBenchmark\u201d: the applicable rate.\n"
+    )
+    section = _make_definitions_section(text)
+    parser = DefinitionsParser()
+    index = parser.parse(section)
+
+    assert "Bank Levy" in index.definitions
+    assert "Benchmark" in index.definitions
+
+
 def test_duplicate_terms_keeps_first() -> None:
     """If the same term appears twice, the first occurrence wins."""
     text = (

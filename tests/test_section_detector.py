@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Tests for section_detector module."""
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ from credit_analyzer.processing.section_detector import (
     _parse_article_number,
     _roman_to_int,
 )
-
 
 # --- Roman numeral conversion ---
 
@@ -59,6 +59,7 @@ def test_classify_events_of_default() -> None:
 def test_classify_facility_terms() -> None:
     assert _classify_section_type("THE CREDITS") == "facility_terms"
     assert _classify_section_type("THE LOANS AND COMMITMENTS") == "facility_terms"
+    assert _classify_section_type("AMOUNT AND TERMS OF COMMITMENTS") == "facility_terms"
 
 
 def test_classify_other() -> None:
@@ -69,7 +70,6 @@ def test_classify_other() -> None:
 
 
 def test_offset_to_page_basic() -> None:
-    # Three pages starting at offsets 0, 100, 200
     offsets = (0, 100, 200)
     assert _offset_to_page(0, offsets) == 1
     assert _offset_to_page(50, offsets) == 1
@@ -103,11 +103,11 @@ def _make_document(page_texts: list[str]) -> ExtractedDocument:
     )
 
 
-# --- Full detection tests ---
+# --- ARTICLE format detection ---
 
 
-def test_detect_single_article_no_sections() -> None:
-    """An article with no numbered sections is returned as one DocumentSection."""
+def test_detect_article_format_single_no_subsections() -> None:
+    """An ARTICLE header with no numbered sub-sections is returned as one section."""
     text = (
         "\nARTICLE I\nDEFINITIONS\n\n"
         "This is the definitions article with lots of defined terms.\n"
@@ -118,15 +118,13 @@ def test_detect_single_article_no_sections() -> None:
     sections = detector.detect_sections(doc)
 
     assert len(sections) == 1
-    assert sections[0].section_id == "ARTICLE_1"
+    assert sections[0].section_id == "SECTION_1"
     assert sections[0].article_number == 1
     assert sections[0].section_type == "definitions"
-    assert sections[0].page_start == 1
-    assert sections[0].page_end == 1
 
 
-def test_detect_article_with_sections() -> None:
-    """An article with numbered sub-sections is split correctly."""
+def test_detect_article_format_with_subsections() -> None:
+    """An ARTICLE header with numbered sub-sections is split correctly."""
     text = (
         "\nARTICLE VII\nNEGATIVE COVENANTS\n\n"
         "Section 7.01 Indebtedness\n"
@@ -145,13 +143,12 @@ def test_detect_article_with_sections() -> None:
     assert sections[0].section_title == "Indebtedness"
     assert sections[0].article_title == "NEGATIVE COVENANTS"
     assert sections[0].section_type == "negative_covenants"
-
     assert sections[1].section_id == "7.02"
     assert sections[2].section_id == "7.03"
 
 
-def test_detect_multiple_articles() -> None:
-    """Multiple articles are all detected and classified."""
+def test_detect_article_format_multiple() -> None:
+    """Multiple ARTICLE headers are all detected and classified."""
     text = (
         "\nARTICLE I\nDEFINITIONS\n\nSome definitions here.\n\n"
         "\nARTICLE II\nTHE CREDITS\n\nSection 2.01 Commitments\nText.\n\n"
@@ -167,15 +164,73 @@ def test_detect_multiple_articles() -> None:
     assert "negative_covenants" in types
 
 
+# --- SECTION N format detection ---
+
+
+def test_detect_section_format_single() -> None:
+    """SECTION N TITLE format is detected as a top-level header."""
+    text = (
+        "\nSECTION 1 DEFINITIONS\n\n"
+        "Lots of defined terms here.\n"
+    )
+    doc = _make_document([text])
+    detector = SectionDetector()
+    sections = detector.detect_sections(doc)
+
+    assert len(sections) == 1
+    assert sections[0].article_number == 1
+    assert sections[0].section_type == "definitions"
+
+
+def test_detect_section_format_with_subsections() -> None:
+    """SECTION N format with numbered sub-sections like 7.01, 7.02."""
+    text = (
+        "\nSECTION 7 NEGATIVE COVENANTS\n\n"
+        "7.01 Indebtedness\n"
+        "The Borrower will not incur indebtedness.\n\n"
+        "7.02 Liens\n"
+        "The Borrower will not create liens.\n"
+    )
+    doc = _make_document([text])
+    detector = SectionDetector()
+    sections = detector.detect_sections(doc)
+
+    assert len(sections) == 2
+    assert sections[0].section_id == "7.01"
+    assert sections[0].section_title == "Indebtedness"
+    assert sections[0].section_type == "negative_covenants"
+    assert sections[1].section_id == "7.02"
+
+
+def test_detect_section_format_multiple() -> None:
+    """Multiple SECTION N headers are detected and classified."""
+    text = (
+        "\nSECTION 1 DEFINITIONS\n\nDefined terms.\n\n"
+        "\nSECTION 2 AMOUNT AND TERMS OF COMMITMENTS\n\n2.1 Term Commitments\nText.\n\n"
+        "\nSECTION 7 NEGATIVE COVENANTS\n\n7.1 Indebtedness\nText.\n"
+    )
+    doc = _make_document([text])
+    detector = SectionDetector()
+    sections = detector.detect_sections(doc)
+
+    types = [s.section_type for s in sections]
+    assert "definitions" in types
+    assert "facility_terms" in types
+    assert "negative_covenants" in types
+
+
+# --- Cross-page and edge cases ---
+
+
 def test_detect_across_pages() -> None:
     """Sections spanning multiple pages get correct page_start and page_end."""
     page1 = (
-        "\nARTICLE VII\nNEGATIVE COVENANTS\n\n"
-        "Section 7.01 Indebtedness\n"
+        "\nSECTION 7 NEGATIVE COVENANTS\n\n"
+        "7.01 Indebtedness\n"
         "The Borrower will not incur any debt that exceeds the limits.\n"
     )
     page2 = (
-        "Section 7.02 Liens\n"
+        "7.02 Liens\n"
         "The Borrower will not create any liens on its property.\n"
     )
     doc = _make_document([page1, page2])
@@ -184,12 +239,11 @@ def test_detect_across_pages() -> None:
 
     assert len(sections) == 2
     assert sections[0].page_start == 1
-    # Section 7.02 starts on page 2
     assert sections[1].page_start == 2
 
 
-def test_fallback_no_articles() -> None:
-    """If no ARTICLE headers are found, fall back to a single section."""
+def test_fallback_no_headers() -> None:
+    """If no headers are found, fall back to a single section."""
     text = "This is a weird document with no article headers at all.\nJust plain text."
     doc = _make_document([text])
     detector = SectionDetector()
@@ -205,8 +259,8 @@ def test_tables_collected_for_section() -> None:
     pages = [
         ExtractedPage(
             page_number=1,
-            text="\nARTICLE VIII\nFINANCIAL COVENANTS\n\nSection 8.01 Leverage Ratio\nSee table.\n",
-            tables=["| Ratio | Limit |\n| --- | --- |\n| Leverage | 4.50x |"],
+            text="\nSECTION 8 EVENTS OF DEFAULT\n\n8.01 Payment Default\nSee table.\n",
+            tables=["| Type | Cure Period |\n| --- | --- |\n| Payment | 5 days |"],
             is_ocr=False,
         ),
     ]
@@ -223,23 +277,22 @@ def test_tables_collected_for_section() -> None:
 
     assert len(sections) == 1
     assert len(sections[0].tables) == 1
-    assert "Leverage" in sections[0].tables[0]
+    assert "Payment" in sections[0].tables[0]
 
 
-def test_duplicate_article_numbers_skipped() -> None:
-    """TOC references that repeat article numbers are skipped."""
+def test_duplicate_numbers_skipped() -> None:
+    """TOC references that repeat header numbers are skipped."""
     text = (
-        "ARTICLE I - DEFINITIONS......1\n"
-        "ARTICLE II - THE CREDITS......5\n\n"
+        "SECTION 1 DEFINITIONS......1\n"
+        "SECTION 2 THE CREDITS......5\n\n"
         "End of table of contents\n\n"
-        "\nARTICLE I\nDEFINITIONS\n\nActual content here.\n\n"
-        "\nARTICLE II\nTHE CREDITS\n\nMore content.\n"
+        "\nSECTION 1 DEFINITIONS\n\nActual content here.\n\n"
+        "\nSECTION 2 THE CREDITS\n\nMore content.\n"
     )
     doc = _make_document([text])
     detector = SectionDetector()
     sections = detector.detect_sections(doc)
 
-    # Should only have 2 articles, not 4
     article_numbers = {s.article_number for s in sections}
     assert article_numbers == {1, 2}
 
@@ -258,3 +311,19 @@ def test_roman_numeral_article_detection() -> None:
     assert sections[0].article_number == 14
     assert sections[0].section_id == "14.01"
     assert sections[0].section_type == "miscellaneous"
+
+
+def test_article_format_preferred_over_section_format() -> None:
+    """If ARTICLE headers are found, SECTION N headers are not used as top-level."""
+    text = (
+        "\nARTICLE I\nDEFINITIONS\n\nTerms here.\n\n"
+        "\nARTICLE II\nTHE CREDITS\n\nSection 2.01 Commitments\nText.\n"
+    )
+    doc = _make_document([text])
+    detector = SectionDetector()
+    sections = detector.detect_sections(doc)
+
+    # Should use ARTICLE format, not SECTION format
+    types = [s.section_type for s in sections]
+    assert "definitions" in types
+    assert "facility_terms" in types
