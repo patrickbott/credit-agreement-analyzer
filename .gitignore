@@ -1,1 +1,4 @@
 credit_agreement.pdf
+__pycache__/
+*.pyc
+
