@@ -94,9 +94,16 @@ class Chunker:
         """
         all_chunks: list[Chunk] = []
 
+        definitions_chunked = False
+
         for section in sections:
-            if section.section_type == "definitions":
+            if section.section_type == "definitions" and not definitions_chunked:
+                # Only chunk the first definitions section (e.g. 1.1 "Defined Terms")
+                # as definition entries.  Remaining Article I sub-sections
+                # (Rounding, Currency, etc.) are interpretive provisions and
+                # should be chunked as regular text.
                 chunks = self._chunk_definitions(section, definitions_index)
+                definitions_chunked = True
             else:
                 chunks = self._chunk_section(section, definitions_index)
             all_chunks.extend(chunks)

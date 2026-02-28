@@ -48,3 +48,5 @@ uv.lock
 .venv/
 .vscode/
 
+# Other
+chroma_validation/
