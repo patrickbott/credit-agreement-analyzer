@@ -42,15 +42,17 @@ class SourceCitation:
 # Regex patterns
 # ---------------------------------------------------------------------------
 
-# Matches "Confidence: HIGH" (case-insensitive, tolerant of whitespace)
+# Matches "Confidence: HIGH" (case-insensitive, tolerant of whitespace).
+# Also handles markdown bold like **Confidence: HIGH** or **Confidence:** HIGH.
 _CONFIDENCE_RE = re.compile(
-    r"(?:^|\n)\s*Confidence\s*:\s*(HIGH|MEDIUM|LOW)\b",
+    r"(?:^|\n)\s*\*{0,2}Confidence\*{0,2}\s*:\s*\*{0,2}\s*(HIGH|MEDIUM|LOW)\b",
     re.IGNORECASE,
 )
 
-# Matches "Sources: Section 7.06 (pp. 45-46), ..."
+# Matches "Sources: Section 7.06 (pp. 45-46), ...".
+# Also handles markdown bold like **Sources:** ...
 _SOURCES_LINE_RE = re.compile(
-    r"(?:^|\n)\s*Sources?\s*:\s*(.+)",
+    r"(?:^|\n)\s*\*{0,2}Sources?\*{0,2}\s*:\s*\*{0,2}\s*(.+)",
     re.IGNORECASE,
 )
 

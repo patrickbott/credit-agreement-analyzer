@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from typing import Literal
 from credit_analyzer.config import (
     BM25_WEIGHT,
     MAX_DEFINITIONS_INJECTED,
+    SECTION_TYPE_BOOST,
     VECTOR_WEIGHT,
 )
 from credit_analyzer.processing.chunker import Chunk
@@ -69,6 +71,83 @@ def normalize_scores(scores: Sequence[float]) -> list[float]:
     if span == 0.0:
         return [1.0] * len(scores)
     return [(s - min_s) / span for s in scores]
+
+
+# ---------------------------------------------------------------------------
+# Query -> section_type intent mapping
+# ---------------------------------------------------------------------------
+
+# Patterns that signal the user is asking about a particular section type.
+# Each entry is (compiled regex, section_type).  First match wins.
+_QUERY_INTENT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"financial\s+covenant", re.IGNORECASE),
+        "financial_covenants",
+    ),
+    (
+        re.compile(
+            r"leverage\s+ratio|coverage\s+ratio|consolidated\s+net",
+            re.IGNORECASE,
+        ),
+        "financial_covenants",
+    ),
+    (
+        re.compile(
+            r"negative\s+covenant|restricted\s+payment"
+            r"|lien|indebtedness|investment\s+basket",
+            re.IGNORECASE,
+        ),
+        "negative_covenants",
+    ),
+    (
+        re.compile(
+            r"affirmative\s+covenant|reporting|deliver.+financial",
+            re.IGNORECASE,
+        ),
+        "affirmative_covenants",
+    ),
+    (
+        re.compile(
+            r"event.+of.+default|breach|acceleration|cross.default",
+            re.IGNORECASE,
+        ),
+        "events_of_default",
+    ),
+    (
+        re.compile(
+            r"revolving|term\s+loan|commitment|facility\s+size"
+            r"|incremental|prepayment|interest\s+rate"
+            r"|pricing|spread|margin|fee|amortization",
+            re.IGNORECASE,
+        ),
+        "facility_terms",
+    ),
+    (re.compile(r"representation|warrant", re.IGNORECASE), "representations"),
+    (
+        re.compile(r"condition.+precedent|closing\s+condition", re.IGNORECASE),
+        "conditions",
+    ),
+    (re.compile(r"guaranty|guarantee", re.IGNORECASE), "guaranty"),
+    (
+        re.compile(r"collateral|security\s+interest|pledge", re.IGNORECASE),
+        "collateral",
+    ),
+)
+
+
+def detect_query_section_type(query: str) -> str | None:
+    """Detect which section type a query is most likely asking about.
+
+    Args:
+        query: The user's question.
+
+    Returns:
+        A section_type string if a match is found, or ``None``.
+    """
+    for pattern, section_type in _QUERY_INTENT_PATTERNS:
+        if pattern.search(query):
+            return section_type
+    return None
 
 
 class HybridRetriever:
@@ -141,6 +220,9 @@ class HybridRetriever:
         vector_scores = normalize_scores([r.score for r in vector_results])
         bm25_scores = normalize_scores([r.score for r in bm25_results])
 
+        # Detect query intent for section type boosting
+        intent_type = detect_query_section_type(query)
+
         # Build lookup: chunk_id -> (weighted_score, source, chunk)
         merged: dict[str, tuple[float, SourceLabel, Chunk]] = {}
 
@@ -153,11 +235,20 @@ class HybridRetriever:
             chunk_id = result.chunk.chunk_id
 
             if chunk_id in merged:
-                # Found in both — combine scores
+                # Found in both -- combine scores
                 existing_score, _, existing_chunk = merged[chunk_id]
                 merged[chunk_id] = (existing_score + weighted, "both", existing_chunk)
             else:
                 merged[chunk_id] = (weighted, "bm25", result.chunk)
+
+        # Apply section type boost
+        if intent_type is not None:
+            boosted: dict[str, tuple[float, SourceLabel, Chunk]] = {}
+            for chunk_id, (score, source, chunk) in merged.items():
+                if chunk.section_type == intent_type:
+                    score += SECTION_TYPE_BOOST
+                boosted[chunk_id] = (score, source, chunk)
+            merged = boosted
 
         # Sort by combined score descending, take top_k
         sorted_items = sorted(merged.values(), key=lambda x: x[0], reverse=True)

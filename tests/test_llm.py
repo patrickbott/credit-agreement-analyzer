@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from credit_analyzer.llm.base import LLMProvider, LLMResponse
+from credit_analyzer.llm.claude_provider import ClaudeProvider
 from credit_analyzer.llm.factory import get_provider
 from credit_analyzer.llm.internal_provider import InternalLLMProvider
 from credit_analyzer.llm.ollama_provider import OllamaProvider
@@ -47,8 +48,15 @@ def test_get_provider_internal() -> None:
 def test_get_provider_default_uses_config() -> None:
     """Factory with no argument uses LLM_PROVIDER from config."""
     provider = get_provider()
-    # Config default is "ollama"
-    assert isinstance(provider, OllamaProvider)
+    # Config default is "claude" (was "ollama" before Claude integration)
+    assert isinstance(provider, (OllamaProvider, ClaudeProvider))
+
+
+@patch("anthropic.Anthropic")
+def test_get_provider_claude(mock_cls: MagicMock) -> None:
+    """Factory returns ClaudeProvider when asked for 'claude'."""
+    provider = get_provider("claude")
+    assert isinstance(provider, ClaudeProvider)
 
 
 def test_get_provider_unknown_raises() -> None:
@@ -186,3 +194,97 @@ def test_cannot_instantiate_base() -> None:
     """LLMProvider cannot be instantiated directly."""
     with pytest.raises(TypeError):
         LLMProvider()  # type: ignore[abstract]
+
+
+# ---------------------------------------------------------------------------
+# ClaudeProvider (mocked)
+# ---------------------------------------------------------------------------
+
+
+def _mock_anthropic_response() -> MagicMock:
+    """A minimal mock mimicking the Anthropic Messages API response."""
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = "Facility: Revolving; Amount: $50M"
+
+    usage = MagicMock()
+    usage.output_tokens = 42
+
+    response = MagicMock()
+    response.content = [text_block]
+    response.usage = usage
+    return response
+
+
+def _make_claude_provider(mock_client: MagicMock) -> ClaudeProvider:
+    """Create a ClaudeProvider with a mocked anthropic client injected."""
+    with patch("anthropic.Anthropic", return_value=mock_client):
+        return ClaudeProvider(model="claude-sonnet-4-20250514", api_key="test-key")
+
+
+def test_claude_complete() -> None:
+    """ClaudeProvider.complete() parses the Anthropic response correctly."""
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _mock_anthropic_response()
+
+    provider = _make_claude_provider(mock_client)
+    resp = provider.complete(
+        system_prompt="Extract info.",
+        user_prompt="What is the facility?",
+        temperature=0.0,
+        max_tokens=512,
+    )
+
+    assert resp.text == "Facility: Revolving; Amount: $50M"
+    assert resp.tokens_used == 42
+    assert resp.model == "claude-sonnet-4-20250514"
+    assert resp.duration_seconds > 0
+
+    mock_client.messages.create.assert_called_once()
+    call_kwargs = mock_client.messages.create.call_args.kwargs
+    assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+    assert call_kwargs["system"] == "Extract info."
+    assert call_kwargs["messages"] == [{"role": "user", "content": "What is the facility?"}]
+    assert call_kwargs["temperature"] == 0.0
+    assert call_kwargs["max_tokens"] == 512
+
+
+def test_claude_is_available_true() -> None:
+    """is_available() returns True when API is reachable."""
+    mock_client = MagicMock()
+    mock_client.models.list.return_value = MagicMock()
+
+    provider = _make_claude_provider(mock_client)
+    assert provider.is_available() is True
+
+
+def test_claude_is_available_false() -> None:
+    """is_available() returns False when API is unreachable."""
+    mock_client = MagicMock()
+    mock_client.models.list.side_effect = ConnectionError("refused")
+
+    provider = _make_claude_provider(mock_client)
+    assert provider.is_available() is False
+
+
+def test_claude_model_name() -> None:
+    """model_name() returns the configured model."""
+    provider = _make_claude_provider(MagicMock())
+    assert provider.model_name() == "claude-sonnet-4-20250514"
+
+
+def test_claude_empty_response() -> None:
+    """ClaudeProvider handles response with no text blocks."""
+    usage = MagicMock()
+    usage.output_tokens = 0
+    response = MagicMock()
+    response.content = []  # no text blocks
+    response.usage = usage
+
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = response
+
+    provider = _make_claude_provider(mock_client)
+    resp = provider.complete(system_prompt="s", user_prompt="q")
+    assert resp.text == ""
+    assert resp.tokens_used == 0

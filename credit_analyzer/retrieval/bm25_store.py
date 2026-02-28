@@ -10,7 +10,7 @@ import numpy as np
 import rank_bm25  # pyright: ignore[reportMissingTypeStubs]
 from numpy.typing import NDArray
 
-from credit_analyzer.processing.chunker import Chunk
+from credit_analyzer.processing.chunker import Chunk, build_search_text
 
 
 @dataclass
@@ -75,7 +75,7 @@ class BM25Store:
             self._index = None
             return
 
-        corpus = [tokenize(c.text) for c in self._chunks]
+        corpus = [tokenize(build_search_text(c)) for c in self._chunks]
         self._index = rank_bm25.BM25Plus(corpus)  # pyright: ignore[reportUnknownMemberType]
 
     def search(
@@ -211,7 +211,7 @@ class BM25Store:
         if not subset:
             return []
 
-        corpus = [tokenize(c.text) for c in subset]
+        corpus = [tokenize(build_search_text(c)) for c in subset]
         sub_index: Any = rank_bm25.BM25Plus(corpus)  # pyright: ignore[reportUnknownMemberType]
 
         raw_scores: NDArray[np.float64] = cast(

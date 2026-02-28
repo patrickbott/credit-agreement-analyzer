@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from credit_analyzer.generation.prompts import (
     ConversationTurn,
+    _format_page_numbers,
     build_context_prompt,
     truncate_definition,
 )
@@ -152,6 +153,18 @@ class TestParseConfidence:
     def test_with_extra_whitespace(self) -> None:
         assert parse_confidence("  Confidence :  HIGH  ") == "HIGH"
 
+    def test_markdown_bold_wrapped(self) -> None:
+        """Claude often wraps in **bold**."""
+        assert parse_confidence("answer\n\n**Confidence: HIGH**") == "HIGH"
+
+    def test_markdown_bold_key_only(self) -> None:
+        """**Confidence:** MEDIUM format."""
+        assert parse_confidence("text\n**Confidence:** MEDIUM") == "MEDIUM"
+
+    def test_markdown_bold_value_only(self) -> None:
+        """Confidence: **HIGH** format."""
+        assert parse_confidence("text\nConfidence: **HIGH**") == "HIGH"
+
 
 # ---------------------------------------------------------------------------
 # parse_page_numbers
@@ -194,6 +207,20 @@ class TestParseSourcesFromLLM:
         assert len(citations) == 1
         assert citations[0].section_id == "7.11"
         assert citations[0].page_numbers == [45, 46]
+
+    def test_markdown_bold_sources(self) -> None:
+        """Claude wraps Sources in **bold**."""
+        text = "Answer.\n\n**Sources:** Section 7.11 (pp. 45-46)"
+        citations = parse_sources_from_llm(text)
+        assert len(citations) == 1
+        assert citations[0].section_id == "7.11"
+
+    def test_markdown_bold_sources_full(self) -> None:
+        """Full bold wrap on sources line."""
+        text = "Answer.\n\n**Sources: Section 7.11 (pp. 45-46)**"
+        citations = parse_sources_from_llm(text)
+        assert len(citations) == 1
+        assert citations[0].section_id == "7.11"
 
     def test_multiple_citations(self) -> None:
         text = "Answer.\nSources: Section 7.06 (pp. 40-42), Section 2.01 (pp. 10)"
@@ -539,3 +566,85 @@ class TestQAEngine:
         resp = engine.ask("What is XYZ?", "doc1")
         assert resp.confidence == "LOW"
         assert len(resp.retrieved_chunks) == 0
+
+
+# ---------------------------------------------------------------------------
+# _format_page_numbers
+# ---------------------------------------------------------------------------
+
+
+class TestFormatPageNumbers:
+    """Tests for compact page number formatting."""
+
+    def test_single_page(self) -> None:
+        assert _format_page_numbers([42]) == "42"
+
+    def test_consecutive_range(self) -> None:
+        assert _format_page_numbers([10, 11, 12, 13]) == "10-13"
+
+    def test_multiple_ranges(self) -> None:
+        assert _format_page_numbers([10, 11, 12, 20, 21]) == "10-12, 20-21"
+
+    def test_mixed_singles_and_ranges(self) -> None:
+        assert _format_page_numbers([5, 10, 11, 12, 20]) == "5, 10-12, 20"
+
+    def test_empty(self) -> None:
+        assert _format_page_numbers([]) == ""
+
+    def test_deduplicates(self) -> None:
+        assert _format_page_numbers([5, 5, 6, 6]) == "5-6"
+
+    def test_sorts(self) -> None:
+        assert _format_page_numbers([20, 10, 11]) == "10-11, 20"
+
+    def test_long_range(self) -> None:
+        """A 48-page range collapses to a single compact string."""
+        pages = list(range(9, 57))  # pages 9-56
+        result = _format_page_numbers(pages)
+        assert result == "9-56"
+        assert len(result) < 10  # much shorter than comma-separated
+
+
+# ---------------------------------------------------------------------------
+# Definition deduplication in build_context_prompt
+# ---------------------------------------------------------------------------
+
+
+class TestDefinitionDedup:
+    """Tests for definition dedup in context assembly."""
+
+    def test_definition_already_in_chunk_is_skipped(self) -> None:
+        """Definitions whose text appears in a retrieved chunk are not injected."""
+        defn_text = (
+            '"Total Revolving Commitments": at any time, the aggregate amount '
+            "of the Revolving Commitments then in effect."
+        )
+        chunk = _make_hybrid_chunk(
+            chunk_id="c1",
+            text=defn_text + " More text follows here.",
+            section_id="2.4",
+            section_title="Revolving Commitments",
+        )
+        prompt = build_context_prompt(
+            chunks=[chunk],
+            definitions={"Total Revolving Commitments": defn_text},
+            history=[],
+            question="What is the revolving commitment?",
+        )
+        # The definition section should not appear because it's already in the chunk
+        assert "RELEVANT DEFINITIONS" not in prompt
+
+    def test_novel_definition_is_included(self) -> None:
+        """Definitions not present in chunks are still injected."""
+        chunk = _make_hybrid_chunk(
+            chunk_id="c1",
+            text="Some unrelated chunk text about covenants.",
+        )
+        prompt = build_context_prompt(
+            chunks=[chunk],
+            definitions={"EBITDA": "Earnings before interest, taxes, depreciation."},
+            history=[],
+            question="Q?",
+        )
+        assert "RELEVANT DEFINITIONS" in prompt
+        assert "EBITDA" in prompt

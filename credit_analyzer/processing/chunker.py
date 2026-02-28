@@ -19,6 +19,49 @@ from credit_analyzer.processing.definitions import DefinitionsIndex
 from credit_analyzer.processing.section_detector import DocumentSection
 
 
+def _estimate_chunk_pages(
+    chunk_text: str,
+    section_text: str,
+    page_start: int,
+    page_end: int,
+) -> list[int]:
+    """Estimate which pages a chunk spans based on its position in the section.
+
+    Uses the chunk's character offset within the section text to interpolate
+    which pages it covers.  Falls back to the full section range when the
+    section fits on a single page or the chunk text is not found.
+
+    Args:
+        chunk_text: The text of the chunk.
+        section_text: The full text of the parent section.
+        page_start: 1-indexed start page of the section.
+        page_end: 1-indexed end page of the section.
+
+    Returns:
+        Sorted list of estimated page numbers for this chunk.
+    """
+    total_pages = page_end - page_start + 1
+    if total_pages <= 1 or not section_text:
+        return list(range(page_start, page_end + 1))
+
+    idx = section_text.find(chunk_text[:200])  # match on prefix to handle truncation
+    if idx < 0:
+        return list(range(page_start, page_end + 1))
+
+    section_len = len(section_text)
+    chunk_start_frac = idx / section_len
+    chunk_end_frac = min((idx + len(chunk_text)) / section_len, 1.0)
+
+    est_page_start = page_start + int(chunk_start_frac * total_pages)
+    est_page_end = page_start + int(chunk_end_frac * total_pages)
+
+    # Clamp to section bounds
+    est_page_start = max(est_page_start, page_start)
+    est_page_end = min(est_page_end, page_end)
+
+    return list(range(est_page_start, est_page_end + 1))
+
+
 @dataclass
 class Chunk:
     """A retrieval-ready chunk of credit agreement text with metadata."""
@@ -35,6 +78,29 @@ class Chunk:
     defined_terms_present: list[str]
     chunk_index: int  # position within the section
     token_count: int
+
+
+def build_search_text(chunk: Chunk) -> str:
+    """Build context-enriched text for embedding and keyword indexing.
+
+    Prepends the section title and article context to the raw chunk
+    text so that embedding models and BM25 can associate the chunk
+    with its structural location in the agreement.  This generalizes
+    across different naming conventions because the embedding model
+    handles synonym matching (e.g. 'Financial Condition Covenants'
+    clusters near 'Financial Maintenance' in embedding space).
+
+    The raw ``chunk.text`` is preserved for prompt context assembly
+    where the header would be redundant.
+
+    Args:
+        chunk: The chunk to enrich.
+
+    Returns:
+        Text suitable for embedding or BM25 indexing.
+    """
+    header = f"[Section {chunk.section_id}: {chunk.section_title}]"
+    return f"{header}\n{chunk.text}"
 
 
 # Paragraph split patterns, tried in order of preference.
@@ -242,9 +308,14 @@ class Chunker:
         chunks: list[Chunk] = []
         chunk_index = 0
 
+        section_text = section.text.strip()
+
         # Handle tables as separate chunks
         for table_md in section.tables:
             terms = definitions_index.find_terms_in_text(table_md)
+            pages = _estimate_chunk_pages(
+                table_md, section_text, section.page_start, section.page_end,
+            )
             chunks.append(
                 Chunk(
                     chunk_id=_generate_chunk_id(),
@@ -255,9 +326,7 @@ class Chunker:
                     article_title=section.article_title,
                     section_type=section.section_type,
                     chunk_type="table",
-                    page_numbers=list(
-                        range(section.page_start, section.page_end + 1)
-                    ),
+                    page_numbers=pages,
                     defined_terms_present=terms,
                     chunk_index=chunk_index,
                     token_count=_count_tokens(table_md, self._encoding),
@@ -266,19 +335,18 @@ class Chunker:
             chunk_index += 1
 
         # Chunk the main text
-        text = section.text.strip()
-        if not text:
+        if not section_text:
             return chunks
 
-        text_tokens = _count_tokens(text, self._encoding)
+        text_tokens = _count_tokens(section_text, self._encoding)
 
         if text_tokens <= CHUNK_TARGET_TOKENS:
-            # Fits in one chunk
-            terms = definitions_index.find_terms_in_text(text)
+            # Fits in one chunk — use full section page range
+            terms = definitions_index.find_terms_in_text(section_text)
             chunks.append(
                 Chunk(
                     chunk_id=_generate_chunk_id(),
-                    text=text,
+                    text=section_text,
                     section_id=section.section_id,
                     section_title=section.section_title,
                     article_number=section.article_number,
@@ -295,9 +363,13 @@ class Chunker:
             )
         else:
             # Split at paragraph boundaries
-            text_chunks = self._split_text(text)
+            text_chunks = self._split_text(section_text)
             for split_text in text_chunks:
                 terms = definitions_index.find_terms_in_text(split_text)
+                pages = _estimate_chunk_pages(
+                    split_text, section_text,
+                    section.page_start, section.page_end,
+                )
                 chunks.append(
                     Chunk(
                         chunk_id=_generate_chunk_id(),
@@ -308,9 +380,7 @@ class Chunker:
                         article_title=section.article_title,
                         section_type=section.section_type,
                         chunk_type="text",
-                        page_numbers=list(
-                            range(section.page_start, section.page_end + 1)
-                        ),
+                        page_numbers=pages,
                         defined_terms_present=terms,
                         chunk_index=chunk_index,
                         token_count=_count_tokens(split_text, self._encoding),

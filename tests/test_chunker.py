@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from credit_analyzer.processing.chunker import Chunker, _count_tokens
+from credit_analyzer.processing.chunker import Chunker, _count_tokens, _estimate_chunk_pages
 from credit_analyzer.processing.definitions import DefinitionsIndex
 from credit_analyzer.processing.section_detector import DocumentSection, SectionType
 
@@ -250,3 +250,70 @@ def test_multiple_sections_chunked() -> None:
 
     section_ids = {c.section_id for c in chunks}
     assert section_ids == {"7.01", "7.02"}
+
+
+# --- Page number estimation ---
+
+
+def test_estimate_chunk_pages_single_page_section() -> None:
+    """Single-page sections always return that page."""
+    result = _estimate_chunk_pages("some text", "some text here", 42, 42)
+    assert result == [42]
+
+
+def test_estimate_chunk_pages_start_of_section() -> None:
+    """Chunk at the start of a multi-page section maps to early pages."""
+    section_text = "A" * 1000 + "B" * 1000 + "C" * 1000
+    chunk_text = "A" * 200  # near the start
+    result = _estimate_chunk_pages(chunk_text, section_text, 10, 40)
+    # Should be pages near the start (10-ish), not pages 30+
+    assert result[0] == 10
+    assert max(result) < 20
+
+
+def test_estimate_chunk_pages_end_of_section() -> None:
+    """Chunk at the end of a multi-page section maps to late pages."""
+    section_text = "A" * 1000 + "B" * 1000 + "C" * 200
+    chunk_text = "C" * 200  # near the end
+    result = _estimate_chunk_pages(chunk_text, section_text, 10, 40)
+    # Should be pages near the end (30+), not pages 10-15
+    assert min(result) > 25
+
+
+def test_estimate_chunk_pages_not_found_returns_full_range() -> None:
+    """When chunk text is not found, returns full section page range."""
+    result = _estimate_chunk_pages("not in here", "section text", 5, 10)
+    assert result == [5, 6, 7, 8, 9, 10]
+
+
+def test_estimate_chunk_pages_empty_section() -> None:
+    """Empty section text returns full range."""
+    result = _estimate_chunk_pages("chunk", "", 1, 5)
+    assert result == [1, 2, 3, 4, 5]
+
+
+def test_multi_page_section_narrows_pages() -> None:
+    """Chunks from a multi-page section get narrowed page numbers."""
+    # Build a section spanning pages 9-56 (like definitions).
+    # Use distinct paragraphs so each chunk has a unique prefix
+    # that _estimate_chunk_pages can locate.
+    paragraphs = [f"Paragraph {i}. " + ("word " * 100) for i in range(50)]
+    section = _make_section(
+        "\n\n".join(paragraphs),
+        section_id="1.1",
+        section_type="definitions",
+    )
+    section.page_start = 9
+    section.page_end = 56
+
+    chunker = Chunker()
+    chunks = chunker._chunk_section(section, _empty_index())
+
+    # Should produce multiple chunks
+    assert len(chunks) > 2
+    # Later chunks should not all start at page 9
+    last_chunk = chunks[-1]
+    assert last_chunk.page_numbers[0] > 9, (
+        f"Last chunk starts at page {last_chunk.page_numbers[0]}, "
+        f"expected it to be past the beginning"
+    )

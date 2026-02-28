@@ -33,7 +33,9 @@ SectionType = Literal[
 # Mapping of title keywords (lowercased) to section types.
 # Order matters: first match wins, so more specific patterns come first.
 _SECTION_TYPE_KEYWORDS: tuple[tuple[str, SectionType], ...] = (
+    ("financial condition covenant", "financial_covenants"),
     ("financial covenant", "financial_covenants"),
+    ("financial maintenance", "financial_covenants"),
     ("negative covenant", "negative_covenants"),
     ("affirmative covenant", "affirmative_covenants"),
     ("event of default", "events_of_default"),
@@ -171,20 +173,26 @@ def _parse_article_number(raw: str) -> int:
     return _roman_to_int(stripped)
 
 
-def _classify_section_type(article_title: str) -> SectionType:
-    """Classify an article into a section type based on its title.
+def _classify_section_type(
+    title: str,
+    fallback: SectionType = "other",
+) -> SectionType:
+    """Classify a section based on its title keywords.
+
+    Used for both article-level and subsection-level classification.
 
     Args:
-        article_title: The article title text.
+        title: The article or subsection title text.
+        fallback: Type to return if no keyword matches.
 
     Returns:
-        The best-matching SectionType.
+        The best-matching SectionType, or *fallback* if none match.
     """
-    lower_title = article_title.lower()
+    lower_title = title.lower()
     for keyword, section_type in _SECTION_TYPE_KEYWORDS:
         if keyword in lower_title:
             return section_type
-    return "other"
+    return fallback
 
 
 def _offset_to_page(offset: int, page_offsets: tuple[int, ...]) -> int:
@@ -416,6 +424,11 @@ class SectionDetector:
             page_start = _offset_to_page(abs_start, page_offsets)
             page_end = _offset_to_page(max(abs_end - 1, abs_start), page_offsets)
 
+            # Classify subsection by its own title; fall back to article type
+            sub_type = _classify_section_type(
+                section_title, fallback=article.section_type,
+            )
+
             sections.append(
                 DocumentSection(
                     section_id=section_id,
@@ -426,7 +439,7 @@ class SectionDetector:
                     page_start=page_start,
                     page_end=page_end,
                     tables=_collect_tables_for_pages(document, page_start, page_end),
-                    section_type=article.section_type,
+                    section_type=sub_type,
                 )
             )
 

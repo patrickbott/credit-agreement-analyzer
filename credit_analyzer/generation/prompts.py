@@ -19,33 +19,36 @@ from credit_analyzer.retrieval.hybrid_retriever import HybridChunk
 
 QA_SYSTEM_PROMPT: str = """\
 You are a leveraged finance analyst assistant analyzing a specific credit \
-agreement. Your role is to answer questions accurately based ONLY on the \
-provided context excerpts from the agreement.
+agreement. Answer questions accurately based ONLY on the provided context \
+excerpts.
 
-STRICT RULES:
-1. Answer based ONLY on the provided context. Never supplement with general \
-knowledge about credit agreements, market conventions, or typical terms.
-2. Cite the specific Article/Section number (e.g., "per Section 7.06(a)") \
-for every factual claim in your answer.
-3. If the provided context does not contain enough information to answer the \
-question, clearly state: "I could not find this information in the sections \
-I was able to retrieve from the agreement. You may want to check [suggest \
-likely section] manually."
-4. For numerical values (dollar amounts, ratios, percentages), quote the \
-exact language from the document rather than paraphrasing.
-5. When a defined term is relevant, note its definition if provided in the \
-context.
-6. Do not make assumptions about provisions that are not explicitly stated \
-in the context.
+RULES:
+1. Base answers ONLY on the provided context. Do not supplement with general \
+knowledge about credit agreements or market conventions.
+2. Cite the Section number (e.g., "Section 7.06(a)") for factual claims.
+3. If the context does not contain the answer, say so clearly and suggest \
+where the user might look (e.g., "check the definitions section" or \
+"see Schedule 1.1A").
+4. State dollar amounts, ratios, and percentages exactly as they appear in \
+the document.
+5. Do not assume provisions exist if they are not in the context.
+
+RESPONSE STYLE:
+- Write like a senior investment banking analyst briefing a colleague, not like a lawyer.
+- Summarize provisions in plain business language. Do not quote lengthy \
+legal text verbatim. Instead, state what the provision means in practical \
+terms and cite the section/page so the reader can verify.
+- Keep answers concise and structured. Lead with the direct answer, then \
+provide supporting detail.
+- Use numbers and bullet points for multi-part answers (e.g., baskets, \
+step-downs, conditions).
 
 At the end of your answer, provide:
 
 Confidence: HIGH | MEDIUM | LOW
-- HIGH: The answer is directly and explicitly stated in the provided context.
-- MEDIUM: The answer requires some interpretation or the context is partially \
-relevant.
-- LOW: The context is limited and the answer may be incomplete. Manual \
-verification recommended.
+- HIGH: Answer is directly stated in the provided context.
+- MEDIUM: Requires some interpretation or context is partial.
+- LOW: Context is limited; manual verification recommended.
 
 Sources: Section X.XX (pp. XX-XX), Section Y.YY (pp. YY-YY)
 """
@@ -67,6 +70,40 @@ class ConversationTurn:
 
     question: str
     answer: str
+
+
+# ---------------------------------------------------------------------------
+# Page number formatting
+# ---------------------------------------------------------------------------
+
+
+def _format_page_numbers(pages: Sequence[int]) -> str:
+    """Format a list of page numbers into a compact range string.
+
+    Collapses consecutive pages into ranges (e.g. ``[62, 63, 64]`` becomes
+    ``"62-64"``).  Single pages are kept as-is.  Multiple ranges are
+    comma-separated.
+
+    Args:
+        pages: Sorted page numbers.
+
+    Returns:
+        Compact string representation.
+    """
+    if not pages:
+        return ""
+    sorted_pages = sorted(set(pages))
+    ranges: list[str] = []
+    start = sorted_pages[0]
+    end = start
+    for p in sorted_pages[1:]:
+        if p == end + 1:
+            end = p
+        else:
+            ranges.append(f"{start}-{end}" if end > start else str(start))
+            start = end = p
+    ranges.append(f"{start}-{end}" if end > start else str(start))
+    return ", ".join(ranges)
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +148,9 @@ def build_context_prompt(
 
     Follows the Q&A Context Template from ``docs/PROMPTS.md``.
 
+    Definitions that already appear verbatim in a retrieved chunk are
+    automatically skipped to avoid wasting context tokens on duplicates.
+
     Args:
         chunks: Ranked retrieved chunks to include as context.
         definitions: Injected definitions (term -> text).
@@ -124,7 +164,7 @@ def build_context_prompt(
 
     for hc in chunks:
         c = hc.chunk
-        pages = ", ".join(str(p) for p in c.page_numbers)
+        pages = _format_page_numbers(c.page_numbers)
         text = c.text
         if len(text) > QA_CHUNK_TEXT_MAX_CHARS:
             text = text[:QA_CHUNK_TEXT_MAX_CHARS].rstrip() + "..."
@@ -135,10 +175,18 @@ def build_context_prompt(
         )
 
     if definitions:
-        parts.append("\n=== RELEVANT DEFINITIONS ===")
-        for term, defn in definitions.items():
-            truncated = truncate_definition(defn)
-            parts.append(f'"{term}" means {truncated}')
+        # Skip definitions whose text already appears in a retrieved chunk
+        chunk_texts = " ".join(hc.chunk.text for hc in chunks)
+        filtered_defs = {
+            term: defn
+            for term, defn in definitions.items()
+            if defn[:80] not in chunk_texts
+        }
+        if filtered_defs:
+            parts.append("\n=== RELEVANT DEFINITIONS ===")
+            for term, defn in filtered_defs.items():
+                truncated = truncate_definition(defn)
+                parts.append(f'"{term}" means {truncated}')
 
     if history:
         parts.append("\n=== PREVIOUS Q&A IN THIS SESSION ===")

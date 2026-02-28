@@ -1,6 +1,11 @@
 """Central configuration for the credit agreement analyzer."""
 
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv  # pyright: ignore[reportMissingTypeStubs]
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # --- Paths ---
 PROJECT_ROOT: Path = Path(__file__).parent.parent
@@ -20,12 +25,15 @@ TIKTOKEN_ENCODING: str = "cl100k_base"
 # --- Retrieval ---
 VECTOR_WEIGHT: float = 0.6
 BM25_WEIGHT: float = 0.4
+SECTION_TYPE_BOOST: float = 0.15  # bonus for chunks whose section_type matches query intent
 MAX_DEFINITIONS_INJECTED: int = 5
 
 # --- LLM ---
-LLM_PROVIDER: str = "ollama"  # "ollama" | "internal"
+LLM_PROVIDER: str = "claude"  # "ollama" | "claude" | "internal"
 OLLAMA_MODEL: str = "llama3.2:3b"
 OLLAMA_BASE_URL: str = "http://localhost:11434"
+CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
+CLAUDE_API_KEY: str | None = os.environ.get("ANTHROPIC_API_KEY")
 
 # --- Q&A Engine ---
 QA_MAX_HISTORY_TURNS: int = 3
