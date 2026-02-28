@@ -9,6 +9,7 @@ venv/
 ENV/
 env/
 pip-wheel-metadata/
+.env
 
 # Distribution / packaging
 dist/
