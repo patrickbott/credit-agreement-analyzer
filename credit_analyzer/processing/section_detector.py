@@ -13,6 +13,7 @@ _PAGE_DELIMITER = "\n\n"
 
 # Known section type classifications based on article title keywords
 SectionType = Literal[
+    "preamble",
     "definitions",
     "facility_terms",
     "conditions",
@@ -273,6 +274,15 @@ class SectionDetector:
         articles[-1].text_end = len(full_text)
 
         sections: list[DocumentSection] = []
+
+        # Capture preamble: everything before the first article header.
+        # This contains recitals, parties, facility sizes, dates, and
+        # use of proceeds -- critical context for most queries.
+        preamble = self._extract_preamble(
+            full_text, articles[0].text_start, page_offsets, document,
+        )
+        if preamble is not None:
+            sections.append(preamble)
         for article in articles:
             article_text = full_text[article.text_start : article.text_end]
             article_sections = self._detect_subsections_in_article(
@@ -444,6 +454,53 @@ class SectionDetector:
             )
 
         return sections
+
+    def _extract_preamble(
+        self,
+        full_text: str,
+        first_article_start: int,
+        page_offsets: tuple[int, ...],
+        document: ExtractedDocument,
+    ) -> DocumentSection | None:
+        """Extract pre-article content (title page, recitals, TOC) as a preamble section.
+
+        Credit agreements always start with recitals that contain the
+        borrower name, agent, facility sizes, date, and use of proceeds.
+        This content appears before the first ARTICLE or SECTION header
+        and is critical context for most queries.
+
+        Args:
+            full_text: The full concatenated document text.
+            first_article_start: Character offset where the first article begins.
+            page_offsets: Page offset mapping.
+            document: Source document for table collection.
+
+        Returns:
+            A DocumentSection with section_type="preamble", or None if
+            the preamble is empty or too short to be useful.
+        """
+        preamble_text = full_text[:first_article_start].strip()
+
+        # Skip if there's essentially no content before the first article
+        if len(preamble_text) < 50:
+            return None
+
+        page_start = 1
+        page_end = _offset_to_page(
+            max(first_article_start - 1, 0), page_offsets,
+        )
+
+        return DocumentSection(
+            section_id="PREAMBLE",
+            article_number=0,
+            section_title="Preamble and Recitals",
+            article_title="Preamble and Recitals",
+            text=preamble_text,
+            page_start=page_start,
+            page_end=page_end,
+            tables=_collect_tables_for_pages(document, page_start, page_end),
+            section_type="preamble",
+        )
 
     def _fallback_single_section(self, document: ExtractedDocument, full_text: str) -> list[DocumentSection]:
         """Fallback when no headers are detected: return the entire document as one section.

@@ -25,8 +25,7 @@ TIKTOKEN_ENCODING: str = "cl100k_base"
 # --- Retrieval ---
 VECTOR_WEIGHT: float = 0.6
 BM25_WEIGHT: float = 0.4
-SECTION_TYPE_BOOST: float = 0.15  # bonus for chunks whose section_type matches query intent
-MAX_DEFINITIONS_INJECTED: int = 5
+MAX_DEFINITIONS_INJECTED: int = 12
 
 # --- LLM ---
 LLM_PROVIDER: str = "claude"  # "ollama" | "claude" | "internal"
@@ -37,11 +36,11 @@ CLAUDE_API_KEY: str | None = os.environ.get("ANTHROPIC_API_KEY")
 
 # --- Q&A Engine ---
 QA_MAX_HISTORY_TURNS: int = 3
-QA_MAX_CONTEXT_CHUNKS: int = 5
+QA_MAX_CONTEXT_CHUNKS: int = 15
 QA_MAX_GENERATION_TOKENS: int = 1024
-QA_DEFINITION_MAX_CHARS: int = 300  # Truncate long definitions
+QA_DEFINITION_MAX_CHARS: int = 800  # Truncate long definitions (~200 tokens)
 QA_CHUNK_TEXT_MAX_CHARS: int = 1500  # Truncate chunk text in context assembly (~400 tokens)
-QA_SECTION_TYPES_EXCLUDE: tuple[str, ...] = ("definitions", "miscellaneous")
+QA_SECTION_TYPES_EXCLUDE: tuple[str, ...] = ("miscellaneous",)
 
 # --- Embedding ---
 EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"

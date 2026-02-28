@@ -648,3 +648,71 @@ class TestDefinitionDedup:
         )
         assert "RELEVANT DEFINITIONS" in prompt
         assert "EBITDA" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Preamble injection
+# ---------------------------------------------------------------------------
+
+
+class TestPreambleInjection:
+    """Tests for always-injected preamble context."""
+
+    def test_preamble_appears_in_prompt(self) -> None:
+        """Preamble text is injected at the top of the context."""
+        preamble = (
+            "CREDIT AGREEMENT dated March 3, 2020\n"
+            "$350,000,000 Term Loan Facility\n"
+            "$35,000,000 Revolving Credit Facility"
+        )
+        prompt = build_context_prompt(
+            chunks=[_make_hybrid_chunk()],
+            definitions={},
+            history=[],
+            question="What is the term loan size?",
+            preamble_text=preamble,
+        )
+        assert "Preamble and Recitals" in prompt
+        assert "$350,000,000" in prompt
+        # Preamble should appear before the regular chunk context
+        preamble_pos = prompt.index("Preamble")
+        chunk_pos = prompt.index("Section 7.11")
+        assert preamble_pos < chunk_pos
+
+    def test_no_preamble_when_none(self) -> None:
+        """No preamble section when preamble_text is None."""
+        prompt = build_context_prompt(
+            chunks=[_make_hybrid_chunk()],
+            definitions={},
+            history=[],
+            question="Q?",
+            preamble_text=None,
+        )
+        assert "Preamble" not in prompt
+
+    def test_no_preamble_when_empty(self) -> None:
+        """No preamble section when preamble_text is empty string."""
+        prompt = build_context_prompt(
+            chunks=[_make_hybrid_chunk()],
+            definitions={},
+            history=[],
+            question="Q?",
+            preamble_text="",
+        )
+        assert "Preamble" not in prompt
+
+    def test_engine_set_preamble(self) -> None:
+        """QAEngine.set_preamble stores text and injects it into prompts."""
+        retriever = MagicMock(spec=HybridRetriever)
+        retriever.retrieve.return_value = _make_retrieval_result()
+
+        llm = MagicMock()
+        llm.complete = MagicMock(return_value=_mock_llm_response())
+
+        engine = QAEngine(retriever=retriever, llm=llm)
+        engine.set_preamble("$350M term loan facility")
+        engine.ask("What is the facility size?", "doc1")
+
+        user_prompt: str = llm.complete.call_args.kwargs["user_prompt"]
+        assert "$350M" in user_prompt
+        assert "Preamble" in user_prompt

@@ -95,6 +95,20 @@ class QAEngine:
         self._max_gen_tokens = max_generation_tokens
         self._section_types_exclude = section_types_exclude
         self._history: list[ConversationTurn] = []
+        self._preamble_text: str | None = None
+
+    def set_preamble(self, text: str) -> None:
+        """Set the preamble text to always inject as context.
+
+        The preamble (recitals, title page) contains headline terms like
+        borrower name, facility sizes, agent, and date.  It is injected
+        into every query's context since it is typically < 1 page and
+        relevant to most questions.
+
+        Args:
+            text: The preamble text from the document.
+        """
+        self._preamble_text = text.strip() if text.strip() else None
 
     def ask(self, question: str, document_id: str) -> QAResponse:
         """Ask a question about a specific credit agreement.
@@ -126,6 +140,7 @@ class QAEngine:
             definitions=result.injected_definitions,
             history=recent_history,
             question=question,
+            preamble_text=self._preamble_text,
         )
 
         llm_response: LLMResponse = self._llm.complete(

@@ -293,8 +293,10 @@ def test_duplicate_numbers_skipped() -> None:
     detector = SectionDetector()
     sections = detector.detect_sections(doc)
 
+    # Article 0 = preamble (TOC text before real headers), 1 and 2 = real
     article_numbers = {s.article_number for s in sections}
-    assert article_numbers == {1, 2}
+    assert article_numbers == {0, 1, 2}
+    assert sections[0].section_type == "preamble"
 
 
 def test_roman_numeral_article_detection() -> None:
@@ -311,6 +313,55 @@ def test_roman_numeral_article_detection() -> None:
     assert sections[0].article_number == 14
     assert sections[0].section_id == "14.01"
     assert sections[0].section_type == "miscellaneous"
+
+
+# --- Preamble detection ---
+
+
+def test_preamble_captured_with_recitals() -> None:
+    """Pre-article content (recitals, parties, facility sizes) is captured as preamble."""
+    text = (
+        "CREDIT AGREEMENT\n\n"
+        "dated as of March 3, 2020\n\n"
+        "among\n\n"
+        "RIBBON COMMUNICATIONS INC., as Borrower\n"
+        "CITIZENS BANK, N.A., as Administrative Agent\n\n"
+        "$350,000,000 Term Loan Facility\n"
+        "$35,000,000 Revolving Credit Facility\n\n"
+        "RECITALS\n\n"
+        "The Borrower has requested that the Lenders provide a $350,000,000 "
+        "term loan facility and a $35,000,000 revolving credit facility.\n\n"
+        "\nARTICLE I\nDEFINITIONS\n\n"
+        "Defined terms here.\n"
+    )
+    doc = _make_document([text])
+    detector = SectionDetector()
+    sections = detector.detect_sections(doc)
+
+    preamble = sections[0]
+    assert preamble.section_type == "preamble"
+    assert preamble.section_id == "PREAMBLE"
+    assert preamble.article_number == 0
+    assert "$350,000,000" in preamble.text
+    assert "RIBBON COMMUNICATIONS" in preamble.text
+    assert preamble.page_start == 1
+
+    # The definitions article should follow
+    assert sections[1].section_type == "definitions"
+
+
+def test_no_preamble_when_article_starts_immediately() -> None:
+    """No preamble section is created when the first article starts at the top."""
+    text = (
+        "\nARTICLE I\nDEFINITIONS\n\n"
+        "Some defined terms.\n"
+    )
+    doc = _make_document([text])
+    detector = SectionDetector()
+    sections = detector.detect_sections(doc)
+
+    assert sections[0].section_type == "definitions"
+    assert all(s.section_type != "preamble" for s in sections)
 
 
 def test_article_format_preferred_over_section_format() -> None:

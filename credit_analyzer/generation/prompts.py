@@ -34,14 +34,19 @@ the document.
 5. Do not assume provisions exist if they are not in the context.
 
 RESPONSE STYLE:
-- Write like a senior investment banking analyst briefing a colleague, not like a lawyer.
+- Write like a senior investment banking analyst briefing a colleague, not \
+like a lawyer.
 - Summarize provisions in plain business language. Do not quote lengthy \
 legal text verbatim. Instead, state what the provision means in practical \
 terms and cite the section/page so the reader can verify.
 - Keep answers concise and structured. Lead with the direct answer, then \
 provide supporting detail.
-- Use numbers and bullet points for multi-part answers (e.g., baskets, \
-step-downs, conditions).
+- Use numbered lists for multi-part answers (e.g., baskets, step-downs, \
+conditions).
+- FORMATTING: Use plain text only. Do NOT use markdown syntax such as \
+** for bold, ## for headers, or - for bullet points. Use numbered lists \
+(1., 2., 3.) and indentation for structure. Write section titles in plain \
+text on their own line, not as markdown headers.
 
 At the end of your answer, provide:
 
@@ -143,10 +148,15 @@ def build_context_prompt(
     definitions: dict[str, str],
     history: Sequence[ConversationTurn],
     question: str,
+    preamble_text: str | None = None,
 ) -> str:
     """Assemble the user prompt from retrieved context, definitions, history.
 
     Follows the Q&A Context Template from ``docs/PROMPTS.md``.
+
+    When ``preamble_text`` is provided, it is always injected first as
+    it contains headline terms (borrower, facility sizes, date) that
+    are relevant to most queries.
 
     Definitions that already appear verbatim in a retrieved chunk are
     automatically skipped to avoid wasting context tokens on duplicates.
@@ -156,11 +166,18 @@ def build_context_prompt(
         definitions: Injected definitions (term -> text).
         history: Recent conversation turns to include.
         question: The current user question.
+        preamble_text: Optional preamble/recitals text to always inject.
 
     Returns:
         The assembled user prompt string.
     """
     parts: list[str] = ["=== CONTEXT FROM CREDIT AGREEMENT ===\n"]
+
+    if preamble_text:
+        parts.append(
+            "--- Source: Preamble and Recitals (Pages 1-2) ---\n"
+            f"{preamble_text}\n"
+        )
 
     for hc in chunks:
         c = hc.chunk
