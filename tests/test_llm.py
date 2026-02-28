@@ -35,7 +35,7 @@ def test_get_provider_ollama() -> None:
     """Factory returns OllamaProvider when asked for 'ollama'."""
     provider = get_provider("ollama")
     assert isinstance(provider, OllamaProvider)
-    assert provider.model_name() == "llama3:8b"  # default from config
+    assert provider.model_name() == "llama3.2:3b"  # default from config
 
 
 def test_get_provider_internal() -> None:

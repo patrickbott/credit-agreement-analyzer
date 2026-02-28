@@ -192,3 +192,43 @@ def test_scores_sorted_descending() -> None:
     results = store.search("debt indebtedness", top_k=3)
     scores = [r.score for r in results]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_search_with_section_types_exclude() -> None:
+    """Excluding section types filters out matching chunks."""
+    chunks = [
+        _make_chunk(chunk_id="c1", text="debt indebtedness covenants", section_type="negative_covenants"),
+        _make_chunk(chunk_id="c2", text="debt means defined term", section_type="definitions"),
+        _make_chunk(chunk_id="c3", text="debt general provisions", section_type="miscellaneous"),
+        _make_chunk(chunk_id="c4", text="debt financial covenants ratio", section_type="financial_covenants"),
+    ]
+
+    store = BM25Store()
+    store.build_index(chunks)
+
+    results = store.search("debt", top_k=5, section_types_exclude=["definitions", "miscellaneous"])
+    result_ids = {r.chunk.chunk_id for r in results}
+    # definitions and miscellaneous should be excluded
+    assert "c2" not in result_ids
+    assert "c3" not in result_ids
+    # negative_covenants and financial_covenants should remain
+    assert "c1" in result_ids
+    assert "c4" in result_ids
+
+
+def test_search_section_filter_takes_precedence_over_exclude() -> None:
+    """section_filter takes precedence over section_types_exclude."""
+    chunks = [
+        _make_chunk(chunk_id="c1", text="debt", section_type="definitions"),
+        _make_chunk(chunk_id="c2", text="debt", section_type="negative_covenants"),
+    ]
+
+    store = BM25Store()
+    store.build_index(chunks)
+
+    # section_filter=definitions should be used, section_types_exclude ignored
+    results = store.search(
+        "debt", top_k=5, section_filter="definitions", section_types_exclude=["definitions"]
+    )
+    assert len(results) == 1
+    assert results[0].chunk.section_type == "definitions"

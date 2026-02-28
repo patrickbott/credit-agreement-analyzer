@@ -83,6 +83,7 @@ class BM25Store:
         query: str,
         top_k: int = 5,
         section_filter: str | None = None,
+        section_types_exclude: Sequence[str] | None = None,
     ) -> list[BM25Result]:
         """Search the index for chunks matching the query keywords.
 
@@ -90,6 +91,9 @@ class BM25Store:
             query: The search query string.
             top_k: Maximum number of results to return.
             section_filter: If provided, only return chunks with this section_type.
+                Takes precedence over section_types_exclude.
+            section_types_exclude: If provided and section_filter is None,
+                exclude chunks whose section_type is in this list.
 
         Returns:
             List of BM25Result objects sorted by score (best first).
@@ -103,6 +107,10 @@ class BM25Store:
 
         if section_filter is not None:
             return self._search_filtered(tokenized_query, top_k, section_filter)
+
+        if section_types_exclude:
+            exclude_set = set(section_types_exclude)
+            return self._search_excluding(tokenized_query, top_k, exclude_set)
 
         return self._search_all(tokenized_query, top_k)
 
@@ -158,10 +166,52 @@ class BM25Store:
             Sorted list of BM25Result.
         """
         filtered: list[Chunk] = [c for c in self._chunks if c.section_type == section_filter]
-        if not filtered:
+        return self._score_subset(tokenized_query, top_k, filtered)
+
+    def _search_excluding(
+        self,
+        tokenized_query: list[str],
+        top_k: int,
+        exclude_set: set[str],
+    ) -> list[BM25Result]:
+        """Search chunks excluding certain section types.
+
+        Builds a temporary sub-index from non-excluded chunks, scores
+        them, and returns the top results.
+
+        Args:
+            tokenized_query: Pre-tokenized query terms.
+            top_k: Maximum results.
+            exclude_set: Section types to exclude.
+
+        Returns:
+            Sorted list of BM25Result.
+        """
+        filtered: list[Chunk] = [
+            c for c in self._chunks if c.section_type not in exclude_set
+        ]
+        return self._score_subset(tokenized_query, top_k, filtered)
+
+    def _score_subset(
+        self,
+        tokenized_query: list[str],
+        top_k: int,
+        subset: list[Chunk],
+    ) -> list[BM25Result]:
+        """Score a subset of chunks with a temporary BM25 index.
+
+        Args:
+            tokenized_query: Pre-tokenized query terms.
+            top_k: Maximum results.
+            subset: Chunks to score.
+
+        Returns:
+            Sorted list of BM25Result.
+        """
+        if not subset:
             return []
 
-        corpus = [tokenize(c.text) for c in filtered]
+        corpus = [tokenize(c.text) for c in subset]
         sub_index: Any = rank_bm25.BM25Plus(corpus)  # pyright: ignore[reportUnknownMemberType]
 
         raw_scores: NDArray[np.float64] = cast(
@@ -177,6 +227,6 @@ class BM25Store:
             score = float(raw_scores[i])
             if score <= 0.0:
                 break
-            results.append(BM25Result(chunk=filtered[i], score=score))
+            results.append(BM25Result(chunk=subset[i], score=score))
 
         return results

@@ -24,8 +24,16 @@ MAX_DEFINITIONS_INJECTED: int = 5
 
 # --- LLM ---
 LLM_PROVIDER: str = "ollama"  # "ollama" | "internal"
-OLLAMA_MODEL: str = "llama3:8b"
+OLLAMA_MODEL: str = "llama3.2:3b"
 OLLAMA_BASE_URL: str = "http://localhost:11434"
+
+# --- Q&A Engine ---
+QA_MAX_HISTORY_TURNS: int = 3
+QA_MAX_CONTEXT_CHUNKS: int = 5
+QA_MAX_GENERATION_TOKENS: int = 1024
+QA_DEFINITION_MAX_CHARS: int = 300  # Truncate long definitions
+QA_CHUNK_TEXT_MAX_CHARS: int = 1500  # Truncate chunk text in context assembly (~400 tokens)
+QA_SECTION_TYPES_EXCLUDE: tuple[str, ...] = ("definitions", "miscellaneous")
 
 # --- Embedding ---
 EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"

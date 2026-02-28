@@ -281,3 +281,22 @@ def test_return_types() -> None:
     assert isinstance(result.chunks[0].chunk, Chunk)
     assert isinstance(result.chunks[0].score, float)
     assert isinstance(result.injected_definitions, dict)
+
+
+def test_section_types_exclude_passed_to_stores() -> None:
+    """section_types_exclude is forwarded to both vector and BM25 stores."""
+    chunk = _make_chunk(chunk_id="c1")
+    retriever = _make_retriever(
+        vector_results=[RetrievedChunk(chunk=chunk, score=0.9)],
+    )
+
+    exclude = ["definitions", "miscellaneous"]
+    retriever.retrieve("query", "doc1", section_types_exclude=exclude)
+
+    # Verify vector store received the exclude parameter
+    call_kwargs = retriever._vector_store.search.call_args  # type: ignore[union-attr]
+    assert call_kwargs.kwargs.get("section_types_exclude") == exclude
+
+    # Verify BM25 store received the exclude parameter
+    bm25_kwargs = retriever._bm25_store.search.call_args  # type: ignore[union-attr]
+    assert bm25_kwargs.kwargs.get("section_types_exclude") == exclude

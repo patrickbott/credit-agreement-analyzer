@@ -231,3 +231,26 @@ def test_create_collection_idempotent(store: VectorStore) -> None:
     store.create_collection("idem")  # should not wipe data
     results = store.search("idem", _fake_embedding(), top_k=1)
     assert len(results) == 1
+
+
+def test_search_with_section_types_exclude(store: VectorStore) -> None:
+    """Excluding section types filters out matching chunks."""
+    store.create_collection("excl")
+    chunks = [
+        _make_chunk(chunk_id="c1", section_type="negative_covenants"),
+        _make_chunk(chunk_id="c2", section_type="definitions"),
+        _make_chunk(chunk_id="c3", section_type="miscellaneous"),
+    ]
+    embeddings = [_fake_embedding(seed=i) for i in range(3)]
+    store.add_chunks("excl", chunks, embeddings)
+
+    results = store.search(
+        "excl",
+        _fake_embedding(seed=0),
+        top_k=5,
+        section_types_exclude=["definitions", "miscellaneous"],
+    )
+    result_types = {r.chunk.section_type for r in results}
+    assert "definitions" not in result_types
+    assert "miscellaneous" not in result_types
+    assert len(results) >= 1

@@ -97,6 +97,7 @@ class HybridRetriever:
         document_id: str,
         top_k: int = 5,
         section_filter: str | None = None,
+        section_types_exclude: Sequence[str] | None = None,
         inject_definitions: bool = True,
     ) -> RetrievalResult:
         """Run hybrid retrieval for a query.
@@ -106,6 +107,9 @@ class HybridRetriever:
             document_id: The document collection to search.
             top_k: Maximum number of chunks to return.
             section_filter: If provided, restrict to this section_type.
+                Takes precedence over section_types_exclude.
+            section_types_exclude: If provided and section_filter is None,
+                exclude chunks whose section_type is in this list.
             inject_definitions: Whether to auto-inject definitions for
                 terms found in retrieved chunks.
 
@@ -122,6 +126,7 @@ class HybridRetriever:
             query_embedding,
             top_k=fetch_k,
             section_filter=section_filter,
+            section_types_exclude=section_types_exclude,
         )
 
         # BM25 search
@@ -129,6 +134,7 @@ class HybridRetriever:
             query,
             top_k=fetch_k,
             section_filter=section_filter,
+            section_types_exclude=section_types_exclude,
         )
 
         # Normalize scores

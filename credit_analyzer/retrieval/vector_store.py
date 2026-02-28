@@ -152,6 +152,7 @@ class VectorStore:
         query_embedding: Sequence[float],
         top_k: int = 5,
         section_filter: str | None = None,
+        section_types_exclude: Sequence[str] | None = None,
     ) -> list[RetrievedChunk]:
         """Search for similar chunks by embedding.
 
@@ -160,6 +161,9 @@ class VectorStore:
             query_embedding: The query embedding vector.
             top_k: Maximum number of results to return.
             section_filter: If provided, only search chunks with this section_type.
+                Takes precedence over section_types_exclude.
+            section_types_exclude: If provided and section_filter is None,
+                exclude chunks whose section_type is in this list.
 
         Returns:
             List of RetrievedChunk objects sorted by similarity (best first).
@@ -168,9 +172,11 @@ class VectorStore:
             name=document_id,
         )
 
-        where: dict[str, str] | None = None
+        where: dict[str, Any] | None = None
         if section_filter is not None:
             where = {_META_SECTION_TYPE: section_filter}
+        elif section_types_exclude:
+            where = {_META_SECTION_TYPE: {"$nin": list(section_types_exclude)}}
 
         raw_result: Any = collection.query(  # pyright: ignore[reportUnknownMemberType]
             query_embeddings=[list(query_embedding)],
