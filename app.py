@@ -10,7 +10,7 @@ from typing import Any, cast
 import pandas as pd
 import streamlit as st
 
-from credit_analyzer.config import CLAUDE_MODEL, LLM_PROVIDER, OLLAMA_MODEL, PROJECT_ROOT
+from credit_analyzer.config import CLAUDE_MODEL, LLM_PROVIDER, OLLAMA_MODEL
 from credit_analyzer.generation.pdf_export import report_to_pdf_bytes
 from credit_analyzer.generation.qa_engine import QAEngine, QAResponse
 from credit_analyzer.generation.report_generator import (
@@ -26,6 +26,7 @@ from credit_analyzer.ui.demo_report import SUGGESTED_QUESTIONS
 from credit_analyzer.ui.theme import (
     APP_CSS,
     confidence_pill,
+    format_report_body,
     hero_card,
     metric_card,
     panel_card,
@@ -240,7 +241,7 @@ def _render_document_tab(active_document: ProcessedDocument | None) -> None:
         st.markdown(
             panel_card(
                 "Load Document",
-                "Upload a PDF or open the bundled sample agreement.",
+                "Upload a PDF.",
             ),
             unsafe_allow_html=True,
         )
@@ -257,21 +258,10 @@ def _render_document_tab(active_document: ProcessedDocument | None) -> None:
             width="stretch",
             disabled=uploaded_file is None,
         )
-        use_sample = st.button(
-            "Open Sample",
-            width="stretch",
-        )
 
         if process_uploaded and uploaded_file is not None:
             pdf_path = save_uploaded_pdf(uploaded_file.name, uploaded_file.getvalue())
             _process_document(pdf_path)
-
-        if use_sample:
-            sample_path = PROJECT_ROOT / "credit_agreement.pdf"
-            if sample_path.exists():
-                _process_document(sample_path)
-            else:
-                st.error("Bundled sample agreement not found in the project root.")
 
     with summary_col:
         if active_document is None:
@@ -689,7 +679,7 @@ def _render_report_section(section: GeneratedSection) -> None:
             f"{conf_pill}"
             "</div></div>"
             '<div class="report-section-body">'
-            f"<pre>{escape(section.body)}</pre>"
+            f'<div class="report-body">{format_report_body(section.body)}</div>'
             "</div>"
             f"{sources_html}"
             "</div>"

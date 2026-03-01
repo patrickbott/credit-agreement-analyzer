@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from html import escape
 
 RBC_BLUE = "#0051A5"
@@ -543,6 +544,86 @@ div[data-testid="stButton"] > button:hover {{
   font-size: 0.9rem;
   font-style: italic;
 }}
+
+/* ---- Formatted report body ---- */
+
+.report-body {{
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--ink);
+}}
+
+.report-body .rb-heading {{
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--rbc-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 1rem 0 0.35rem 0;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid rgba(0, 81, 165, 0.1);
+}}
+
+.report-body .rb-heading:first-child {{
+  margin-top: 0;
+}}
+
+.report-body .rb-field {{
+  margin: 0.45rem 0;
+  line-height: 1.55;
+}}
+
+.report-body .rb-field-label {{
+  font-weight: 700;
+  color: var(--rbc-blue-deep);
+}}
+
+.report-body .rb-field-value {{
+  color: var(--ink);
+}}
+
+.report-body .rb-not-found {{
+  color: var(--muted);
+  font-style: italic;
+}}
+
+.report-body .rb-para {{
+  margin: 0.4rem 0;
+  line-height: 1.55;
+}}
+
+.report-body ul.rb-list {{
+  margin: 0.3rem 0 0.3rem 1.1rem;
+  padding: 0;
+  list-style: disc;
+}}
+
+.report-body ul.rb-list li {{
+  margin: 0.2rem 0;
+  line-height: 1.5;
+}}
+
+.report-body ol.rb-list {{
+  margin: 0.3rem 0 0.3rem 1.1rem;
+  padding: 0;
+}}
+
+.report-body ol.rb-list li {{
+  margin: 0.2rem 0;
+  line-height: 1.5;
+}}
+
+.report-body .rb-sub-list {{
+  margin: 0.15rem 0 0.15rem 1.1rem;
+  padding: 0;
+  list-style: circle;
+}}
+
+.report-body .rb-sub-list li {{
+  margin: 0.1rem 0;
+  line-height: 1.45;
+  font-size: 0.87rem;
+}}
 </style>
 """
 
@@ -603,3 +684,151 @@ def confidence_pill(confidence: str) -> str:
     elif lowered == "low":
         tone = "low"
     return f'<span class="pill pill-{tone}">{escape(confidence.upper())}</span>'
+
+
+# ---------------------------------------------------------------------------
+# Report body text formatter
+# ---------------------------------------------------------------------------
+
+# Matches standalone headings: all-caps words on their own line, no colon
+# e.g. "BORROWER INFORMATION", "PRICING TERMS", "GENERAL PROHIBITION"
+_HEADING_RE = re.compile(
+    r"^([A-Z][A-Z0-9 /&,\-()]+)$"
+)
+
+# Matches field labels at line start: "LABEL:" or "LABEL: value"
+# Covers patterns like "BORROWER:", "FACILITY 1:", "SOFR FLOOR:",
+# "COMMITMENT / PRINCIPAL:", "OID / UPFRONT FEE:", "LC FEE:"
+_FIELD_RE = re.compile(
+    r"^([A-Z][A-Z0-9 /&,\-().:]+?:)\s*(.*)"
+)
+
+# Numbered list item: "1. text", "2. text"
+_NUMBERED_RE = re.compile(r"^(\d+)\.\s+(.+)")
+
+# Bullet: "- text" or "* text"
+_BULLET_RE = re.compile(r"^[-*]\s+(.+)")
+
+
+def format_report_body(body: str) -> str:
+    """Convert plain-text report section body to styled HTML.
+
+    Recognises headings (standalone ALL-CAPS lines), field labels
+    (LABEL: value), bullet lists, numbered lists, and plain paragraphs.
+    Wraps NOT FOUND values in a muted style.
+
+    Args:
+        body: Raw section body text from the LLM.
+
+    Returns:
+        HTML string to render inside a report-body div.
+    """
+    lines = body.split("\n")
+    # Each item in bullet_buffer is (html_text, list[sub_bullet_html])
+    bullet_buffer: list[tuple[str, list[str]]] = []
+    numbered_buffer: list[str] = []
+    parts: list[str] = []
+
+    def flush_bullets() -> None:
+        if bullet_buffer:
+            parts.append('<ul class="rb-list">')
+            for text, subs in bullet_buffer:
+                if subs:
+                    parts.append(f"<li>{text}")
+                    parts.append('<ul class="rb-sub-list">')
+                    for sub in subs:
+                        parts.append(f"<li>{sub}</li>")
+                    parts.append("</ul>")
+                    parts.append("</li>")
+                else:
+                    parts.append(f"<li>{text}</li>")
+            parts.append("</ul>")
+            bullet_buffer.clear()
+
+    def flush_numbered() -> None:
+        if numbered_buffer:
+            parts.append('<ol class="rb-list">')
+            for text in numbered_buffer:
+                parts.append(f"<li>{text}</li>")
+            parts.append("</ol>")
+            numbered_buffer.clear()
+
+    def style_value(val: str) -> str:
+        """Wrap NOT FOUND in muted style."""
+        stripped_val = val.strip()
+        if stripped_val.upper() == "NOT FOUND" or stripped_val.upper().startswith("NOT FOUND"):
+            return f'<span class="rb-not-found">{escape(stripped_val)}</span>'
+        return escape(stripped_val)
+
+    for line in lines:
+        stripped = line.strip()
+
+        if not stripped:
+            flush_bullets()
+            flush_numbered()
+            continue
+
+        # Check for sub-bullets (indented bullets under a main bullet)
+        is_indented = line.startswith("    ") or line.startswith("\t")
+        if is_indented:
+            sub_match = _BULLET_RE.match(stripped)
+            if sub_match and bullet_buffer:
+                # Attach to the last main bullet
+                bullet_buffer[-1][1].append(style_value(sub_match.group(1)))
+                continue
+
+        # Top-level bullet item
+        bullet_match = _BULLET_RE.match(stripped)
+        if bullet_match:
+            flush_numbered()
+            bullet_buffer.append((style_value(bullet_match.group(1)), []))
+            continue
+
+        # Numbered item
+        num_match = _NUMBERED_RE.match(stripped)
+        if num_match:
+            flush_bullets()
+            numbered_buffer.append(style_value(num_match.group(2)))
+            continue
+
+        # Flush any pending lists before handling headings/fields/paragraphs
+        flush_bullets()
+        flush_numbered()
+
+        # Standalone heading (all-caps, no colon, no value)
+        heading_match = _HEADING_RE.match(stripped)
+        if heading_match and len(stripped) > 3:
+            parts.append(
+                f'<div class="rb-heading">{escape(stripped)}</div>'
+            )
+            continue
+
+        # Field label: value
+        field_match = _FIELD_RE.match(stripped)
+        if field_match:
+            label = field_match.group(1)
+            value = field_match.group(2)
+            if value:
+                parts.append(
+                    f'<div class="rb-field">'
+                    f'<span class="rb-field-label">{escape(label)}</span> '
+                    f'<span class="rb-field-value">{style_value(value)}</span>'
+                    f"</div>"
+                )
+            else:
+                # Label only, value on next lines (e.g. "MANDATORY PREPAYMENT:")
+                parts.append(
+                    f'<div class="rb-field">'
+                    f'<span class="rb-field-label">{escape(label)}</span>'
+                    f"</div>"
+                )
+            continue
+
+        # Regular paragraph text
+        parts.append(f'<div class="rb-para">{escape(stripped)}</div>')
+
+    # Final flush
+    flush_bullets()
+    flush_numbered()
+
+    return "\n".join(parts)

@@ -51,8 +51,13 @@ _FONT_FAMILY = "DejaVuSans"
 # Helpers
 # ---------------------------------------------------------------------------
 
-# Matches lines like "BORROWER:" or "FACILITY TYPE:" at the start of a line
-_FIELD_LABEL_RE = re.compile(r"^([A-Z][A-Z /\-&()]+:)", re.MULTILINE)
+# Matches field labels at start of line: "BORROWER:", "FACILITY 1:",
+# "OID / UPFRONT FEE:", "COMMITMENT / PRINCIPAL:", etc.
+_FIELD_LABEL_RE = re.compile(r"^([A-Z][A-Z0-9 /\-&().,]+?:)", re.MULTILINE)
+
+# Matches standalone section headings: all-caps lines with no colon
+# e.g. "BORROWER INFORMATION", "PRICING TERMS", "INVESTMENTS"
+_SECTION_HEADING_RE = re.compile(r"^[A-Z][A-Z0-9 /&,\-()]{3,}$")
 
 
 def _confidence_colour(level: str) -> tuple[int, int, int]:
@@ -153,45 +158,84 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
         self.cell(w=25, h=7, text=confidence.upper(), align="R")  # pyright: ignore[reportUnknownMemberType]
         self.ln(9)  # pyright: ignore[reportUnknownMemberType]
 
-    def render_body_text(self, text: str) -> None:
-        """Render section body with field-label highlighting."""
-        self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
-        self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+    def _reset_x(self) -> None:
+        """Reset cursor x to left margin to prevent drift."""
+        self.set_x(_MARGIN_L)  # pyright: ignore[reportUnknownMemberType]
 
+    def render_body_text(self, text: str) -> None:
+        """Render section body with headings, field labels, and lists."""
         for line in text.split("\n"):
             stripped = line.strip()
             if not stripped:
                 self.ln(2.5)  # pyright: ignore[reportUnknownMemberType]
                 continue
 
-            # Check if line starts with a FIELD LABEL: pattern
+            # Always reset x to left margin before rendering each line.
+            # Without this, cell() calls accumulate x-offset and bullets
+            # or numbered items drift to the right edge of the page.
+            self._reset_x()
+
+            # Detect indentation level for sub-bullets
+            is_indented = line.startswith("    ") or line.startswith("\t")
+
+            # Standalone section heading (all-caps, no colon)
+            if _SECTION_HEADING_RE.match(stripped):
+                self.ln(3)  # pyright: ignore[reportUnknownMemberType]
+                self._reset_x()
+                self.set_font(_FONT_FAMILY, "B", 8.5)  # pyright: ignore[reportUnknownMemberType]
+                self.set_text_color(*_RBC_BLUE)  # pyright: ignore[reportUnknownMemberType]
+                self.multi_cell(w=_CONTENT_W, h=5.5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
+                # Thin underline
+                self._reset_x()
+                y = float(self.get_y())  # pyright: ignore[reportUnknownMemberType]
+                self.set_draw_color(*_BORDER)  # pyright: ignore[reportUnknownMemberType]
+                self.set_line_width(0.2)  # pyright: ignore[reportUnknownMemberType]
+                self.line(x1=_MARGIN_L, y1=y, x2=_MARGIN_L + _CONTENT_W * 0.5, y2=y)  # pyright: ignore[reportUnknownMemberType]
+                self.ln(2)  # pyright: ignore[reportUnknownMemberType]
+                continue
+
+            # Field label: value (render label bold, then value as flowing text)
             match = _FIELD_LABEL_RE.match(stripped)
             if match:
                 label = match.group(1)
-                rest = stripped[len(label):]
+                rest = stripped[len(label):].strip()
                 self.set_font(_FONT_FAMILY, "B", 9)  # pyright: ignore[reportUnknownMemberType]
                 self.set_text_color(*_RBC_BLUE)  # pyright: ignore[reportUnknownMemberType]
-                label_w = float(self.get_string_width(label)) + 1.5  # pyright: ignore[reportUnknownMemberType]
-                self.cell(w=label_w, h=5, text=label)  # pyright: ignore[reportUnknownMemberType]
-                self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
-                self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
-                if rest.strip():
-                    self.multi_cell(w=_CONTENT_W - label_w, h=5, text=rest.strip())  # pyright: ignore[reportUnknownMemberType]
-                else:
-                    self.ln(5)  # pyright: ignore[reportUnknownMemberType]
-            elif stripped.startswith("- ") or stripped.startswith("* "):
-                # Bullet point
-                self.cell(w=4, h=5, text="")  # pyright: ignore[reportUnknownMemberType]
+                self.multi_cell(w=_CONTENT_W, h=5, text=label)  # pyright: ignore[reportUnknownMemberType]
+                if rest:
+                    self._reset_x()
+                    self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
+                    # Grey out NOT FOUND values
+                    if rest.upper().startswith("NOT FOUND"):
+                        self.set_text_color(*_MUTED)  # pyright: ignore[reportUnknownMemberType]
+                        self.set_font(_FONT_FAMILY, "I", 9)  # pyright: ignore[reportUnknownMemberType]
+                    else:
+                        self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+                    self.multi_cell(w=_CONTENT_W, h=5, text=rest)  # pyright: ignore[reportUnknownMemberType]
+                continue
+
+            # Bullet point (top-level or indented)
+            if stripped.startswith("- ") or stripped.startswith("* "):
+                indent = 8.0 if is_indented else 4.0
                 self.set_font(_FONT_FAMILY, "", 8.5)  # pyright: ignore[reportUnknownMemberType]
+                self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+                self.set_x(_MARGIN_L + indent)  # pyright: ignore[reportUnknownMemberType]
                 bullet_text = f"\u2022  {stripped[2:]}"
-                self.multi_cell(w=_CONTENT_W - 4, h=5, text=bullet_text)  # pyright: ignore[reportUnknownMemberType]
-                self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
-            elif stripped.startswith(("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.")):
-                # Numbered item
-                self.cell(w=4, h=5, text="")  # pyright: ignore[reportUnknownMemberType]
-                self.multi_cell(w=_CONTENT_W - 4, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
-            else:
-                self.multi_cell(w=_CONTENT_W, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
+                self.multi_cell(w=_CONTENT_W - indent, h=5, text=bullet_text)  # pyright: ignore[reportUnknownMemberType]
+                continue
+
+            # Numbered item
+            if re.match(r"^\d+\.\s", stripped):
+                self.set_font(_FONT_FAMILY, "", 8.5)  # pyright: ignore[reportUnknownMemberType]
+                self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+                self.set_x(_MARGIN_L + 4.0)  # pyright: ignore[reportUnknownMemberType]
+                self.multi_cell(w=_CONTENT_W - 4.0, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
+                continue
+
+            # Regular paragraph
+            self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
+            self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+            self.multi_cell(w=_CONTENT_W, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
 
     def render_sources_line(self, sources_text: str) -> None:
         """Render a compact sources line below the body."""
