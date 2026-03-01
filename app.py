@@ -10,7 +10,7 @@ from typing import Any, cast
 import pandas as pd
 import streamlit as st
 
-from credit_analyzer.config import CLAUDE_MODEL, LLM_PROVIDER, OLLAMA_MODEL
+from credit_analyzer.config import CLAUDE_MODEL, LLM_PROVIDER, OLLAMA_MODEL, validate_config
 from credit_analyzer.generation.pdf_export import report_to_pdf_bytes
 from credit_analyzer.generation.qa_engine import QAEngine, QAResponse
 from credit_analyzer.generation.report_generator import (
@@ -82,6 +82,12 @@ def _show_dataframe(
 
 def main() -> None:
     """Application entry point."""
+    config_errors = validate_config()
+    if config_errors:
+        for error in config_errors:
+            st.error(error)
+        st.stop()
+
     _initialize_state()
 
     st.markdown(
@@ -444,28 +450,44 @@ def _queue_chat_question(document: ProcessedDocument, question: str) -> None:
     st.session_state.pending_chat_questions[document.document_id] = question
 
 
+def _get_or_create_qa_engine(document: ProcessedDocument, provider: LLMProvider) -> QAEngine:
+    """Return the persistent QAEngine for this document, creating it on first call.
+
+    Storing the engine in session_state preserves conversation history across
+    Streamlit reruns, which is required for multi-turn reformulation to work.
+    """
+    engine_key = f"qa_engine_{document.document_id}"
+    if engine_key not in st.session_state:
+        engine = QAEngine(document.retriever, provider)
+        if document.preamble_text is not None:
+            engine.set_preamble(document.preamble_text)
+        st.session_state[engine_key] = engine
+    return cast(QAEngine, st.session_state[engine_key])
+
+
 def _run_pending_chat_question(
     document: ProcessedDocument,
     provider: LLMProvider,
     question: str,
 ) -> None:
     st.session_state.pending_chat_questions.pop(document.document_id, None)
+    qa_engine = _get_or_create_qa_engine(document, provider)
 
-    qa_engine = QAEngine(document.retriever, provider)
-    if document.preamble_text is not None:
-        qa_engine.set_preamble(document.preamble_text)
-
-    with st.chat_message("assistant"), st.spinner("Generating answer..."):
-        response = qa_engine.ask(question, document.document_id)
-
-    st.session_state.chat_messages[document.document_id].append(
-        {"role": "assistant", "response": response}
-    )
+    try:
+        with st.chat_message("assistant"), st.spinner("Generating answer..."):
+            response = qa_engine.ask(question, document.document_id)
+        st.session_state.chat_messages[document.document_id].append(
+            {"role": "assistant", "response": response}
+        )
+    except Exception as exc:
+        st.error(f"Could not generate an answer: {exc}")
 
 
 def _clear_chat(document_id: str) -> None:
     st.session_state.chat_messages[document_id] = []
     st.session_state.pending_chat_questions.pop(document_id, None)
+    # Drop the cached engine so history resets with the conversation.
+    st.session_state.pop(f"qa_engine_{document_id}", None)
 
 
 def _render_chat_message(message: dict[str, Any]) -> None:

@@ -6,18 +6,18 @@ A local-first application that allows leveraged finance analysts to upload credi
 1. **Generate a structured report** (max ~10 pages) extracting all key terms, pricing, covenants, baskets, and provisions
 2. **Ask targeted follow-up questions** via a chat interface with cited sources and confidence ratings
 
-The system runs entirely locally (no external API calls) using Ollama + Llama 3 8B, with an abstracted LLM interface that allows future migration to an internal enterprise LLM.
+The system uses Claude (Anthropic API) by default, with an abstracted LLM interface that also supports Ollama for fully local inference or future migration to an internal enterprise LLM.
 
 ---
 
 ## Hardware & Environment
 
 - **RAM**: 32GB DDR4
-- **GPU**: None / not relied upon (CPU inference via Ollama)
-- **LLM**: Llama 3 8B via Ollama
+- **GPU**: None / not relied upon (embeddings run on CPU)
+- **LLM**: Claude (Anthropic API); Ollama supported as a local alternative
 - **Embedding Model**: BAAI/bge-small-en-v1.5 (runs on CPU, ~130MB)
-- **OS**: Windows (assumed based on file paths)
-- **Python**: 3.10+
+- **OS**: Windows (primary); macOS/Linux supported
+- **Python**: 3.11+
 
 ---
 
@@ -107,14 +107,13 @@ credit_analyzer/
 │
 ├── ui/
 │   ├── __init__.py
-│   ├── upload_page.py         # PDF upload + processing progress
-│   ├── report_page.py         # Report display + export
-│   └── chat_page.py           # Q&A chat interface
+│   ├── theme.py               # Streamlit styling helpers
+│   ├── workflows.py           # Document processing orchestration
+│   └── demo_report.py         # Demo brief generation (Q&A-based)
 │
 └── utils/
     ├── __init__.py
-    ├── text_cleaning.py       # Normalize whitespace, fix encoding
-    └── validation.py          # Verify extracted values against source text
+    └── text_cleaning.py       # Shared markdown-stripping regex and helpers
 ```
 
 ---
@@ -205,13 +204,13 @@ pytesseract          # OCR fallback for scanned PDFs
 chromadb
 sentence-transformers
 rank-bm25
-ollama               # Python client for Ollama
+anthropic            # Claude API client
+ollama               # Python client for Ollama (optional, local inference)
 
 # Utilities
 tiktoken             # Token counting for chunk sizing
-jinja2               # Report template rendering
-markdown
-weasyprint           # Markdown → PDF export (or markdown-pdf)
+fpdf2                # PDF export
+python-dotenv        # .env file loading
 
 # Development
 pytest

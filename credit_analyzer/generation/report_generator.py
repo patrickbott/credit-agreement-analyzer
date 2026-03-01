@@ -14,6 +14,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from credit_analyzer.config import QA_CHUNK_TEXT_MAX_CHARS, QA_DEFINITION_MAX_CHARS
 from credit_analyzer.generation.report_template import (
     ALL_REPORT_SECTIONS,
     ReportSectionTemplate,
@@ -36,6 +37,7 @@ from credit_analyzer.retrieval.hybrid_retriever import (
     HybridRetriever,
     RetrievalResult,
 )
+from credit_analyzer.utils.text_cleaning import strip_markdown as _strip_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -196,9 +198,9 @@ def _build_extraction_context(
         c = hc.chunk
         pages = _format_page_numbers(c.page_numbers)
         text = c.text
-        # Don't truncate promoted definition chunks.
-        if hc.source != "definition" and len(text) > 2000:
-            text = text[:2000].rstrip() + "..."
+        # Promoted definition chunks are not truncated; they must be read in full.
+        if hc.source != "definition" and len(text) > QA_CHUNK_TEXT_MAX_CHARS:
+            text = text[:QA_CHUNK_TEXT_MAX_CHARS].rstrip() + "..."
         parts.append(
             f"--- Source: {c.section_title} "
             f"(Section {c.section_id}, Pages {pages}) ---\n"
@@ -216,8 +218,7 @@ def _build_extraction_context(
         if filtered:
             parts.append("\n=== RELEVANT DEFINITIONS ===")
             for term, defn in filtered.items():
-                # Truncate long definitions in report context.
-                truncated = defn[:800] if len(defn) > 800 else defn
+                truncated = defn[:QA_DEFINITION_MAX_CHARS] if len(defn) > QA_DEFINITION_MAX_CHARS else defn
                 parts.append(f'"{term}" means {truncated}')
 
     parts.append(f"\n=== EXTRACTION TASK ===\n{extraction_prompt}")
@@ -279,21 +280,6 @@ def _retrieve_for_section(
     )
 
 
-# ---------------------------------------------------------------------------
-# Strip markdown (same logic as qa_engine)
-# ---------------------------------------------------------------------------
-
-_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
-_HEADER_RE = re.compile(r"(?m)^#{1,4}\s+(.+)$")
-_BACKTICK_RE = re.compile(r"`([^`]+)`")
-
-
-def _strip_markdown(text: str) -> str:
-    """Remove markdown formatting from LLM output."""
-    text = _BOLD_RE.sub(r"\1", text)
-    text = _HEADER_RE.sub(r"\1", text)
-    text = _BACKTICK_RE.sub(r"\1", text)
-    return text
 
 
 # ---------------------------------------------------------------------------

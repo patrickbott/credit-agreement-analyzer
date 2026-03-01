@@ -6,12 +6,15 @@ the structured LLM responses produced by the Q&A and report prompts.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from credit_analyzer.retrieval.hybrid_retriever import HybridChunk
+
+logger = logging.getLogger(__name__)
 
 ConfidenceLevel = Literal["HIGH", "MEDIUM", "LOW"]
 
@@ -82,6 +85,7 @@ def parse_confidence(text: str) -> ConfidenceLevel:
         raw = match.group(1).upper()
         if raw in ("HIGH", "MEDIUM", "LOW"):
             return raw  # type: ignore[return-value]
+    logger.debug("No confidence level found in LLM response; defaulting to LOW.")
     return "LOW"
 
 
@@ -263,14 +267,7 @@ _SNIPPET_MAX_CHARS: int = 200
 
 
 def _make_snippet(text: str) -> str:
-    """Create a short text snippet from a chunk's full text.
-
-    Args:
-        text: The full chunk text.
-
-    Returns:
-        A truncated, single-line snippet.
-    """
+    """Extract a short, single-line preview from chunk text."""
     snippet = text[:_SNIPPET_MAX_CHARS].replace("\n", " ").strip()
     if len(text) > _SNIPPET_MAX_CHARS:
         snippet += "..."

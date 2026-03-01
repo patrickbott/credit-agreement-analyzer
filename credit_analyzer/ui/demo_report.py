@@ -95,8 +95,14 @@ SUGGESTED_QUESTIONS: tuple[SuggestedQuestion, ...] = (
         ),
     ),
     SuggestedQuestion(
-        label="Create a report on key credit provisions",
-        prompt="Respond Not implemented yet.",
+        label="Summarize all key credit provisions",
+        prompt=(
+            "Provide a structured summary of the key credit provisions in this agreement. "
+            "Cover: (1) facility types, sizes, and maturity; (2) pricing and applicable margins; "
+            "(3) financial maintenance covenants and any equity cure rights; "
+            "(4) key negative covenants including debt capacity, liens, and restricted payments; "
+            "(5) events of default. Cite section references for each item."
+        ),
     ),
     SuggestedQuestion(
         label="What are the maintenance covenants?",
@@ -137,8 +143,16 @@ def build_demo_brief(
     prompts: Sequence[BriefPrompt] = DEFAULT_BRIEF_PROMPTS,
     progress_callback: BriefProgressCallback | None = None,
 ) -> list[BriefSection]:
-    """Generate a concise demo brief from a processed document."""
+    """Generate a concise demo brief from a processed document.
+
+    A single QAEngine is created for the full run so that preamble context
+    is injected consistently and engine setup overhead is paid once.
+    """
     sections: list[BriefSection] = []
+
+    qa_engine = QAEngine(document.retriever, provider)
+    if document.preamble_text is not None:
+        qa_engine.set_preamble(document.preamble_text)
 
     for index, prompt in enumerate(prompts, start=1):
         _progress(
@@ -146,9 +160,6 @@ def build_demo_brief(
             f"Generating {prompt.title.lower()}...",
             index / max(len(prompts), 1),
         )
-        qa_engine = QAEngine(document.retriever, provider)
-        if document.preamble_text is not None:
-            qa_engine.set_preamble(document.preamble_text)
         response = qa_engine.ask(prompt.question, document.document_id)
         sections.append(
             BriefSection(
@@ -170,5 +181,6 @@ def _progress(
     label: str,
     progress: float,
 ) -> None:
+    """Fire the progress callback if one was provided."""
     if callback is not None:
         callback(label, progress)

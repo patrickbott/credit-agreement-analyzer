@@ -1,5 +1,15 @@
 # Retrieval Architecture: Original Plan vs Current State
 
+> **Status as of 2026-03-01:** The tier-1 ordering bug reported in handoff notes
+> (definitions ranked out of order when `term_scores` was not used for sorting) has
+> been confirmed **fixed** — `direct_metadata_expansion` already sorts candidates by
+> `term_scores` descending before selection. No action required.
+>
+> Metadata list delimiter changed from comma to pipe (`|`) to prevent corruption when
+> a defined term contains a comma (e.g., parenthetical definitions). This affects how
+> `page_numbers` and `defined_terms_present` are stored and read from ChromaDB.
+
+
 ## Document Processing (Phase 1 - unchanged)
 
 The processing pipeline converts a raw PDF into retrieval-ready chunks:

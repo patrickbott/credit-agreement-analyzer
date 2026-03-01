@@ -1,7 +1,30 @@
-"""Text normalization utilities for extracted PDF content."""
+"""Text normalization utilities for extracted PDF content and LLM output."""
 
 import re
 import unicodedata
+
+# ---------------------------------------------------------------------------
+# LLM output cleaning
+# ---------------------------------------------------------------------------
+
+# The extraction system prompt tells the LLM not to use markdown, but Claude
+# occasionally emits bold, header, or backtick formatting anyway. These
+# patterns strip the formatting while preserving the underlying text.
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+_HEADER_RE = re.compile(r"(?m)^#{1,4}\s+(.+)$")
+_BACKTICK_RE = re.compile(r"`([^`]+)`")
+
+
+def strip_markdown(text: str) -> str:
+    """Remove common markdown formatting tokens from LLM-generated text.
+
+    Handles bold (**text**), ATX headers (### text), and inline code (`text`).
+    Preserves the underlying content in each case.
+    """
+    text = _BOLD_RE.sub(r"\1", text)
+    text = _HEADER_RE.sub(r"\1", text)
+    text = _BACKTICK_RE.sub(r"\1", text)
+    return text
 
 
 def normalize_whitespace(text: str) -> str:

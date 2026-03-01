@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, cast
 
 import ollama
@@ -10,6 +11,9 @@ import ollama
 from credit_analyzer.llm.base import LLMProvider, LLMResponse
 
 logger = logging.getLogger(__name__)
+
+_RETRY_ATTEMPTS = 2
+_RETRY_DELAY_SECONDS = 1.0
 
 
 class OllamaProvider(LLMProvider):
@@ -27,19 +31,33 @@ class OllamaProvider(LLMProvider):
         temperature: float = 0.0,
         max_tokens: int = 2048,
     ) -> LLMResponse:
-        """Send a chat completion to Ollama and return the parsed response."""
-        response: Any = self._client.chat(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            options={"temperature": temperature, "num_predict": max_tokens},
-        )
+        """Send a chat completion to Ollama and return the parsed response.
+
+        Retries up to ``_RETRY_ATTEMPTS`` times on transient connection errors.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(1, _RETRY_ATTEMPTS + 1):
+            try:
+                response: Any = self._client.chat(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    options={"temperature": temperature, "num_predict": max_tokens},
+                )
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt < _RETRY_ATTEMPTS:
+                    logger.warning("Ollama request failed (attempt %d/%d): %s", attempt, _RETRY_ATTEMPTS, exc)
+                    time.sleep(_RETRY_DELAY_SECONDS)
+        else:
+            raise RuntimeError(f"Ollama request failed after {_RETRY_ATTEMPTS} attempts") from last_exc
 
         text = cast(str, response["message"]["content"])
         tokens_used = cast(int, response.get("eval_count", 0))
-        # total_duration is in nanoseconds
+        # total_duration is reported in nanoseconds
         total_duration_ns = cast(int, response.get("total_duration", 0))
         duration_seconds = total_duration_ns / 1_000_000_000
 
@@ -58,7 +76,8 @@ class OllamaProvider(LLMProvider):
                 cast(str, m.get("name", "") if isinstance(m, dict) else getattr(m, "model", ""))
                 for m in cast(list[Any], models_response.get("models", []))
             ]
-            # Ollama tags may include `:latest`; match on prefix
+            # Ollama tags models with optional ":latest" or ":quantization" suffixes;
+            # match on the base name prefix to handle all tag variants.
             base_model = self._model.split(":")[0]
             return any(name.startswith(base_model) for name in model_names)
         except Exception:

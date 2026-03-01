@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from credit_analyzer.config import PROJECT_ROOT
 from credit_analyzer.processing.chunker import Chunk, Chunker, build_search_text
@@ -102,9 +104,17 @@ def build_processed_document(
     embeddings = embedder.embed([build_search_text(chunk) for chunk in chunks])
 
     _progress(progress_callback, "Creating hybrid search index...", 0.9)
+    # Each run creates a new timestamped collection. Old collections persist in
+    # chroma_data/ until manually pruned; this is acceptable for demo use but
+    # should be replaced with a reuse/cleanup strategy in production.
     document_id = _build_document_id(pdf_path)
-    with suppress(Exception):
+    try:
         vector_store.delete_collection(document_id)
+    except ValueError:
+        # Collection does not yet exist — nothing to delete.
+        pass
+    except Exception:
+        logger.warning("Could not delete existing collection %r; proceeding with create.", document_id)
     vector_store.create_collection(document_id)
     vector_store.add_chunks(document_id, chunks, embeddings)
 
@@ -166,5 +176,6 @@ def _progress(
     label: str,
     progress: float,
 ) -> None:
+    """Fire the progress callback if one was provided."""
     if callback is not None:
         callback(label, progress)

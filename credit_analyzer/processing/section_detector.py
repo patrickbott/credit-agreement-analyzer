@@ -213,19 +213,27 @@ def _offset_to_page(offset: int, page_offsets: tuple[int, ...]) -> int:
 
 
 def _collect_tables_for_pages(document: ExtractedDocument, page_start: int, page_end: int) -> list[str]:
-    """Gather all table markdown strings from pages in the given range.
+    """Gather all table markdown strings from pages owned by this section.
+
+    Uses a half-open interval [page_start, page_end) so that tables on a page
+    shared between two consecutive sections are attributed to the section that
+    starts on that page, not the one that ends there. Single-page sections
+    (page_start == page_end) use both endpoints.
 
     Args:
         document: The source extracted document.
         page_start: 1-indexed start page (inclusive).
-        page_end: 1-indexed end page (inclusive).
+        page_end: 1-indexed end page (inclusive, or exclusive if shared with next section).
 
     Returns:
         List of markdown table strings.
     """
+    # Exclude the final page from multi-page sections to prevent duplication
+    # when the next section begins on the same page this one ends on.
+    effective_end = page_end if page_start == page_end else page_end - 1
     tables: list[str] = []
     for page in document.pages:
-        if page_start <= page.page_number <= page_end:
+        if page_start <= page.page_number <= effective_end:
             tables.extend(page.tables)
     return tables
 
