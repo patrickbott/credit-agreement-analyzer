@@ -152,7 +152,10 @@ def build_demo_brief(
 
     qa_engine = QAEngine(document.retriever, provider)
     if document.preamble_text is not None:
-        qa_engine.set_preamble(document.preamble_text)
+        qa_engine.set_preamble(
+            document.preamble_text,
+            page_numbers=document.preamble_page_numbers,
+        )
 
     for index, prompt in enumerate(prompts, start=1):
         _progress(

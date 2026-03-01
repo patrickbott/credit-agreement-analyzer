@@ -155,6 +155,7 @@ def build_context_prompt(
     history: Sequence[ConversationTurn],
     question: str,
     preamble_text: str | None = None,
+    preamble_page_numbers: Sequence[int] | None = None,
 ) -> str:
     """Assemble the user prompt from retrieved context, definitions, history.
 
@@ -173,6 +174,7 @@ def build_context_prompt(
         history: Recent conversation turns to include.
         question: The current user question.
         preamble_text: Optional preamble/recitals text to always inject.
+        preamble_page_numbers: Optional page numbers for the preamble text.
 
     Returns:
         The assembled user prompt string.
@@ -180,8 +182,10 @@ def build_context_prompt(
     parts: list[str] = ["=== CONTEXT FROM CREDIT AGREEMENT ===\n"]
 
     if preamble_text:
+        preamble_pages = _format_page_numbers(preamble_page_numbers or [])
+        page_label = preamble_pages if preamble_pages else "n/a"
         parts.append(
-            "--- Source: Preamble and Recitals (Pages 1-2) ---\n"
+            f"--- Source: Preamble and Recitals (Pages {page_label}) ---\n"
             f"{preamble_text}\n"
         )
 

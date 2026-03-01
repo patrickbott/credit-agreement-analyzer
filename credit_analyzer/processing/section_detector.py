@@ -212,25 +212,29 @@ def _offset_to_page(offset: int, page_offsets: tuple[int, ...]) -> int:
     return 1
 
 
-def _collect_tables_for_pages(document: ExtractedDocument, page_start: int, page_end: int) -> list[str]:
+def _collect_tables_for_pages(
+    document: ExtractedDocument,
+    page_start: int,
+    page_end: int,
+    *,
+    exclude_end_page: bool = False,
+) -> list[str]:
     """Gather all table markdown strings from pages owned by this section.
 
-    Uses a half-open interval [page_start, page_end) so that tables on a page
-    shared between two consecutive sections are attributed to the section that
-    starts on that page, not the one that ends there. Single-page sections
-    (page_start == page_end) use both endpoints.
+    When two consecutive sections share the same final page, callers can pass
+    ``exclude_end_page=True`` to avoid duplicating tables across both sections.
+    Otherwise the full inclusive page range is used.
 
     Args:
         document: The source extracted document.
         page_start: 1-indexed start page (inclusive).
-        page_end: 1-indexed end page (inclusive, or exclusive if shared with next section).
+        page_end: 1-indexed end page (inclusive).
+        exclude_end_page: Whether to drop ``page_end`` from the scan range.
 
     Returns:
         List of markdown table strings.
     """
-    # Exclude the final page from multi-page sections to prevent duplication
-    # when the next section begins on the same page this one ends on.
-    effective_end = page_end if page_start == page_end else page_end - 1
+    effective_end = page_end - 1 if exclude_end_page and page_start != page_end else page_end
     tables: list[str] = []
     for page in document.pages:
         if page_start <= page.page_number <= effective_end:
@@ -291,7 +295,7 @@ class SectionDetector:
         )
         if preamble is not None:
             sections.append(preamble)
-        for article in articles:
+        for article_index, article in enumerate(articles):
             article_text = full_text[article.text_start : article.text_end]
             article_sections = self._detect_subsections_in_article(
                 article, article_text, full_text, page_offsets, document
@@ -302,6 +306,16 @@ class SectionDetector:
                 # No sub-sections found; treat entire article as one section
                 page_start = _offset_to_page(article.text_start, page_offsets)
                 page_end = _offset_to_page(max(article.text_end - 1, article.text_start), page_offsets)
+                next_article_start = (
+                    articles[article_index + 1].text_start
+                    if article_index + 1 < len(articles)
+                    else None
+                )
+                exclude_end_page = (
+                    next_article_start is not None
+                    and page_start != page_end
+                    and _offset_to_page(next_article_start, page_offsets) == page_end
+                )
                 sections.append(
                     DocumentSection(
                         section_id=f"SECTION_{article.article_number}",
@@ -311,7 +325,12 @@ class SectionDetector:
                         text=article_text,
                         page_start=page_start,
                         page_end=page_end,
-                        tables=_collect_tables_for_pages(document, page_start, page_end),
+                        tables=_collect_tables_for_pages(
+                            document,
+                            page_start,
+                            page_end,
+                            exclude_end_page=exclude_end_page,
+                        ),
                         section_type=article.section_type,
                     )
                 )
@@ -441,6 +460,16 @@ class SectionDetector:
             abs_end = article.text_start + text_end_in_article
             page_start = _offset_to_page(abs_start, page_offsets)
             page_end = _offset_to_page(max(abs_end - 1, abs_start), page_offsets)
+            next_section_start = (
+                article.text_start + matches[i + 1].start(1)
+                if i + 1 < len(matches)
+                else None
+            )
+            exclude_end_page = (
+                next_section_start is not None
+                and page_start != page_end
+                and _offset_to_page(next_section_start, page_offsets) == page_end
+            )
 
             # Classify subsection by its own title; fall back to article type
             sub_type = _classify_section_type(
@@ -456,7 +485,12 @@ class SectionDetector:
                     text=section_text,
                     page_start=page_start,
                     page_end=page_end,
-                    tables=_collect_tables_for_pages(document, page_start, page_end),
+                    tables=_collect_tables_for_pages(
+                        document,
+                        page_start,
+                        page_end,
+                        exclude_end_page=exclude_end_page,
+                    ),
                     section_type=sub_type,
                 )
             )

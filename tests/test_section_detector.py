@@ -280,6 +280,40 @@ def test_tables_collected_for_section() -> None:
     assert "Payment" in sections[0].tables[0]
 
 
+def test_tables_retained_on_last_page_of_multi_page_section() -> None:
+    """A section keeps tables on its final page when no later section shares it."""
+    pages = [
+        ExtractedPage(
+            page_number=1,
+            text="\nSECTION 7 NEGATIVE COVENANTS\n\n7.01 Indebtedness\nText continues.\n",
+            tables=[],
+            is_ocr=False,
+        ),
+        ExtractedPage(
+            page_number=2,
+            text="More section 7.01 text.\n",
+            tables=["| Basket | Amount |\n| --- | --- |\n| General | $50M |"],
+            is_ocr=False,
+        ),
+    ]
+    from pathlib import Path
+
+    doc = ExtractedDocument(
+        pages=pages,
+        total_pages=2,
+        source_path=Path("test.pdf"),
+        extraction_method="digital",
+    )
+    detector = SectionDetector()
+    sections = detector.detect_sections(doc)
+
+    assert len(sections) == 1
+    assert sections[0].page_start == 1
+    assert sections[0].page_end == 2
+    assert len(sections[0].tables) == 1
+    assert "General" in sections[0].tables[0]
+
+
 def test_duplicate_numbers_skipped() -> None:
     """TOC references that repeat header numbers are skipped."""
     text = (

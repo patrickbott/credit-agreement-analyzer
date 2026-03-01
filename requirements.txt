@@ -25,3 +25,5 @@ fpdf2>=2.8.0
 
 # Dev
 pytest>=8.0.0
+ruff>=0.15.2
+pyright>=1.1.390

@@ -7,7 +7,7 @@ from html import escape
 from pathlib import Path
 from typing import Any, cast
 
-import pandas as pd
+import pandas as pd  # pyright: ignore[reportMissingTypeStubs]
 import streamlit as st
 
 from credit_analyzer.config import CLAUDE_MODEL, LLM_PROVIDER, OLLAMA_MODEL, validate_config
@@ -460,7 +460,10 @@ def _get_or_create_qa_engine(document: ProcessedDocument, provider: LLMProvider)
     if engine_key not in st.session_state:
         engine = QAEngine(document.retriever, provider)
         if document.preamble_text is not None:
-            engine.set_preamble(document.preamble_text)
+            engine.set_preamble(
+                document.preamble_text,
+                page_numbers=document.preamble_page_numbers,
+            )
         st.session_state[engine_key] = engine
     return cast(QAEngine, st.session_state[engine_key])
 
@@ -583,7 +586,10 @@ def _run_report_generation(
 
     generator = ReportGenerator(document.retriever, provider)
     if document.preamble_text is not None:
-        generator.set_preamble(document.preamble_text)
+        generator.set_preamble(
+            document.preamble_text,
+            page_numbers=document.preamble_page_numbers,
+        )
 
     try:
         report = generator.generate(

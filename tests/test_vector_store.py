@@ -68,8 +68,8 @@ def test_chunk_to_metadata_keys() -> None:
     assert meta["section_id"] == "7.01"
     assert meta["article_number"] == 7
     assert meta["section_type"] == "negative_covenants"
-    assert meta["page_numbers"] == "10,11"
-    assert meta["defined_terms"] == "Borrower,Indebtedness"
+    assert meta["page_numbers"] == "10|11"
+    assert meta["defined_terms"] == "Borrower|Indebtedness"
     # All values must be primitives
     for value in meta.values():
         assert isinstance(value, (str, int, float, bool))

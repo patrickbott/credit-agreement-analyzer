@@ -7,6 +7,7 @@ assembly, conversation history, response parsing, and source citations.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from credit_analyzer.config import (
@@ -97,8 +98,13 @@ class QAEngine:
         self._section_types_exclude = section_types_exclude
         self._history: list[ConversationTurn] = []
         self._preamble_text: str | None = None
+        self._preamble_page_numbers: list[int] | None = None
 
-    def set_preamble(self, text: str) -> None:
+    def set_preamble(
+        self,
+        text: str,
+        page_numbers: Sequence[int] | None = None,
+    ) -> None:
         """Set the preamble text to always inject as context.
 
         The preamble (recitals, title page) contains headline terms like
@@ -108,8 +114,10 @@ class QAEngine:
 
         Args:
             text: The preamble text from the document.
+            page_numbers: Optional page numbers spanned by the preamble.
         """
         self._preamble_text = text.strip() if text.strip() else None
+        self._preamble_page_numbers = list(page_numbers) if page_numbers else None
 
     def ask(self, question: str, document_id: str) -> QAResponse:
         """Ask a question about a specific credit agreement.
@@ -142,6 +150,7 @@ class QAEngine:
             history=recent_history,
             question=question,
             preamble_text=self._preamble_text,
+            preamble_page_numbers=self._preamble_page_numbers,
         )
 
         llm_response: LLMResponse = self._llm.complete(

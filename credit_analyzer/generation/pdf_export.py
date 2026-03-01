@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportMissingModuleSource=false
 """PDF export for generated credit agreement reports.
 
 Uses fpdf2 (pure-Python, no system dependencies) to produce a clean,

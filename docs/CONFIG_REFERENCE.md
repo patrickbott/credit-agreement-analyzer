@@ -1,7 +1,7 @@
-# Configuration Reference
+﻿# Configuration Reference
 
 All tunable parameters for the Credit Agreement Analyzer. Every constant lives in
-`credit_analyzer/config.py`. Override runtime values via environment variable — the
+`credit_analyzer/config.py`. Override runtime values via environment variable - the
 app reads `.env` at startup (copy `.env.example` to `.env` to get started).
 
 Call `validate_config()` before doing any pipeline work; it returns a list of
@@ -16,7 +16,7 @@ Everything else has a sensible default and is changed in `config.py`.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes (Claude) | — | API key for the Anthropic Claude API. |
+| `ANTHROPIC_API_KEY` | Yes (Claude) | - | API key for the Anthropic Claude API. |
 | `ANTHROPIC_MODEL` | No | `claude-sonnet-4-6` | Claude model ID to use for generation. |
 | `LLM_PROVIDER` | No | `claude` | Active provider: `claude`, `ollama`, or `internal`. |
 | `OLLAMA_MODEL` | No | `llama3.2:3b` | Ollama model name (only used when `LLM_PROVIDER=ollama`). |
@@ -91,7 +91,7 @@ DEFINITION_UBIQUITY_THRESHOLD = 0.25  # Terms present in > 25% of chunks are
 - **Vector vs BM25 weight:** If defined-term lookups are weak, nudge `BM25_WEIGHT` up
   to 0.5. If semantic paraphrases are being missed, nudge `VECTOR_WEIGHT` up to 0.7.
   Both must sum to 1.0 or `validate_config()` will fail.
-- **`MAX_DEFINITIONS_INJECTED`:** 18 is generous. Reduce to 10–12 if context windows
+- **`MAX_DEFINITIONS_INJECTED`:** 18 is generous. Reduce to 10-12 if context windows
   fill up; increase if the model frequently misinterprets defined terms.
 - **`DEFINITION_UBIQUITY_THRESHOLD`:** Lower this (e.g. 0.15) if common terms like
   "Borrower" are being skipped; raise it (e.g. 0.4) if definition injection is too noisy.

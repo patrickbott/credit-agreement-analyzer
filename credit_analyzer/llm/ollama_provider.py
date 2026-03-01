@@ -22,7 +22,7 @@ class OllamaProvider(LLMProvider):
     def __init__(self, model: str, base_url: str) -> None:
         self._model = model
         self._base_url = base_url
-        self._client = ollama.Client(host=base_url)
+        self._client: Any = ollama.Client(host=base_url)
 
     def complete(
         self,
@@ -72,10 +72,14 @@ class OllamaProvider(LLMProvider):
         """Check whether the Ollama server is reachable and the model is loaded."""
         try:
             models_response: Any = self._client.list()
-            model_names: list[str] = [
-                cast(str, m.get("name", "") if isinstance(m, dict) else getattr(m, "model", ""))
-                for m in cast(list[Any], models_response.get("models", []))
-            ]
+            raw_models = cast(list[Any], cast(dict[str, Any], models_response).get("models", []))
+            model_names: list[str] = []
+            for model in raw_models:
+                if isinstance(model, dict):
+                    model_name = cast(str, cast(dict[str, Any], model).get("name", ""))
+                else:
+                    model_name = cast(str, getattr(model, "model", ""))
+                model_names.append(model_name)
             # Ollama tags models with optional ":latest" or ":quantization" suffixes;
             # match on the base name prefix to handle all tag variants.
             base_model = self._model.split(":")[0]

@@ -180,6 +180,7 @@ def _build_extraction_context(
     definitions: dict[str, str],
     extraction_prompt: str,
     preamble_text: str | None = None,
+    preamble_page_numbers: Sequence[int] | None = None,
 ) -> str:
     """Assemble the user prompt for a report section extraction.
 
@@ -189,8 +190,10 @@ def _build_extraction_context(
     parts: list[str] = ["=== CONTEXT FROM CREDIT AGREEMENT ===\n"]
 
     if preamble_text:
+        preamble_pages = _format_page_numbers(preamble_page_numbers or [])
+        page_label = preamble_pages if preamble_pages else "n/a"
         parts.append(
-            "--- Source: Preamble and Recitals (Pages 1-2) ---\n"
+            f"--- Source: Preamble and Recitals (Pages {page_label}) ---\n"
             f"{preamble_text}\n"
         )
 
@@ -303,14 +306,21 @@ class ReportGenerator:
         self._retriever = retriever
         self._llm = llm
         self._preamble_text: str | None = None
+        self._preamble_page_numbers: list[int] | None = None
 
-    def set_preamble(self, text: str) -> None:
+    def set_preamble(
+        self,
+        text: str,
+        page_numbers: Sequence[int] | None = None,
+    ) -> None:
         """Set preamble text to inject in sections that request it.
 
         Args:
             text: The preamble/recitals text from the document.
+            page_numbers: Optional page numbers spanned by the preamble.
         """
         self._preamble_text = text.strip() if text.strip() else None
+        self._preamble_page_numbers = list(page_numbers) if page_numbers else None
 
     def generate(
         self,
@@ -410,6 +420,7 @@ class ReportGenerator:
             definitions=result.injected_definitions,
             extraction_prompt=template.extraction_prompt,
             preamble_text=preamble,
+            preamble_page_numbers=self._preamble_page_numbers,
         )
 
         # Call LLM

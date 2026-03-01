@@ -61,7 +61,7 @@ _SOURCES_LINE_RE = re.compile(
 
 # Individual citation like "Section 7.06 (pp. 45-46)" or "Section 7.06"
 _CITATION_RE = re.compile(
-    r"Section\s+([\d.]+)\s*(?:\(pp?\.\s*([\d,\s\-]+)\))?",
+    r"Section\s+([\d.]+(?:\([A-Za-z0-9]+\))*)\s*(?:\(pp?\.\s*([\d,\s\-]+)\))?",
     re.IGNORECASE,
 )
 
@@ -177,7 +177,11 @@ def enrich_citations(
     enriched: list[SourceCitation] = []
 
     for cite in citations:
-        hc = section_chunks.get(cite.section_id)
+        hc = None
+        for candidate_id in _section_lookup_candidates(cite.section_id):
+            hc = section_chunks.get(candidate_id)
+            if hc is not None:
+                break
 
         if cite.section_id in seen_sections:
             # Merge page numbers into existing citation
@@ -272,3 +276,14 @@ def _make_snippet(text: str) -> str:
     if len(text) > _SNIPPET_MAX_CHARS:
         snippet += "..."
     return snippet
+
+
+def _section_lookup_candidates(section_id: str) -> list[str]:
+    """Return exact and parent section IDs for citation enrichment."""
+    candidates = [section_id]
+    current = section_id
+    trailing_group = re.compile(r"\([A-Za-z0-9]+\)$")
+    while trailing_group.search(current):
+        current = trailing_group.sub("", current)
+        candidates.append(current)
+    return candidates

@@ -154,8 +154,10 @@ class TestBuildExtractionContext:
             definitions={},
             extraction_prompt="Extract.",
             preamble_text="CREDIT AGREEMENT dated March 3, 2020",
+            preamble_page_numbers=[1, 2, 3],
         )
         assert "Preamble" in result
+        assert "Pages 1-3" in result
         assert "March 3, 2020" in result
 
     def test_no_preamble_when_none(self) -> None:
@@ -389,7 +391,7 @@ class TestReportGenerator:
         llm.complete = MagicMock(return_value=_mock_llm_response())
 
         gen = ReportGenerator(retriever=retriever, llm=llm)
-        gen.set_preamble("$350M Term Loan Facility")
+        gen.set_preamble("$350M Term Loan Facility", page_numbers=[1, 2, 3])
 
         template = ReportSectionTemplate(
             section_number=1,
@@ -402,6 +404,7 @@ class TestReportGenerator:
 
         user_prompt: str = llm.complete.call_args.kwargs["user_prompt"]
         assert "$350M" in user_prompt
+        assert "Pages 1-3" in user_prompt
 
     def test_no_preamble_when_section_skips_it(self) -> None:
         """Sections with include_preamble=False don't get preamble."""
@@ -412,7 +415,7 @@ class TestReportGenerator:
         llm.complete = MagicMock(return_value=_mock_llm_response())
 
         gen = ReportGenerator(retriever=retriever, llm=llm)
-        gen.set_preamble("$350M Term Loan Facility")
+        gen.set_preamble("$350M Term Loan Facility", page_numbers=[1, 2, 3])
 
         template = ReportSectionTemplate(
             section_number=5,

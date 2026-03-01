@@ -1,4 +1,4 @@
-# Credit Agreement Analyzer
+﻿# Credit Agreement Analyzer
 
 A local-first tool for leveraged finance analysts to extract key terms, covenants, and provisions from credit agreement PDFs.
 
@@ -86,16 +86,16 @@ Required only for scanned PDFs (image-based, no embedded text). Digital credit a
 ## Architecture
 
 ```
-PDF Upload → Extract → Section Detect → Chunk → Embed → ChromaDB
-                                                              ↓
-                                          Hybrid Retrieval (Vector + BM25)
-                                            + Definition Injection
-                                            + Sibling Expansion
-                                                    ↓
-                                          Q&A Engine / Report Generator
-                                                    ↓
-                                              LLM Provider
-                                          (Claude / Ollama / Internal)
+PDF Upload -> Extract -> Section Detect -> Chunk -> Embed -> ChromaDB
+                                                          |
+                                  Hybrid Retrieval (Vector + BM25)
+                                    + Definition Injection
+                                    + Sibling Expansion
+                                              |
+                                  Q&A Engine / Report Generator
+                                              |
+                                        LLM Provider
+                                  (Claude / Ollama / Internal)
 ```
 
 ## Tech Stack

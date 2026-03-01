@@ -1,3 +1,4 @@
+# pyright: reportMissingImports=false, reportUnknownMemberType=false
 """Anthropic Claude API-backed LLM provider."""
 
 from __future__ import annotations

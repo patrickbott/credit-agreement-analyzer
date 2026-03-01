@@ -1,4 +1,4 @@
-"""UI-facing orchestration helpers for document processing."""
+﻿"""UI-facing orchestration helpers for document processing."""
 
 from __future__ import annotations
 
@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from credit_analyzer.config import PROJECT_ROOT
 from credit_analyzer.processing.chunker import Chunk, Chunker, build_search_text
 from credit_analyzer.processing.definitions import DefinitionsIndex, DefinitionsParser
@@ -21,6 +19,8 @@ from credit_analyzer.retrieval.bm25_store import BM25Store
 from credit_analyzer.retrieval.embedder import Embedder
 from credit_analyzer.retrieval.hybrid_retriever import HybridRetriever
 from credit_analyzer.retrieval.vector_store import VectorStore
+
+logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, float], None]
 
@@ -54,6 +54,7 @@ class ProcessedDocument:
     chunks: list[Chunk]
     retriever: HybridRetriever
     preamble_text: str | None
+    preamble_page_numbers: list[int]
     stats: DocumentStats
 
 
@@ -111,7 +112,7 @@ def build_processed_document(
     try:
         vector_store.delete_collection(document_id)
     except ValueError:
-        # Collection does not yet exist — nothing to delete.
+        # Collection does not yet exist - nothing to delete.
         pass
     except Exception:
         logger.warning("Could not delete existing collection %r; proceeding with create.", document_id)
@@ -122,13 +123,19 @@ def build_processed_document(
     bm25_store.build_index(chunks)
     retriever = HybridRetriever(vector_store, bm25_store, embedder, definitions_index)
 
-    preamble = next(
+    preamble_section = next(
         (
-            section.text.strip()
+            section
             for section in sections
             if section.section_type == "preamble" and section.text.strip()
         ),
         None,
+    )
+    preamble = preamble_section.text.strip() if preamble_section is not None else None
+    preamble_page_numbers = (
+        list(range(preamble_section.page_start, preamble_section.page_end + 1))
+        if preamble_section is not None
+        else []
     )
 
     stats = DocumentStats(
@@ -156,6 +163,7 @@ def build_processed_document(
         chunks=chunks,
         retriever=retriever,
         preamble_text=preamble,
+        preamble_page_numbers=preamble_page_numbers,
         stats=stats,
     )
 

@@ -238,6 +238,15 @@ class TestParseSourcesFromLLM:
         assert len(citations) == 1
         assert citations[0].page_numbers == []
 
+    def test_subsection_citation_preserved(self) -> None:
+        text = "Sources: Section 7.06(a) (pp. 45-46), Section 7.06(b) (pp. 47)"
+        citations = parse_sources_from_llm(text)
+        assert len(citations) == 2
+        assert citations[0].section_id == "7.06(a)"
+        assert citations[0].page_numbers == [45, 46]
+        assert citations[1].section_id == "7.06(b)"
+        assert citations[1].page_numbers == [47]
+
 
 # ---------------------------------------------------------------------------
 # extract_answer_body
@@ -748,8 +757,10 @@ class TestPreambleInjection:
             history=[],
             question="What is the term loan size?",
             preamble_text=preamble,
+            preamble_page_numbers=[1, 2, 3],
         )
         assert "Preamble and Recitals" in prompt
+        assert "Pages 1-3" in prompt
         assert "$350,000,000" in prompt
         # Preamble should appear before the regular chunk context
         preamble_pos = prompt.index("Preamble")
@@ -787,9 +798,27 @@ class TestPreambleInjection:
         llm.complete = MagicMock(return_value=_mock_llm_response())
 
         engine = QAEngine(retriever=retriever, llm=llm)
-        engine.set_preamble("$350M term loan facility")
+        engine.set_preamble("$350M term loan facility", page_numbers=[1, 2, 3])
         engine.ask("What is the facility size?", "doc1")
 
         user_prompt: str = llm.complete.call_args.kwargs["user_prompt"]
         assert "$350M" in user_prompt
+        assert "Pages 1-3" in user_prompt
         assert "Preamble" in user_prompt
+
+    def test_subsection_citation_enriches_from_parent_section(self) -> None:
+        from credit_analyzer.generation.response_parser import enrich_citations
+
+        citations = [SourceCitation("7.06(a)", "", [45], "")]
+        chunks = [
+            _make_hybrid_chunk(
+                chunk_id="c1",
+                section_id="7.06",
+                section_title="Restricted Payments",
+                page_numbers=[45, 46],
+            ),
+        ]
+        result = enrich_citations(citations, chunks)
+        assert len(result) == 1
+        assert result[0].section_title == "Restricted Payments"
+        assert result[0].page_numbers == [45]
