@@ -7,6 +7,7 @@ assembly, conversation history, response parsing, and source citations.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 
 from credit_analyzer.config import (
@@ -39,6 +40,30 @@ from credit_analyzer.retrieval.hybrid_retriever import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Patterns for stripping common markdown formatting from LLM output.
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+_HEADER_RE = re.compile(r"(?m)^#{1,4}\s+(.+)$")
+_BACKTICK_RE = re.compile(r"`([^`]+)`")
+
+
+def _strip_markdown(text: str) -> str:
+    """Remove common markdown formatting from LLM output.
+
+    Strips bold (``**text**``), headers (``## text``),
+    and inline code backticks.  Preserves the underlying
+    text content.
+
+    Args:
+        text: Raw LLM response text.
+
+    Returns:
+        Plain-text version of the response.
+    """
+    text = _BOLD_RE.sub(r"\1", text)
+    text = _HEADER_RE.sub(r"\1", text)
+    text = _BACKTICK_RE.sub(r"\1", text)
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +176,7 @@ class QAEngine:
         )
 
         raw_text = llm_response.text
-        answer_body = extract_answer_body(raw_text)
+        answer_body = _strip_markdown(extract_answer_body(raw_text))
         confidence = parse_confidence(raw_text)
         raw_citations = parse_sources_from_llm(raw_text)
         citations = enrich_citations(raw_citations, result.chunks)

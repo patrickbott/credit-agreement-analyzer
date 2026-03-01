@@ -31,6 +31,18 @@ _DEFINITION_VERBS = re.compile(
     re.IGNORECASE,
 )
 
+# PDF source noise: BamSEC headers/footers, SEC filing lines, bare page numbers.
+# These appear mid-definition when a definition spans a page break.
+_PDF_NOISE_RE = re.compile(
+    r"(?m)^\s*(?:"
+    r"Powered by BamSEC\.com"
+    r"|PDF page \d+"
+    r"|[A-Z][A-Za-z\s,.]+ / \d+-[A-Z]+ / EX-[\d.]+ / [A-Za-z]+ \d+, \d{4}"
+    r"|\d{1,3}$"
+    r")\s*$",
+    re.MULTILINE,
+)
+
 
 @dataclass(frozen=True)
 class DefinitionsIndex:
@@ -181,7 +193,8 @@ class DefinitionsParser:
     def _clean_definition(self, raw: str) -> str:
         """Clean up a raw definition text block.
 
-        Strips excess whitespace and normalizes line breaks.
+        Strips excess whitespace, normalizes line breaks, and removes
+        PDF source noise (e.g. BamSEC page headers/footers).
 
         Args:
             raw: The raw definition text.
@@ -189,8 +202,10 @@ class DefinitionsParser:
         Returns:
             Cleaned definition string.
         """
+        # Remove BamSEC / SEC filing noise lines
+        cleaned = _PDF_NOISE_RE.sub("", raw)
         # Collapse multiple newlines into single newlines
-        cleaned = re.sub(r"\n{3,}", "\n\n", raw)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         # Collapse multiple spaces into single spaces within lines
         cleaned = re.sub(r"[ \t]+", " ", cleaned)
         return cleaned.strip()

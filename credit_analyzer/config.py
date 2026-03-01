@@ -25,7 +25,7 @@ TIKTOKEN_ENCODING: str = "cl100k_base"
 # --- Retrieval ---
 VECTOR_WEIGHT: float = 0.6
 BM25_WEIGHT: float = 0.4
-MAX_DEFINITIONS_INJECTED: int = 12
+MAX_DEFINITIONS_INJECTED: int = 18  # Room for primary + recursive expansion
 
 # --- LLM ---
 LLM_PROVIDER: str = "claude"  # "ollama" | "claude" | "internal"
@@ -41,6 +41,7 @@ QA_MAX_GENERATION_TOKENS: int = 1024
 QA_DEFINITION_MAX_CHARS: int = 800  # Truncate long definitions (~200 tokens)
 QA_CHUNK_TEXT_MAX_CHARS: int = 1500  # Truncate chunk text in context assembly (~400 tokens)
 QA_SECTION_TYPES_EXCLUDE: tuple[str, ...] = ("miscellaneous",)
+DEFINITION_UBIQUITY_THRESHOLD: float = 0.25  # Terms in >25% of chunks are "ubiquitous"
 
 # --- Embedding ---
 EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"

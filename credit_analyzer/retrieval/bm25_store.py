@@ -62,6 +62,18 @@ class BM25Store:
         self._index: Any | None = None
         self._chunks: list[Chunk] = []
 
+    @property
+    def chunks(self) -> Sequence[Chunk]:
+        """Return the indexed chunks (read-only).
+
+        Used by HybridRetriever to build a definition chunk lookup
+        at initialization time.
+
+        Returns:
+            The sequence of chunks currently in the index.
+        """
+        return self._chunks
+
     def build_index(self, chunks: Sequence[Chunk]) -> None:
         """Build a BM25 index from the given chunks.
 

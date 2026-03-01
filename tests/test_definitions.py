@@ -206,6 +206,28 @@ def test_parse_colon_style_smart_quotes() -> None:
     assert "Benchmark" in index.definitions
 
 
+def test_clean_bamsec_noise() -> None:
+    """BamSEC page headers/footers are stripped from definitions."""
+    text = (
+        '"Revolving Loans" means as defined in Section 2.4.\n'
+        '42\n'
+        'Ribbon Communications Inc / 8-K / EX-10.1 / June 24, 2024\n'
+        'Powered by BamSEC.com\n'
+        'PDF page 50\n'
+        '"Other Term" means something else.\n'
+    )
+    section = _make_definitions_section(text)
+    parser = DefinitionsParser()
+    index = parser.parse(section)
+
+    assert "Revolving Loans" in index.definitions
+    defn = index.definitions["Revolving Loans"]
+    assert "BamSEC" not in defn
+    assert "PDF page" not in defn
+    assert "8-K" not in defn
+    assert "Section 2.4" in defn
+
+
 def test_duplicate_terms_keeps_first() -> None:
     """If the same term appears twice, the first occurrence wins."""
     text = (

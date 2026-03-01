@@ -19,6 +19,26 @@ from credit_analyzer.processing.definitions import DefinitionsIndex
 from credit_analyzer.processing.section_detector import DocumentSection
 
 
+def _normalize_for_search(text: str) -> str:
+    """Normalize text for substring matching.
+
+    Collapses whitespace and replaces Unicode smart quotes with ASCII
+    equivalents so that chunk text can be reliably located within the
+    parent section text even when PDF extraction introduces
+    inconsistencies.
+
+    Args:
+        text: Raw text to normalize.
+
+    Returns:
+        Normalized text suitable for ``str.find()`` matching.
+    """
+    out = text.replace("\u201c", '"').replace("\u201d", '"')
+    out = out.replace("\u2018", "'").replace("\u2019", "'")
+    out = re.sub(r"\s+", " ", out)
+    return out
+
+
 def _estimate_chunk_pages(
     chunk_text: str,
     section_text: str,
@@ -30,6 +50,9 @@ def _estimate_chunk_pages(
     Uses the chunk's character offset within the section text to interpolate
     which pages it covers.  Falls back to the full section range when the
     section fits on a single page or the chunk text is not found.
+
+    Both texts are normalized (smart quotes collapsed, whitespace
+    unified) before matching to handle PDF extraction inconsistencies.
 
     Args:
         chunk_text: The text of the chunk.
@@ -44,13 +67,17 @@ def _estimate_chunk_pages(
     if total_pages <= 1 or not section_text:
         return list(range(page_start, page_end + 1))
 
-    idx = section_text.find(chunk_text[:200])  # match on prefix to handle truncation
+    norm_section = _normalize_for_search(section_text)
+    norm_prefix = _normalize_for_search(chunk_text[:200])
+    idx = norm_section.find(norm_prefix)
     if idx < 0:
         return list(range(page_start, page_end + 1))
 
-    section_len = len(section_text)
+    section_len = len(norm_section)
+    # Estimate chunk length in normalized space proportionally
+    chunk_len_est = int(len(chunk_text) * len(norm_section) / max(len(section_text), 1))
     chunk_start_frac = idx / section_len
-    chunk_end_frac = min((idx + len(chunk_text)) / section_len, 1.0)
+    chunk_end_frac = min((idx + chunk_len_est) / section_len, 1.0)
 
     est_page_start = page_start + int(chunk_start_frac * total_pages)
     est_page_end = page_start + int(chunk_end_frac * total_pages)
@@ -276,6 +303,9 @@ class Chunker:
         Returns:
             A definition-type Chunk.
         """
+        pages = _estimate_chunk_pages(
+            text, section.text, section.page_start, section.page_end,
+        )
         return Chunk(
             chunk_id=_generate_chunk_id(),
             text=text,
@@ -285,7 +315,7 @@ class Chunker:
             article_title=section.article_title,
             section_type=section.section_type,
             chunk_type="definition",
-            page_numbers=list(range(section.page_start, section.page_end + 1)),
+            page_numbers=pages,
             defined_terms_present=terms,
             chunk_index=chunk_index,
             token_count=_count_tokens(text, self._encoding),

@@ -606,6 +606,83 @@ class TestFormatPageNumbers:
 
 
 # ---------------------------------------------------------------------------
+# Markdown stripping
+# ---------------------------------------------------------------------------
+
+
+class TestStripMarkdown:
+    """Tests for post-processing markdown removal."""
+
+    def test_bold_stripped(self) -> None:
+        from credit_analyzer.generation.qa_engine import _strip_markdown
+
+        assert _strip_markdown("This is **bold** text") == "This is bold text"
+
+    def test_headers_stripped(self) -> None:
+        from credit_analyzer.generation.qa_engine import _strip_markdown
+
+        assert _strip_markdown("## Section Title\nContent") == "Section Title\nContent"
+
+    def test_backticks_stripped(self) -> None:
+        from credit_analyzer.generation.qa_engine import _strip_markdown
+
+        assert _strip_markdown("Use `code` here") == "Use code here"
+
+    def test_plain_text_unchanged(self) -> None:
+        from credit_analyzer.generation.qa_engine import _strip_markdown
+
+        text = "Plain text with 1. numbered list"
+        assert _strip_markdown(text) == text
+
+
+# ---------------------------------------------------------------------------
+# Citation deduplication
+# ---------------------------------------------------------------------------
+
+
+class TestCitationDedup:
+    """Tests for source citation deduplication."""
+
+    def test_duplicate_sections_merged(self) -> None:
+        from credit_analyzer.generation.response_parser import enrich_citations
+
+        citations = [
+            SourceCitation("7.1", "", [115], ""),
+            SourceCitation("7.1", "", [116], ""),
+        ]
+        chunks = [
+            _make_hybrid_chunk(
+                chunk_id="c1", section_id="7.1",
+                section_title="Financial Covenants", page_numbers=[115, 116],
+            ),
+        ]
+        result = enrich_citations(citations, chunks)
+        assert len(result) == 1
+        assert 115 in result[0].page_numbers
+        assert 116 in result[0].page_numbers
+
+    def test_different_sections_kept(self) -> None:
+        from credit_analyzer.generation.response_parser import enrich_citations
+
+        citations = [
+            SourceCitation("7.1", "", [115], ""),
+            SourceCitation("7.6", "", [120], ""),
+        ]
+        chunks = [
+            _make_hybrid_chunk(
+                chunk_id="c1", section_id="7.1",
+                section_title="Financial Covenants", page_numbers=[115],
+            ),
+            _make_hybrid_chunk(
+                chunk_id="c2", section_id="7.6",
+                section_title="Restricted Payments", page_numbers=[120],
+            ),
+        ]
+        result = enrich_citations(citations, chunks)
+        assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
 # Definition deduplication in build_context_prompt
 # ---------------------------------------------------------------------------
 

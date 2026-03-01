@@ -153,14 +153,15 @@ def enrich_citations(
     """Fill in section_title and relevant_text_snippet from retrieved chunks.
 
     For each citation, finds the best matching chunk by section_id and
-    populates the missing fields.
+    populates the missing fields.  Deduplicates citations that share the
+    same section_id, merging their page numbers.
 
     Args:
         citations: Parsed citations (may have empty title/snippet).
         chunks: The retrieved chunks that provided context.
 
     Returns:
-        Enriched citations. Citations with no matching chunk are kept as-is.
+        Enriched, deduplicated citations.
     """
     section_chunks: dict[str, HybridChunk] = {}
     for hc in chunks:
@@ -168,9 +169,25 @@ def enrich_citations(
         if sid not in section_chunks or hc.score > section_chunks[sid].score:
             section_chunks[sid] = hc
 
+    seen_sections: dict[str, int] = {}  # section_id -> index in enriched
     enriched: list[SourceCitation] = []
+
     for cite in citations:
         hc = section_chunks.get(cite.section_id)
+
+        if cite.section_id in seen_sections:
+            # Merge page numbers into existing citation
+            idx = seen_sections[cite.section_id]
+            existing = enriched[idx]
+            merged_pages = sorted(set(existing.page_numbers + cite.page_numbers))
+            enriched[idx] = SourceCitation(
+                section_id=existing.section_id,
+                section_title=existing.section_title,
+                page_numbers=merged_pages,
+                relevant_text_snippet=existing.relevant_text_snippet,
+            )
+            continue
+
         if hc is not None:
             snippet = _make_snippet(hc.chunk.text)
             enriched.append(
@@ -183,6 +200,8 @@ def enrich_citations(
             )
         else:
             enriched.append(cite)
+
+        seen_sections[cite.section_id] = len(enriched) - 1
 
     return enriched
 

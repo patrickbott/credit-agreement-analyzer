@@ -47,13 +47,25 @@ def _make_retriever(
     vector_results: list[RetrievedChunk] | None = None,
     bm25_results: list[BM25Result] | None = None,
     definitions: dict[str, str] | None = None,
+    indexed_chunks: list[Chunk] | None = None,
 ) -> HybridRetriever:
-    """Build a HybridRetriever with mocked dependencies."""
+    """Build a HybridRetriever with mocked dependencies.
+
+    Args:
+        indexed_chunks: Chunks exposed via bm25_store.chunks. Used for
+            both definition chunk lookup (chunk_type="definition") and
+            corpus-level term frequency computation.
+    """
     mock_vector_store = MagicMock(spec=VectorStore)
     mock_vector_store.search.return_value = vector_results or []
 
     mock_bm25_store = MagicMock(spec=BM25Store)
     mock_bm25_store.search.return_value = bm25_results or []
+    # Expose chunks property for definition chunk lookup + term frequency
+    captured_chunks = indexed_chunks or []
+    type(mock_bm25_store).chunks = property(
+        lambda self: captured_chunks
+    )
 
     mock_embedder = MagicMock(spec=Embedder)
     mock_embedder.embed_query.return_value = [0.1] * 384
@@ -66,6 +78,21 @@ def _make_retriever(
         embedder=mock_embedder,
         definitions_index=defn_index,
     )
+
+
+def _make_ubiquitous_corpus(term: str, total: int = 8) -> list[Chunk]:
+    """Build corpus chunks where a term appears in >25% of them.
+
+    Creates ``total`` chunks with the term in the first ``total - 1``
+    (well above the 25% threshold).
+    """
+    chunks: list[Chunk] = []
+    for i in range(total):
+        text = f"The {term} shall comply." if i < total - 1 else "Unrelated text."
+        chunks.append(
+            _make_chunk(chunk_id=f"corpus_{i}", text=text)
+        )
+    return chunks
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +231,10 @@ def test_definitions_injected() -> None:
         text="The Borrower may make Restricted Payments up to the Available Amount.",
     )
 
+    # Provide a corpus where "Borrower" appears in >25% of chunks,
+    # making it automatically ubiquitous via corpus frequency.
+    corpus = _make_ubiquitous_corpus("Borrower")
+
     retriever = _make_retriever(
         vector_results=[RetrievedChunk(chunk=chunk, score=0.9)],
         definitions={
@@ -211,13 +242,61 @@ def test_definitions_injected() -> None:
             "Restricted Payments": "dividends, distributions, etc.",
             "Available Amount": "the sum of X and Y",
         },
+        indexed_chunks=corpus,
     )
 
     result = retriever.retrieve("restricted payments", "doc1", top_k=5)
 
-    assert "Borrower" in result.injected_definitions
+    # "Borrower" is ubiquitous (>25% of corpus) and deprioritized
+    assert "Borrower" not in result.injected_definitions
     assert "Restricted Payments" in result.injected_definitions
     assert "Available Amount" in result.injected_definitions
+
+
+def test_ubiquitous_term_injected_when_in_query() -> None:
+    """Ubiquitous terms ARE injected when the query mentions them."""
+    chunk = _make_chunk(
+        chunk_id="c1",
+        text="The Borrower shall maintain compliance.",
+    )
+
+    corpus = _make_ubiquitous_corpus("Borrower")
+
+    retriever = _make_retriever(
+        vector_results=[RetrievedChunk(chunk=chunk, score=0.9)],
+        definitions={
+            "Borrower": "the entity on the signature page",
+        },
+        indexed_chunks=corpus,
+    )
+
+    result = retriever.retrieve("Who is the Borrower?", "doc1", top_k=5)
+
+    assert "Borrower" in result.injected_definitions
+
+
+def test_non_ubiquitous_term_always_injected() -> None:
+    """Terms with low corpus frequency are injected regardless of query."""
+    chunk = _make_chunk(
+        chunk_id="c1",
+        text="The Applicable Margin determines interest rates.",
+    )
+
+    # Corpus where "Applicable Margin" appears in only 1 of 8 chunks (12.5%)
+    corpus = [_make_chunk(chunk_id="c_other", text="Unrelated text.")] * 7
+    corpus.append(
+        _make_chunk(chunk_id="c_am", text="Applicable Margin is defined here.")
+    )
+
+    retriever = _make_retriever(
+        vector_results=[RetrievedChunk(chunk=chunk, score=0.9)],
+        definitions={"Applicable Margin": "the spread over SOFR"},
+        indexed_chunks=corpus,
+    )
+
+    # Query does NOT mention the term, but it should still be injected
+    result = retriever.retrieve("What is the interest rate?", "doc1", top_k=5)
+    assert "Applicable Margin" in result.injected_definitions
 
 
 def test_definitions_capped_at_max() -> None:
@@ -300,3 +379,148 @@ def test_section_types_exclude_passed_to_stores() -> None:
     # Verify BM25 store received the exclude parameter
     bm25_kwargs = retriever._bm25_store.search.call_args  # type: ignore[union-attr]
     assert bm25_kwargs.kwargs.get("section_types_exclude") == exclude
+
+
+# ---------------------------------------------------------------------------
+# Recursive definition expansion
+# ---------------------------------------------------------------------------
+
+
+def _make_definition_chunk(
+    term: str,
+    text: str,
+    chunk_id: str = "defn_chunk",
+) -> Chunk:
+    """Build a definition Chunk for promotion tests."""
+    return Chunk(
+        chunk_id=chunk_id,
+        text=text,
+        section_id="1.1",
+        section_title="Defined Terms",
+        article_number=1,
+        article_title="DEFINITIONS",
+        section_type="definitions",
+        chunk_type="definition",
+        page_numbers=[15],
+        defined_terms_present=[term],
+        chunk_index=0,
+        token_count=250,
+    )
+
+
+def test_definition_chunk_promotion_with_query_mention() -> None:
+    """Long definitions mentioned in query are promoted to full chunks."""
+    chunk = _make_chunk(
+        chunk_id="c1",
+        text="Interest shall accrue at SOFR plus the Applicable Margin.",
+    )
+
+    long_defn = "x" * 1000  # exceeds QA_DEFINITION_MAX_CHARS
+    defn_chunk = _make_definition_chunk("Applicable Margin", long_defn, "defn_am")
+
+    retriever = _make_retriever(
+        vector_results=[RetrievedChunk(chunk=chunk, score=0.9)],
+        definitions={"Applicable Margin": long_defn},
+        indexed_chunks=[defn_chunk],
+    )
+
+    result = retriever.retrieve(
+        "What is the Applicable Margin?", "doc1", top_k=5,
+    )
+
+    chunk_ids = [hc.chunk.chunk_id for hc in result.chunks]
+    assert "defn_am" in chunk_ids
+    assert "Applicable Margin" not in result.injected_definitions
+
+
+def test_definition_chunk_promotion_without_query_mention() -> None:
+    """Long definitions are promoted even when NOT in the query.
+
+    This is the core Fix A test: a retrieved chunk references
+    'Applicable Margin' but the query only says 'interest rate'.
+    The definition is long (pricing grid) and should be promoted
+    as a full chunk rather than truncated.
+    """
+    chunk = _make_chunk(
+        chunk_id="c1",
+        text="Interest shall accrue at SOFR plus the Applicable Margin.",
+    )
+
+    long_defn = "x" * 1000
+    defn_chunk = _make_definition_chunk("Applicable Margin", long_defn, "defn_am")
+
+    retriever = _make_retriever(
+        vector_results=[RetrievedChunk(chunk=chunk, score=0.9)],
+        definitions={"Applicable Margin": long_defn},
+        indexed_chunks=[defn_chunk],
+    )
+
+    # Query does NOT mention "Applicable Margin" -- just "interest rate"
+    result = retriever.retrieve(
+        "What is the interest rate?", "doc1", top_k=5,
+    )
+
+    chunk_ids = [hc.chunk.chunk_id for hc in result.chunks]
+    assert "defn_am" in chunk_ids
+    assert "Applicable Margin" not in result.injected_definitions
+
+
+def test_ubiquitous_long_definition_not_promoted() -> None:
+    """Ubiquitous long definitions are NOT promoted unless in query."""
+    chunk = _make_chunk(
+        chunk_id="c1",
+        text="The Borrower shall comply with covenants.",
+    )
+
+    long_defn = "x" * 1000
+    defn_chunk = _make_definition_chunk("Borrower", long_defn, "defn_borr")
+
+    # Corpus makes "Borrower" ubiquitous (>25%)
+    corpus = _make_ubiquitous_corpus("Borrower")
+    corpus.append(defn_chunk)  # also include the definition chunk
+
+    retriever = _make_retriever(
+        vector_results=[RetrievedChunk(chunk=chunk, score=0.9)],
+        definitions={"Borrower": long_defn},
+        indexed_chunks=corpus,
+    )
+
+    # Query does NOT mention "Borrower"
+    result = retriever.retrieve("What are the covenants?", "doc1", top_k=5)
+
+    chunk_ids = [hc.chunk.chunk_id for hc in result.chunks]
+    assert "defn_borr" not in chunk_ids
+    assert "Borrower" not in result.injected_definitions
+
+
+def test_recursive_definition_expansion() -> None:
+    """Definitions referenced inside other definitions are also injected."""
+    # Chunk text mentions "Applicable Margin" but not "Leverage Ratio"
+    chunk = _make_chunk(
+        chunk_id="c1",
+        text="Interest shall accrue at SOFR plus the Applicable Margin.",
+    )
+
+    # "Applicable Margin" definition references "Leverage Ratio"
+    definitions = {
+        "Applicable Margin": (
+            "the rate determined by the Leverage Ratio grid"
+        ),
+        "Leverage Ratio": "Consolidated Net Debt divided by EBITDA",
+        "EBITDA": "earnings before interest taxes depreciation",
+        "Unrelated Term": "something not referenced anywhere",
+    }
+
+    retriever = _make_retriever(
+        vector_results=[RetrievedChunk(chunk=chunk, score=0.9)],
+        definitions=definitions,
+    )
+
+    result = retriever.retrieve("interest rate", "doc1")
+
+    # Primary pass: "Applicable Margin" found in chunk text
+    assert "Applicable Margin" in result.injected_definitions
+    # Expansion pass: "Leverage Ratio" found inside Applicable Margin definition
+    assert "Leverage Ratio" in result.injected_definitions
+    # "Unrelated Term" not referenced by anything in the chain
+    assert "Unrelated Term" not in result.injected_definitions
