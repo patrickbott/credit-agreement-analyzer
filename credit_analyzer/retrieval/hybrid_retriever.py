@@ -498,15 +498,49 @@ class HybridRetriever:
             MAX_DEFINITIONS_INJECTED - len(primary_defs),
             _EXPANSION_MIN_SLOTS,
         )
-        if remaining_slots > 0 and expansion_counts:
-            expansion_terms = [
-                term
-                for term, _ in expansion_counts.most_common(remaining_slots)
-            ]
-            expansion_defs = self._definitions_index.get_definitions_for_terms(
-                expansion_terms
+        if remaining_slots > 0:
+            # Direct metadata terms get guaranteed priority over
+            # cross-references.  Without this, terms like "Available
+            # Incremental Amount" (structurally referenced in a
+            # retrieved chunk but low corpus frequency) get buried
+            # by dozens of cross-refs from scanning 50+ metadata
+            # definitions.  We fill slots in two tiers:
+            #   Tier 1: direct metadata terms (guaranteed slots)
+            #   Tier 2: cross-references (fill remaining capacity)
+            direct_metadata_expansion: list[str] = sorted(
+                (
+                    term
+                    for term in metadata_only
+                    if (
+                        term not in self._ubiquitous_terms
+                        and term in expansion_counts
+                    )
+                ),
+                key=lambda t: term_scores.get(t, 0.0),
+                reverse=True,
             )
-            primary_defs.update(expansion_defs)
+            tier1_terms = direct_metadata_expansion[:remaining_slots]
+            tier1_defs = self._definitions_index.get_definitions_for_terms(
+                tier1_terms
+            )
+            primary_defs.update(tier1_defs)
+
+            # Fill remaining slots with cross-references.
+            tier2_slots = remaining_slots - len(tier1_defs)
+            if tier2_slots > 0 and expansion_counts:
+                tier2_terms = [
+                    term
+                    for term, _ in expansion_counts.most_common(
+                        tier2_slots + len(tier1_terms)
+                    )
+                    if term not in tier1_defs and term not in primary_defs
+                ][:tier2_slots]
+                tier2_defs = (
+                    self._definitions_index.get_definitions_for_terms(
+                        tier2_terms
+                    )
+                )
+                primary_defs.update(tier2_defs)
 
         # Pass 3: promote long definitions as full chunks, inject the rest.
         # Promotion gate: definition is long AND has a chunk AND is not
