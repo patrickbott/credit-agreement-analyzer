@@ -170,10 +170,6 @@ For each term in the combined primary + expansion set:
 - **Otherwise**: INJECT the definition as truncated text (up to 800 chars,
   cut at sentence boundary) in the definitions section of the prompt.
 
-**Original plan**: All definitions truncated and injected. No promotion.
-This was the core bug: Applicable Margin's pricing grid (the actual SOFR/ABR
-spread tiers by leverage ratio) always got cut off.
-
 
 ## Context Assembly (Phase 4)
 
@@ -237,9 +233,6 @@ Max generation:                 1,024 tokens
                                 -----------
 Grand total:                   ~14,274 tokens
 ```
-
-Claude Sonnet's context window is 200K tokens. We're using ~7% of it.
-The original plan used ~1,500 tokens of context (5 chunks * ~300 tokens).
 
 
 ## What Changed: Summary
