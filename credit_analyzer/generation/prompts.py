@@ -184,7 +184,10 @@ def build_context_prompt(
         c = hc.chunk
         pages = _format_page_numbers(c.page_numbers)
         text = c.text
-        if len(text) > QA_CHUNK_TEXT_MAX_CHARS:
+        # Promoted definition chunks (source="definition") are exempt
+        # from truncation.  They were promoted specifically because
+        # their full text is needed (pricing grids, ratio tables).
+        if hc.source != "definition" and len(text) > QA_CHUNK_TEXT_MAX_CHARS:
             text = text[:QA_CHUNK_TEXT_MAX_CHARS].rstrip() + "..."
         parts.append(
             f"--- Source: {c.section_title} "

@@ -12,6 +12,7 @@ from credit_analyzer.config import (
     DEFINITION_UBIQUITY_THRESHOLD,
     MAX_DEFINITIONS_INJECTED,
     QA_DEFINITION_MAX_CHARS,
+    SIBLING_EXPANSION_MAX_TOKENS,
     VECTOR_WEIGHT,
 )
 from credit_analyzer.processing.chunker import Chunk
@@ -138,6 +139,15 @@ class HybridRetriever:
                     if term not in self._definition_chunk_lookup:
                         self._definition_chunk_lookup[term] = chunk
 
+        # Build section -> chunks index for sibling expansion.
+        # Keyed by section_id, sorted by chunk_index within each section.
+        section_chunks: dict[str, list[Chunk]] = {}
+        for chunk in bm25_store.chunks:
+            section_chunks.setdefault(chunk.section_id, []).append(chunk)
+        for section_id in section_chunks:
+            section_chunks[section_id].sort(key=lambda c: c.chunk_index)
+        self._section_chunks: dict[str, list[Chunk]] = section_chunks
+
         # Compute corpus-level term frequency for ubiquity detection.
         self._term_doc_freq = _compute_term_document_frequency(
             list(bm25_store.chunks), definitions_index,
@@ -223,6 +233,11 @@ class HybridRetriever:
             for score, source, chunk in top_items
         ]
 
+        # Sibling expansion: pull in adjacent chunks from the same
+        # section to capture tables, sub-clauses, and content that
+        # was split across chunk boundaries.
+        hybrid_chunks = self._expand_siblings(hybrid_chunks, top_k)
+
         # Definition injection + expansion
         injected: dict[str, str] = {}
         if inject_definitions and hybrid_chunks:
@@ -231,6 +246,101 @@ class HybridRetriever:
             )
 
         return RetrievalResult(chunks=hybrid_chunks, injected_definitions=injected)
+
+    def _expand_siblings(
+        self,
+        chunks: list[HybridChunk],
+        top_k: int,
+    ) -> list[HybridChunk]:
+        """Pull in sibling chunks from the same section as retrieved chunks.
+
+        When a chunk is retrieved from a multi-chunk section, important
+        context (tables, sub-clauses, continuation text) may be in
+        adjacent chunks that didn't score high enough individually.
+        This is especially common for small table chunks next to the
+        text that references them.
+
+        Siblings are added up to a per-section token budget to avoid
+        flooding the context with low-value content from large sections.
+        Only non-definition sections are expanded (definition chunks
+        are handled by the promotion system instead).
+
+        Args:
+            chunks: The current retrieved chunks.
+            top_k: Maximum total chunks allowed.
+
+        Returns:
+            Updated chunks list with siblings inserted.
+        """
+        if not chunks or SIBLING_EXPANSION_MAX_TOKENS <= 0:
+            return chunks
+
+        existing_ids = {hc.chunk.chunk_id for hc in chunks}
+
+        # Track which sections we've already seen and their token budgets.
+        section_tokens_added: dict[str, int] = {}
+        siblings_to_add: list[HybridChunk] = []
+
+        for hc in chunks:
+            section_id = hc.chunk.section_id
+            # Skip definition chunks -- handled by promotion.
+            if hc.chunk.chunk_type == "definition":
+                continue
+            if section_id in section_tokens_added:
+                continue  # Already expanded this section.
+
+            section_siblings = self._section_chunks.get(section_id, [])
+            if len(section_siblings) <= 1:
+                continue  # Single-chunk section, nothing to expand.
+
+            section_tokens_added[section_id] = 0
+            budget = SIBLING_EXPANSION_MAX_TOKENS
+
+            for sibling in section_siblings:
+                if sibling.chunk_id in existing_ids:
+                    continue
+                if sibling.token_count > budget:
+                    continue
+                siblings_to_add.append(
+                    HybridChunk(
+                        chunk=sibling,
+                        score=hc.score * 0.9,
+                        source=hc.source,
+                    )
+                )
+                existing_ids.add(sibling.chunk_id)
+                section_tokens_added[section_id] += sibling.token_count
+                budget -= sibling.token_count
+                if budget <= 0:
+                    break
+
+        if not siblings_to_add:
+            return chunks
+
+        # Add siblings, respecting top_k by replacing lowest-scoring
+        # chunks if we're at capacity.
+        result = list(chunks)
+        for sibling_hc in siblings_to_add:
+            if len(result) < top_k:
+                result.append(sibling_hc)
+            else:
+                # Find the lowest-scoring non-sibling, non-definition chunk
+                # to replace.  Don't evict chunks from other sections.
+                min_idx = -1
+                min_score = float("inf")
+                for i, existing in enumerate(result):
+                    if (
+                        existing.source != "definition"
+                        and existing.chunk.section_id
+                        != sibling_hc.chunk.section_id
+                        and existing.score < min_score
+                    ):
+                        min_score = existing.score
+                        min_idx = i
+                if min_idx >= 0 and sibling_hc.score >= min_score:
+                    result[min_idx] = sibling_hc
+
+        return result
 
     def _inject_and_expand_definitions(
         self,
@@ -286,6 +396,22 @@ class HybridRetriever:
             elif term in self._ubiquitous_terms:
                 score -= 50.0
             term_scores[term] = score
+
+        # Boost long definitions that need chunk promotion.  Short
+        # definitions survive truncation fine; long ones (pricing grids,
+        # ratio tables) lose critical content.  A single mention of a
+        # long definition in a retrieved chunk should outrank several
+        # mentions of a short definition that will be injected intact.
+        for term in all_candidate_terms:
+            defn = self._definitions_index.lookup(term)
+            if (
+                defn is not None
+                and len(defn) > QA_DEFINITION_MAX_CHARS
+                and term in self._definition_chunk_lookup
+                and term not in self._ubiquitous_terms
+                and chunk_term_counts.get(term, 0) > 0
+            ):
+                term_scores[term] += 15.0
 
         ranked_terms = sorted(
             term_scores.keys(), key=lambda t: term_scores[t], reverse=True,

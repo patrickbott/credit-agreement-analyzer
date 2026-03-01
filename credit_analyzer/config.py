@@ -26,6 +26,7 @@ TIKTOKEN_ENCODING: str = "cl100k_base"
 VECTOR_WEIGHT: float = 0.6
 BM25_WEIGHT: float = 0.4
 MAX_DEFINITIONS_INJECTED: int = 18  # Room for primary + recursive expansion
+SIBLING_EXPANSION_MAX_TOKENS: int = 800  # Max tokens of sibling chunks to add per section
 
 # --- LLM ---
 LLM_PROVIDER: str = "claude"  # "ollama" | "claude" | "internal"
