@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -353,12 +354,21 @@ class HybridRetriever:
         Three-phase approach:
 
         1. **Rank**: Score all defined terms found in retrieved chunks.
+           Frequency is log-dampened so high-count generic terms don't
+           crowd out low-count specific terms.  Terms that appear in
+           chunk metadata (``defined_terms_present``) get a boost for
+           being structurally important to the retrieved sections.
            Query mentions get a large boost.  Ubiquitous terms (computed
-           from corpus-level document frequency, not a hardcoded list)
-           are penalized unless the query explicitly asks about them.
+           from corpus-level document frequency) are penalized unless the
+           query explicitly asks about them.
 
-        2. **Expand**: Recursively scan primary definitions for additional
-           defined terms and add them to the candidate set.
+        2. **Expand**: Recursively scan two sources for additional
+           defined terms: (a) definitions of the top-ranked primary
+           terms, and (b) definitions of chunk metadata terms that
+           scored too low for the primary cut but are structurally
+           referenced in the retrieved sections.  This captures
+           reference chains where a low-frequency bridge term
+           connects to important sub-definitions.
 
         3. **Promote or Inject**: Long definitions whose full definition
            chunk is available get promoted into the result set as full
@@ -380,9 +390,16 @@ class HybridRetriever:
         query_terms = set(self._definitions_index.find_terms_in_text(query))
 
         chunk_term_counts: Counter[str] = Counter()
+        # Also track which terms appear in chunk metadata as explicit
+        # defined-term references (the chunker's find_terms_in_text
+        # populates `defined_terms_present` on each chunk).  A term
+        # in this set was deliberately referenced by the section text,
+        # not just incidentally containing a common word.
+        metadata_terms: set[str] = set()
         for hc in chunks:
             terms = self._definitions_index.find_terms_in_text(hc.chunk.text)
             chunk_term_counts.update(terms)
+            metadata_terms.update(hc.chunk.defined_terms_present)
 
         all_candidate_terms = set(chunk_term_counts.keys()) | query_terms
         if not all_candidate_terms:
@@ -390,11 +407,25 @@ class HybridRetriever:
 
         term_scores: dict[str, float] = {}
         for term in all_candidate_terms:
-            score = float(chunk_term_counts.get(term, 0))
+            # Use log2 to dampen frequency so high-frequency generic
+            # terms (Indebtedness, Obligations) don't crowd out
+            # low-frequency specific terms (Available Incremental
+            # Amount, Fixed Incremental Amount).  A term appearing
+            # once scores ~1.0; one appearing 20 times scores ~4.4.
+            raw_count = chunk_term_counts.get(term, 0)
+            score = math.log2(raw_count + 1) if raw_count > 0 else 0.0
             if term in query_terms:
                 score += 100.0
             elif term in self._ubiquitous_terms:
                 score -= 50.0
+            # Boost terms that appear in chunk metadata as explicit
+            # defined-term references.  These are structurally
+            # important to the retrieved sections (e.g. "Available
+            # Incremental Amount" referenced in Section 2.27) and
+            # are more likely to contain the specific provisions the
+            # user needs than high-frequency generic terms.
+            if term in metadata_terms and term not in self._ubiquitous_terms:
+                score += 3.0
             term_scores[term] = score
 
         # Boost long definitions that need chunk promotion.  Short
@@ -417,20 +448,56 @@ class HybridRetriever:
             term_scores.keys(), key=lambda t: term_scores[t], reverse=True,
         )
 
-        # Pass 2: recursive expansion
+        # Pass 2: recursive expansion from two sources:
+        #   (a) definitions of the top-ranked primary terms, and
+        #   (b) chunk metadata terms that didn't make the primary cut.
+        # Source (b) catches terms like "Available Incremental Amount"
+        # that appear in a retrieved chunk's text but score too low
+        # on frequency to make the top-N.  Following their definition
+        # text chains to related terms (e.g. Fixed Incremental Amount)
+        # ensures the LLM gets the full reference tree.
         primary_terms = ranked_terms[:MAX_DEFINITIONS_INJECTED]
         primary_defs = self._definitions_index.get_definitions_for_terms(
             primary_terms
         )
 
         expansion_counts: Counter[str] = Counter()
+        # (a) Scan primary definitions for cross-references.
         for defn_text in primary_defs.values():
             found = self._definitions_index.find_terms_in_text(defn_text)
             for term in found:
                 if term not in primary_defs:
                     expansion_counts[term] += 1
 
-        remaining_slots = MAX_DEFINITIONS_INJECTED - len(primary_defs)
+        # (b) Scan definitions of metadata terms that didn't make
+        # the primary cut.  These are terms explicitly referenced
+        # in chunk text (structurally important) but ranked below
+        # top-N due to low corpus frequency.
+        metadata_only = metadata_terms - set(primary_terms)
+        for term in metadata_only:
+            if term in self._ubiquitous_terms:
+                continue
+            defn_text = self._definitions_index.lookup(term)
+            if defn_text is None:
+                continue
+            # Add the metadata term itself as an expansion candidate.
+            if term not in primary_defs:
+                expansion_counts[term] += 1
+            # Follow its cross-references too.
+            found = self._definitions_index.find_terms_in_text(defn_text)
+            for ref_term in found:
+                if ref_term not in primary_defs:
+                    expansion_counts[ref_term] += 1
+
+        # Expansion budget: the primary budget often fills completely,
+        # leaving zero slots for metadata-sourced terms.  Give
+        # expansion a minimum of 6 additional slots so structurally
+        # important terms (and their cross-references) aren't starved.
+        _EXPANSION_MIN_SLOTS = 6
+        remaining_slots = max(
+            MAX_DEFINITIONS_INJECTED - len(primary_defs),
+            _EXPANSION_MIN_SLOTS,
+        )
         if remaining_slots > 0 and expansion_counts:
             expansion_terms = [
                 term

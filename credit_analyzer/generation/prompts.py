@@ -56,6 +56,11 @@ Confidence: HIGH | MEDIUM | LOW
 2. MEDIUM: Requires some interpretation or context is partial.
 3. LOW: Context is limited; manual verification recommended.
 
+IMPORTANT: If the context does not contain sufficient information to \
+answer the question, confidence must be MEDIUM or LOW. You only see a \
+subset of the full agreement, so absence from the context does not mean \
+the provision does not exist elsewhere in the document.
+
 Sources: Section X.XX (pp. XX-XX), Section Y.YY (pp. YY-YY)
 """
 
