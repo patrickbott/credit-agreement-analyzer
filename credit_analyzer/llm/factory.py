@@ -22,18 +22,13 @@ _VALID_PROVIDERS: frozenset[str] = frozenset({"ollama", "claude", "internal"})
 
 
 def get_provider(provider_name: str | None = None) -> LLMProvider:
-    """Return an :class:`LLMProvider` instance based on config or an explicit name.
+    """Return a configured LLM provider instance.
 
-    Parameters
-    ----------
-    provider_name:
-        Override the provider selection.  When ``None`` (the default),
-        :data:`credit_analyzer.config.LLM_PROVIDER` is used.
+    Args:
+        provider_name: Override provider selection; defaults to LLM_PROVIDER in config.
 
-    Raises
-    ------
-    ValueError
-        If the provider name is not recognised.
+    Raises:
+        ValueError: If the provider name is unrecognized.
     """
     name = provider_name if provider_name is not None else LLM_PROVIDER
 

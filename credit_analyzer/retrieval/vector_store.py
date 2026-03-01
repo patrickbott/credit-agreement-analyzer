@@ -26,7 +26,7 @@ class RetrievedChunk:
 
 
 # Keys stored in ChromaDB metadata.  ChromaDB only supports primitive
-# types (str | int | float | bool) so list fields are joined as strings.
+# types (str | int | float | bool) so list fields are serialized as strings.
 _META_SECTION_ID = "section_id"
 _META_SECTION_TITLE = "section_title"
 _META_ARTICLE_NUMBER = "article_number"
@@ -35,8 +35,12 @@ _META_SECTION_TYPE = "section_type"
 _META_CHUNK_TYPE = "chunk_type"
 _META_CHUNK_INDEX = "chunk_index"
 _META_TOKEN_COUNT = "token_count"
-_META_PAGE_NUMBERS = "page_numbers"  # comma-separated ints
-_META_DEFINED_TERMS = "defined_terms"  # comma-separated strings
+_META_PAGE_NUMBERS = "page_numbers"  # pipe-separated ints, e.g. "45|46"
+_META_DEFINED_TERMS = "defined_terms"  # pipe-separated strings, e.g. "Available Amount|Borrower"
+
+# Pipe is used as a list delimiter because defined term names never contain it,
+# whereas commas can appear in parenthetical definitions ("means X, Y, or Z").
+_LIST_SEPARATOR = "|"
 
 
 def chunk_to_metadata(chunk: Chunk) -> dict[str, str | int | float | bool]:
@@ -50,8 +54,8 @@ def chunk_to_metadata(chunk: Chunk) -> dict[str, str | int | float | bool]:
         _META_CHUNK_TYPE: chunk.chunk_type,
         _META_CHUNK_INDEX: chunk.chunk_index,
         _META_TOKEN_COUNT: chunk.token_count,
-        _META_PAGE_NUMBERS: ",".join(str(p) for p in chunk.page_numbers),
-        _META_DEFINED_TERMS: ",".join(chunk.defined_terms_present),
+        _META_PAGE_NUMBERS: _LIST_SEPARATOR.join(str(p) for p in chunk.page_numbers),
+        _META_DEFINED_TERMS: _LIST_SEPARATOR.join(chunk.defined_terms_present),
     }
 
 
@@ -62,10 +66,10 @@ def metadata_to_chunk(
 ) -> Chunk:
     """Reconstruct a Chunk from ChromaDB metadata and document text."""
     page_str = str(meta.get(_META_PAGE_NUMBERS, ""))
-    page_numbers = [int(p) for p in page_str.split(",") if p]
+    page_numbers = [int(p) for p in page_str.split(_LIST_SEPARATOR) if p.strip()]
 
     terms_str = str(meta.get(_META_DEFINED_TERMS, ""))
-    defined_terms = [t for t in terms_str.split(",") if t]
+    defined_terms = [t for t in terms_str.split(_LIST_SEPARATOR) if t.strip()]
 
     return Chunk(
         chunk_id=chunk_id,

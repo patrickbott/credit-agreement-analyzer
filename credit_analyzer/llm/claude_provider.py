@@ -12,9 +12,6 @@ from credit_analyzer.llm.base import LLMProvider, LLMResponse
 
 logger = logging.getLogger(__name__)
 
-# Default model to use when none is specified.
-_DEFAULT_MODEL = "claude-sonnet-4-20250514"
-
 
 class ClaudeProvider(LLMProvider):
     """LLM provider that delegates to the Anthropic Messages API.
@@ -26,12 +23,13 @@ class ClaudeProvider(LLMProvider):
 
     def __init__(
         self,
-        model: str = _DEFAULT_MODEL,
+        model: str,
         api_key: str | None = None,
     ) -> None:
         self._model = model
-        # anthropic.Anthropic reads ANTHROPIC_API_KEY from env if api_key is None
-        self._client: Any = anthropic.Anthropic(api_key=api_key)
+        # max_retries=3 handles transient rate-limits and network blips automatically.
+        # The SDK applies exponential backoff between attempts.
+        self._client: Any = anthropic.Anthropic(api_key=api_key, max_retries=3)
 
     def complete(
         self,
@@ -53,13 +51,24 @@ class ClaudeProvider(LLMProvider):
 
         duration = time.perf_counter() - start
 
-        # response.content is a list of ContentBlock; take the first text block
         text_blocks: list[Any] = [
             b for b in cast(list[Any], response.content) if getattr(b, "type", None) == "text"
         ]
-        text = cast(str, text_blocks[0].text) if text_blocks else ""
 
-        # Usage info
+        if not text_blocks:
+            # The API returned no text blocks, which should not happen under normal
+            # operation but can occur if the response was filtered or truncated.
+            logger.warning(
+                "Claude returned no text blocks for model=%s stop_reason=%s",
+                self._model,
+                getattr(response, "stop_reason", "unknown"),
+            )
+            text = ""
+        else:
+            if len(text_blocks) > 1:
+                logger.debug("Claude returned %d text blocks; using the first.", len(text_blocks))
+            text = cast(str, text_blocks[0].text)
+
         usage: Any = response.usage
         tokens_used = cast(int, getattr(usage, "output_tokens", 0))
 
@@ -71,7 +80,7 @@ class ClaudeProvider(LLMProvider):
         )
 
     def is_available(self) -> bool:
-        """Check whether the Anthropic API is reachable."""
+        """Check whether the Anthropic API is reachable with the configured key."""
         try:
             self._client.models.list(limit=1)
             return True

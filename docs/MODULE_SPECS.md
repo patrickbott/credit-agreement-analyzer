@@ -232,7 +232,7 @@ class VectorStore:
 ### Storage Design
 - Each uploaded document gets its own ChromaDB collection, named by a sanitized version of the filename + upload timestamp
 - Chunk metadata stored alongside embeddings in ChromaDB: section_id, section_title, article_number, section_type, chunk_type, page_numbers
-- `defined_terms_present` stored as comma-separated string in metadata (ChromaDB metadata must be primitive types)
+- `defined_terms_present` stored as pipe-separated string in metadata (ChromaDB metadata must be primitive types; pipe avoids corruption when a term name contains a comma)
 
 ### Filtered Search
 ChromaDB supports metadata filtering via `where` clauses:
@@ -323,8 +323,14 @@ class RetrievedChunk:
 ```python
 VECTOR_WEIGHT = 0.6
 BM25_WEIGHT = 0.4
-MAX_DEFINITIONS_INJECTED = 5
+MAX_DEFINITIONS_INJECTED = 18   # Includes recursive expansion hits
+SIBLING_EXPANSION_MAX_TOKENS = 800
+DEFINITION_UBIQUITY_THRESHOLD = 0.25
 ```
+
+See `docs/RETRIEVAL_ARCHITECTURE.md` for a full description of sibling expansion,
+definition promotion, recursive expansion, and the multi-factor definition scoring
+system — all of which were added beyond what this spec originally described.
 
 ---
 
@@ -495,75 +501,31 @@ Key instructions:
 
 ---
 
-## Module 11: Streamlit UI (`ui/`)
+## Module 11: Streamlit UI (`app.py`, `ui/`)
 
-### Upload Page (`ui/upload_page.py`)
-- File uploader widget (PDF only)
-- Processing progress bar with stage labels:
-  - "Extracting text from PDF..." (with page counter)
-  - "Detecting document structure..."
-  - "Parsing definitions..."
-  - "Creating search index..."
-  - "Ready!"
-- Display document metadata after processing: page count, sections detected, defined terms found
-- Option to view detected sections (expandable list) for quick verification
+The UI was consolidated into `app.py` (the Streamlit entry point) rather than split
+across separate page files. Supporting logic lives in:
 
-### Report Page (`ui/report_page.py`)
-- "Generate Report" button
-- Progress indicator showing which section is being generated
-- Sections displayed as they complete (streaming UX)
-- Each section has:
-  - Section title
-  - Content (markdown rendered)
-  - Collapsible "Sources" showing article/section references
-  - Confidence badge (color-coded: green/yellow/red)
-  - "Regenerate Section" button
-- Export button: download as markdown or PDF
-- Status indicator for sections where data was not found ("Not identified in this agreement")
+- `ui/workflows.py` — document processing orchestration (`build_processed_document`,
+  `save_uploaded_pdf`, `ProcessedDocument` dataclass)
+- `ui/demo_report.py` — demo brief generation using the Q&A engine
+  (`build_demo_brief`, `DEFAULT_BRIEF_PROMPTS`, `SUGGESTED_QUESTIONS`)
+- `ui/theme.py` — shared Streamlit styling helpers
 
-### Chat Page (`ui/chat_page.py`)
-- Standard chat interface (st.chat_message)
-- User input at bottom
-- Each assistant response shows:
-  - Answer text
-  - Source citations in a collapsible section
-  - Confidence badge
-- "Clear conversation" button
-- Suggested starter questions (e.g., "What is the total revolver commitment?", "Describe the restricted payments basket", "What are the financial covenant test levels?")
+**Documents tab**: File uploader, processing progress bar, document stats, and a
+detected-sections expander for quick verification.
+
+**Ask Questions tab**: Multi-turn chat using `st.chat_message`. Each response shows
+the answer, collapsible source citations, and a confidence badge. Suggested quick-action
+buttons are defined in `SUGGESTED_QUESTIONS`. Conversation history persists in
+`st.session_state` keyed by document ID.
+
+**Report tab**: "Generate Report" button with section-by-section progress. Each
+generated section shows title, content, source citations, and confidence. PDF export
+via fpdf2.
 
 ---
 
-## Module 12: Validation (`utils/validation.py`)
-
-### Purpose
-Cross-check extracted values against source text to catch hallucinations.
-
-### Interface
-```python
-class Validator:
-    def validate_numbers(self, extracted_text: str, source_chunks: list[Chunk]) -> list[ValidationIssue]
-    def validate_section_references(self, extracted_text: str, source_chunks: list[Chunk]) -> list[ValidationIssue]
-
-@dataclass
-class ValidationIssue:
-    issue_type: str            # "number_not_in_source", "section_ref_not_found"
-    extracted_value: str       # What the model said
-    context: str               # Surrounding text from model output
-    severity: str              # "warning", "error"
-```
-
-### Logic
-**Number validation:**
-1. Extract all numbers/dollar amounts from LLM output using regex (matches like $50,000,000, 4.50x, 50%, etc.)
-2. For each extracted number, search for it (or common formatting variants) in the source chunk text
-3. If not found in any source chunk, flag as `ValidationIssue`
-
-**Section reference validation:**
-1. Extract all section references from LLM output (e.g., "Section 7.06", "Article VII")
-2. Verify they exist in the document's section index
-3. Flag any references to sections that don't exist
-
-### Usage
-- Run after each LLM extraction in report generation
-- Append validation warnings to the report section (shown in UI as yellow flags)
-- For Q&A, include validation issues in the response metadata
+> **Note:** `utils/validation.py` (number and section-reference cross-checking) was
+> planned but not built in V1. Confidence ratings and source citations are the current
+> mechanism for signaling extraction uncertainty.

@@ -8,15 +8,16 @@ Step-by-step implementation plan with testing checkpoints.
 
 Before starting, ensure the following are installed and working:
 
-1. **Python 3.10+** — verify with `python --version`
-2. **Ollama** — install from https://ollama.ai, then pull the model:
+1. **Python 3.11+** — verify with `python --version`
+2. **Anthropic API key** — set `ANTHROPIC_API_KEY` in `.env` (copy `.env.example`)
+3. **Ollama** (optional — for local inference without an API key):
    ```bash
-   ollama pull llama3:8b
+   ollama pull llama3.2:3b
    ```
-   Verify with `ollama list` and `ollama run llama3:8b "Hello"`
-3. **Tesseract OCR** (optional but recommended):
-   - Windows: Download installer from https://github.com/UB-Mannheim/tesseract/wiki
-   - Add to PATH
+   Set `LLM_PROVIDER=ollama` in `.env` if using this path.
+4. **Tesseract OCR** (optional — only needed for scanned PDFs):
+   - Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki; set `TESSERACT_CMD` in `.env`
+   - macOS: `brew install tesseract`
    - Verify with `tesseract --version`
 
 ---
@@ -135,19 +136,19 @@ print(f"Text: {nc_chunk.text[:300]}")
 
 ### Step 2.1: Install dependencies
 ```bash
-pip install ollama
+pip install anthropic ollama
 ```
 
 ### Step 2.2: Build LLM provider
 - Create abstract `LLMProvider` base class
-- Implement `OllamaProvider`
+- Implement `ClaudeProvider` (primary) and `OllamaProvider` (local alternative)
 - Create stub `InternalLLMProvider`
-- Add config-driven provider factory
+- Add config-driven provider factory (`llm/factory.py`)
 
 **TEST CHECKPOINT 2.2:**
 ```python
-from llm import get_provider
-provider = get_provider()  # Returns OllamaProvider based on config
+from credit_analyzer.llm.factory import get_provider
+provider = get_provider()  # Returns ClaudeProvider or OllamaProvider per config
 print(f"Provider: {provider.model_name()}")
 print(f"Available: {provider.is_available()}")
 
@@ -159,9 +160,9 @@ response = provider.complete(
 print(f"Response: {response.text}")
 print(f"Duration: {response.duration_seconds:.1f}s")
 ```
-✅ Ollama responds successfully
+✅ Provider responds successfully
 ✅ Response is structured and follows instructions
-✅ Duration is reasonable (< 30s for short prompt)
+✅ Duration is reasonable
 
 ---
 
@@ -305,22 +306,21 @@ with open("test_report.md", "w") as f:
 ### Step 5.3: Add report UI page
 - Generate button with progress indicator
 - Section-by-section rendering
-- Export functionality (markdown download, PDF if weasyprint works)
+- Export functionality (PDF via fpdf2)
 
 ---
 
 ## Phase 6: Polish & Hardening
 
 ### Step 6.1: Error handling
-- Ollama not running → clear error message with install instructions
+- LLM provider unavailable → clear error message at startup via `validate_config()`
 - Bad PDF → graceful failure with specific error
-- LLM timeout → retry with smaller context
+- LLM transient failure → automatic retry (built into `ClaudeProvider` and `OllamaProvider`)
 - Empty retrieval results → inform user, suggest alternative query
 
-### Step 6.2: Validation layer
-- Build `validation.py`
-- Integrate into report generation and Q&A
-- Display warnings in UI
+### Step 6.2: Validation layer (not built in V1)
+- Planned: number and section-reference cross-checking (`utils/validation.py`)
+- Current: confidence ratings and source citations are the primary uncertainty signal
 
 ### Step 6.3: UI polish
 - Suggested starter questions in chat
