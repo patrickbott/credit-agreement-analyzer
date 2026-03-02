@@ -18,6 +18,7 @@ from credit_analyzer.processing.section_detector import DocumentSection, Section
 from credit_analyzer.retrieval.bm25_store import BM25Store
 from credit_analyzer.retrieval.embedder import Embedder
 from credit_analyzer.retrieval.hybrid_retriever import HybridRetriever
+from credit_analyzer.retrieval.reranker import Reranker
 from credit_analyzer.retrieval.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -78,16 +79,17 @@ def build_processed_document(
     *,
     embedder: Embedder,
     vector_store: VectorStore,
+    reranker: Reranker | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> ProcessedDocument:
     """Process a PDF into retrieval-ready state for the UI."""
-    _progress(progress_callback, "Extracting text from PDF...", 0.12)
+    _progress(progress_callback, "Extracting text from PDF...", 0.05)
     extracted_document = PDFExtractor().extract(pdf_path)
 
-    _progress(progress_callback, "Detecting document structure...", 0.28)
+    _progress(progress_callback, "Detecting document structure...", 0.10)
     sections = SectionDetector().detect_sections(extracted_document)
 
-    _progress(progress_callback, "Parsing defined terms...", 0.42)
+    _progress(progress_callback, "Parsing defined terms...", 0.14)
     definitions_section = next(
         (section for section in sections if section.section_type == "definitions"),
         None,
@@ -98,13 +100,30 @@ def build_processed_document(
         else DefinitionsIndex(definitions={})
     )
 
-    _progress(progress_callback, "Chunking agreement text...", 0.58)
+    _progress(progress_callback, "Chunking agreement text...", 0.18)
     chunks = Chunker().chunk_document(sections, definitions_index)
 
-    _progress(progress_callback, "Building embeddings...", 0.76)
-    embeddings = embedder.embed([build_search_text(chunk) for chunk in chunks])
+    # Embedding is the slowest step — give it 18%..90% of the progress bar
+    # and report per-batch so the bar moves continuously.
+    _EMBED_START = 0.20
+    _EMBED_END = 0.90
 
-    _progress(progress_callback, "Creating hybrid search index...", 0.9)
+    def _on_embed_progress(completed: int, total: int) -> None:
+        frac = completed / total if total > 0 else 1.0
+        pct = _EMBED_START + frac * (_EMBED_END - _EMBED_START)
+        _progress(
+            progress_callback,
+            f"Building embeddings ({completed}/{total} chunks)...",
+            pct,
+        )
+
+    _on_embed_progress(0, len(chunks))
+    embeddings = embedder.embed(
+        [build_search_text(chunk) for chunk in chunks],
+        progress_callback=_on_embed_progress,
+    )
+
+    _progress(progress_callback, "Creating hybrid search index...", 0.92)
     # Each run creates a new timestamped collection. Old collections persist in
     # chroma_data/ until manually pruned; this is acceptable for demo use but
     # should be replaced with a reuse/cleanup strategy in production.
@@ -121,7 +140,7 @@ def build_processed_document(
 
     bm25_store = BM25Store()
     bm25_store.build_index(chunks)
-    retriever = HybridRetriever(vector_store, bm25_store, embedder, definitions_index)
+    retriever = HybridRetriever(vector_store, bm25_store, embedder, definitions_index, reranker=reranker)
 
     preamble_section = next(
         (

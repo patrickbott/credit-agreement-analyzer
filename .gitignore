@@ -49,6 +49,7 @@ uv.lock
 .vscode/
 
 # Other
+chroma_data/
 chroma_validation/
 chroma_validation_p4/
 demo_uploads/

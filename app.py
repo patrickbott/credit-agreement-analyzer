@@ -21,6 +21,7 @@ from credit_analyzer.generation.report_generator import (
 from credit_analyzer.llm.base import LLMProvider
 from credit_analyzer.llm.factory import get_provider
 from credit_analyzer.retrieval.embedder import Embedder
+from credit_analyzer.retrieval.reranker import Reranker
 from credit_analyzer.retrieval.vector_store import VectorStore
 from credit_analyzer.ui.demo_report import SUGGESTED_QUESTIONS
 from credit_analyzer.ui.theme import (
@@ -58,6 +59,12 @@ def load_embedder() -> Embedder:
 def load_vector_store() -> VectorStore:
     """Load the shared ChromaDB vector store."""
     return VectorStore()
+
+
+@st.cache_resource(show_spinner=False)
+def load_reranker() -> Reranker:
+    """Load the shared cross-encoder reranker model."""
+    return Reranker()
 
 
 @st.cache_resource(show_spinner=False)
@@ -132,10 +139,23 @@ def _initialize_state() -> None:
     st.session_state.setdefault("provider_status", None)
 
 
-def _load_provider_state() -> tuple[LLMProvider | None, dict[str, Any]]:
-    if st.sidebar.button("Refresh model", width="stretch"):
-        st.session_state.provider_status = None
+def _remove_document(document_id: str) -> None:
+    """Remove a document from session state and clean up its ChromaDB collection."""
+    documents: dict[str, ProcessedDocument] = st.session_state.documents
+    documents.pop(document_id, None)
+    st.session_state.chat_messages.pop(document_id, None)
+    st.session_state.generated_reports.pop(document_id, None)
+    st.session_state.pop(f"qa_engine_{document_id}", None)
+    try:
+        load_vector_store().delete_collection(document_id)
+    except Exception:
+        pass  # Collection may not exist or already be deleted.
+    # Switch active document to the next available, or None.
+    remaining = list(documents.keys())
+    st.session_state.active_document_id = remaining[0] if remaining else None
 
+
+def _load_provider_state() -> tuple[LLMProvider | None, dict[str, Any]]:
     cached = st.session_state.provider_status
     if cached is not None:
         provider = cached.get("provider")
@@ -193,6 +213,10 @@ def _render_sidebar(
             ),
             unsafe_allow_html=True,
         )
+        if not provider_status["ready"]:
+            if st.button("Retry Connection", key="retry-model", width="stretch"):
+                st.session_state.provider_status = None
+                st.rerun()
 
         st.markdown("### Documents")
         if documents:
@@ -223,6 +247,9 @@ def _render_sidebar(
                 ),
                 unsafe_allow_html=True,
             )
+            if st.button("Remove Document", key="remove-doc", width="stretch"):
+                _remove_document(selected)
+                st.rerun()
         else:
             st.markdown(
                 rail_card(
@@ -305,6 +332,7 @@ def _process_document(pdf_path: Path) -> None:
             pdf_path,
             embedder=load_embedder(),
             vector_store=load_vector_store(),
+            reranker=load_reranker(),
             progress_callback=on_progress,
         )
     except Exception as exc:
@@ -320,6 +348,7 @@ def _process_document(pdf_path: Path) -> None:
 
     status_box.success(f"{document.display_name} indexed.")
     progress_bar.progress(1.0)
+    st.rerun()
 
 
 def _render_document_summary(document: ProcessedDocument) -> None:
@@ -551,7 +580,7 @@ def _render_report_tab(
     with header_col:
         st.caption(
             f"{active_document.display_name} | "
-            "10-section structured report"
+            "9-section structured report"
         )
     with action_col:
         generate = st.button(

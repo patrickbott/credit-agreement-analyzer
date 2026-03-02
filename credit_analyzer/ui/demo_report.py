@@ -90,8 +90,8 @@ SUGGESTED_QUESTIONS: tuple[SuggestedQuestion, ...] = (
         label="Describe the credit facilities",
         prompt=(
             "Describe the credit facilities, including the facility amounts, "
-            "pricing, maturity, facility types, borrower, guarantors or obligors, "
-            "and any other important structural details."
+            "pricing/margin/interest rate, maturity, facility types, borrower, "
+            "guarantors or obligors."
         ),
     ),
     SuggestedQuestion(
