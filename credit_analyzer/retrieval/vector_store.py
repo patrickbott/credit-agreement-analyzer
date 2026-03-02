@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import chromadb  # pyright: ignore[reportMissingTypeStubs]
 
-from credit_analyzer.config import CHROMA_DATA_DIR
+from credit_analyzer.config import CHROMA_DATA_DIR, EMBEDDING_MODEL
 from credit_analyzer.processing.chunker import Chunk
 
 
@@ -41,6 +41,7 @@ _META_DEFINED_TERMS = "defined_terms"  # pipe-separated strings, e.g. "Available
 # Pipe is used as a list delimiter because defined term names never contain it,
 # whereas commas can appear in parenthetical definitions ("means X, Y, or Z").
 _LIST_SEPARATOR = "|"
+_META_EMBEDDING_MODEL = "embedding_model"
 
 
 def chunk_to_metadata(chunk: Chunk) -> dict[str, str | int | float | bool]:
@@ -100,15 +101,19 @@ class VectorStore:
             path=path,
         )
 
-    def create_collection(self, document_id: str) -> None:
+    def create_collection(self, document_id: str, embedding_model: str = EMBEDDING_MODEL) -> None:
         """Create or replace a collection for a document.
+
+        Stores the embedding model name in collection metadata so that
+        mismatched embeddings can be detected at search time.
 
         Args:
             document_id: Unique identifier for the document.
+            embedding_model: The embedding model used for this collection.
         """
         self._client.get_or_create_collection(  # pyright: ignore[reportUnknownMemberType]
             name=document_id,
-            metadata={"hnsw:space": "cosine"},
+            metadata={"hnsw:space": "cosine", _META_EMBEDDING_MODEL: embedding_model},
         )
 
     def add_chunks(
@@ -175,6 +180,16 @@ class VectorStore:
         collection: Any = self._client.get_collection(  # pyright: ignore[reportUnknownMemberType]
             name=document_id,
         )
+
+        # Check for embedding model mismatch
+        col_meta: dict[str, Any] = collection.metadata or {}  # pyright: ignore[reportUnknownMemberType]
+        stored_model = col_meta.get(_META_EMBEDDING_MODEL)
+        if stored_model and stored_model != EMBEDDING_MODEL:
+            raise ValueError(
+                f"Collection '{document_id}' was indexed with embedding model "
+                f"'{stored_model}', but the current model is '{EMBEDDING_MODEL}'. "
+                f"Please re-index the document to use the new embedding model."
+            )
 
         where: dict[str, Any] | None = None
         if section_filter is not None:

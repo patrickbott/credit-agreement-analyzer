@@ -12,7 +12,6 @@ from credit_analyzer.retrieval.hybrid_retriever import (
     HybridChunk,
     HybridRetriever,
     RetrievalResult,
-    normalize_scores,
 )
 from credit_analyzer.retrieval.vector_store import RetrievedChunk, VectorStore
 
@@ -96,33 +95,7 @@ def _make_ubiquitous_corpus(term: str, total: int = 8) -> list[Chunk]:
 
 
 # ---------------------------------------------------------------------------
-# normalize_scores
-# ---------------------------------------------------------------------------
-
-
-def test_normalize_scores_basic() -> None:
-    """Min-max normalization maps to [0, 1]."""
-    result = normalize_scores([1.0, 3.0, 5.0])
-    assert result == [0.0, 0.5, 1.0]
-
-
-def test_normalize_scores_identical() -> None:
-    """Identical scores all normalize to 1.0."""
-    result = normalize_scores([2.0, 2.0, 2.0])
-    assert result == [1.0, 1.0, 1.0]
-
-
-def test_normalize_scores_empty() -> None:
-    assert normalize_scores([]) == []
-
-
-def test_normalize_scores_single() -> None:
-    """Single score normalizes to 1.0."""
-    assert normalize_scores([42.0]) == [1.0]
-
-
-# ---------------------------------------------------------------------------
-# Hybrid retrieval — merging
+# Hybrid retrieval — merging (RRF)
 # ---------------------------------------------------------------------------
 
 
@@ -172,7 +145,7 @@ def test_both_sources_merged() -> None:
 
 
 def test_deduplication_keeps_higher_combined() -> None:
-    """When a chunk appears in both, its score is the sum of weighted normalized scores."""
+    """When a chunk appears in both, its RRF score is the sum from both methods."""
     chunk = _make_chunk(chunk_id="dup")
 
     retriever = _make_retriever(
@@ -183,9 +156,8 @@ def test_deduplication_keeps_higher_combined() -> None:
     result = retriever.retrieve("query", "doc1", top_k=5)
 
     assert len(result.chunks) == 1
-    # Single result in each list -> normalized to 1.0 each
-    # Combined: VECTOR_WEIGHT * 1.0 + BM25_WEIGHT * 1.0 = 0.6 + 0.4 = 1.0
-    assert result.chunks[0].score > 0.5
+    # Rank 0 in both lists -> RRF score = 2 * 1/(60+1) ≈ 0.0328
+    assert result.chunks[0].score > 0.0
 
 
 def test_top_k_respected() -> None:

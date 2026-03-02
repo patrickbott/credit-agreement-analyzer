@@ -34,13 +34,24 @@ MIN_DEFINITION_CHUNK_TOKENS: int = 50
 TIKTOKEN_ENCODING: str = "cl100k_base"
 
 # --- Retrieval ---
-# Weights must sum to 1.0; validated at startup.
-VECTOR_WEIGHT: float = 0.6
-BM25_WEIGHT: float = 0.4
+# Reciprocal Rank Fusion constant (standard default is 60).
+RRF_K: int = 60
 # Upper bound on injected definition chunks per query (primary + recursive expansion).
 MAX_DEFINITIONS_INJECTED: int = 18
 # Total sibling-chunk token budget added per section during context expansion.
 SIBLING_EXPANSION_MAX_TOKENS: int = 800
+# Minimum relevance score (after reranking) to keep a chunk. Chunks below this
+# threshold are dropped even if top_k hasn't been filled. A floor of 3 chunks
+# is always retained regardless of this threshold.
+MIN_RETRIEVAL_SCORE: float = 0.15
+# Cross-encoder reranker model for second-stage scoring.
+RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# Number of candidates to over-fetch from hybrid search for reranking.
+RERANK_CANDIDATES_MULTIPLIER: int = 3
+
+# --- Report Generation ---
+# Maximum parallel workers for report section generation.
+REPORT_MAX_WORKERS: int = 2
 
 # --- LLM ---
 LLM_PROVIDER: str = os.environ.get("LLM_PROVIDER", "claude")  # claude | ollama | internal
@@ -55,8 +66,6 @@ QA_MAX_CONTEXT_CHUNKS: int = 15
 QA_MAX_GENERATION_TOKENS: int = 1024
 # Injected definition text is truncated to this length to control token budget (~200 tok).
 QA_DEFINITION_MAX_CHARS: int = 800
-# Chunk body text is truncated to this length in context assembly (~400 tok).
-QA_CHUNK_TEXT_MAX_CHARS: int = 1500
 QA_SECTION_TYPES_EXCLUDE: tuple[str, ...] = ("miscellaneous",)
 # Terms present in more than this fraction of chunks are treated as "ubiquitous"
 # and excluded from definition injection to avoid polluting context.
@@ -79,13 +88,6 @@ def validate_config() -> list[str]:
         errors.append(
             "ANTHROPIC_API_KEY is not set. Add it to your .env file or set it as "
             "an environment variable before starting the app."
-        )
-
-    weight_sum = round(VECTOR_WEIGHT + BM25_WEIGHT, 6)
-    if abs(weight_sum - 1.0) > 1e-6:
-        errors.append(
-            f"VECTOR_WEIGHT ({VECTOR_WEIGHT}) + BM25_WEIGHT ({BM25_WEIGHT}) = "
-            f"{weight_sum}, but they must sum to 1.0."
         )
 
     if not (0.0 <= DEFINITION_UBIQUITY_THRESHOLD <= 1.0):

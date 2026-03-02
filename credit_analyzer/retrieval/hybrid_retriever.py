@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from credit_analyzer.config import (
-    BM25_WEIGHT,
     DEFINITION_UBIQUITY_THRESHOLD,
     MAX_DEFINITIONS_INJECTED,
+    MIN_RETRIEVAL_SCORE,
     QA_DEFINITION_MAX_CHARS,
+    RERANK_CANDIDATES_MULTIPLIER,
+    RRF_K,
     SIBLING_EXPANSION_MAX_TOKENS,
-    VECTOR_WEIGHT,
 )
 from credit_analyzer.processing.chunker import Chunk
 from credit_analyzer.processing.definitions import DefinitionsIndex
 from credit_analyzer.retrieval.bm25_store import BM25Store
 from credit_analyzer.retrieval.embedder import Embedder
+from credit_analyzer.retrieval.reranker import Reranker
 from credit_analyzer.retrieval.vector_store import VectorStore
 
 SourceLabel = Literal["vector", "bm25", "both", "definition"]
@@ -53,26 +56,6 @@ class RetrievalResult:
     chunks: list[HybridChunk]
     injected_definitions: dict[str, str]
 
-
-def normalize_scores(scores: Sequence[float]) -> list[float]:
-    """Min-max normalize a list of scores to [0, 1].
-
-    If all scores are identical, returns 1.0 for each.
-
-    Args:
-        scores: Raw scores to normalize.
-
-    Returns:
-        Normalized scores in the same order.
-    """
-    if not scores:
-        return []
-    min_s = min(scores)
-    max_s = max(scores)
-    span = max_s - min_s
-    if span == 0.0:
-        return [1.0] * len(scores)
-    return [(s - min_s) / span for s in scores]
 
 
 def _compute_term_document_frequency(
@@ -109,9 +92,10 @@ def _compute_term_document_frequency(
 class HybridRetriever:
     """Combines vector similarity and BM25 keyword search for retrieval.
 
-    Merges results from both sources using weighted scores, deduplicates
-    by chunk ID, and optionally injects relevant definitions from the
-    agreement's definitions section.
+    Merges results from both sources using Reciprocal Rank Fusion (RRF),
+    reranks candidates with a cross-encoder, applies a minimum relevance
+    threshold, deduplicates by chunk ID, and optionally injects relevant
+    definitions from the agreement's definitions section.
 
     After the initial retrieval pass, the retriever promotes full
     definition chunks into the result set when those definitions are
@@ -126,11 +110,13 @@ class HybridRetriever:
         bm25_store: BM25Store,
         embedder: Embedder,
         definitions_index: DefinitionsIndex,
+        reranker: Reranker | None = None,
     ) -> None:
         self._vector_store = vector_store
         self._bm25_store = bm25_store
         self._embedder = embedder
         self._definitions_index = definitions_index
+        self._reranker = reranker
 
         # Build a lookup from defined term name -> its full definition Chunk.
         self._definition_chunk_lookup: dict[str, Chunk] = {}
@@ -184,7 +170,9 @@ class HybridRetriever:
         Returns:
             RetrievalResult with ranked chunks and optional definitions.
         """
-        fetch_k = top_k * 2
+        # Over-fetch candidates for reranking when a reranker is available.
+        rerank_k = top_k * RERANK_CANDIDATES_MULTIPLIER if self._reranker else top_k
+        fetch_k = rerank_k * 2
 
         # Vector search
         query_embedding = self._embedder.embed_query(query)
@@ -204,35 +192,57 @@ class HybridRetriever:
             section_types_exclude=section_types_exclude,
         )
 
-        # Normalize scores
-        vector_scores = normalize_scores([r.score for r in vector_results])
-        bm25_scores = normalize_scores([r.score for r in bm25_results])
+        # --- Reciprocal Rank Fusion (RRF) ---
+        # RRF uses rank position rather than raw scores, making it
+        # distribution-agnostic and robust to differences between
+        # cosine similarity and BM25 score distributions.
+        rrf_scores: dict[str, float] = {}
+        source_map: dict[str, SourceLabel] = {}
+        chunk_map: dict[str, Chunk] = {}
 
-        # Build lookup: chunk_id -> (weighted_score, source, chunk)
-        merged: dict[str, tuple[float, SourceLabel, Chunk]] = {}
+        for rank, result in enumerate(vector_results):
+            cid = result.chunk.chunk_id
+            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (RRF_K + rank + 1)
+            source_map[cid] = "vector"
+            chunk_map[cid] = result.chunk
 
-        for result, norm_score in zip(vector_results, vector_scores, strict=True):
-            weighted = VECTOR_WEIGHT * norm_score
-            merged[result.chunk.chunk_id] = (weighted, "vector", result.chunk)
-
-        for result, norm_score in zip(bm25_results, bm25_scores, strict=True):
-            weighted = BM25_WEIGHT * norm_score
-            chunk_id = result.chunk.chunk_id
-
-            if chunk_id in merged:
-                existing_score, _, existing_chunk = merged[chunk_id]
-                merged[chunk_id] = (existing_score + weighted, "both", existing_chunk)
+        for rank, result in enumerate(bm25_results):
+            cid = result.chunk.chunk_id
+            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (RRF_K + rank + 1)
+            if cid in source_map:
+                source_map[cid] = "both"
             else:
-                merged[chunk_id] = (weighted, "bm25", result.chunk)
+                source_map[cid] = "bm25"
+            if cid not in chunk_map:
+                chunk_map[cid] = result.chunk
 
-        # Sort by combined score descending, take top_k
-        sorted_items = sorted(merged.values(), key=lambda x: x[0], reverse=True)
-        top_items = sorted_items[:top_k]
+        # Sort by RRF score descending, take top rerank_k candidates
+        sorted_ids = sorted(rrf_scores, key=lambda cid: rrf_scores[cid], reverse=True)
+        candidate_ids = sorted_ids[:rerank_k]
 
         hybrid_chunks = [
-            HybridChunk(chunk=chunk, score=score, source=source)
-            for score, source, chunk in top_items
+            HybridChunk(
+                chunk=chunk_map[cid],
+                score=rrf_scores[cid],
+                source=source_map[cid],
+            )
+            for cid in candidate_ids
         ]
+
+        # --- Cross-encoder reranking ---
+        if self._reranker and hybrid_chunks:
+            hybrid_chunks = self._reranker.rerank(query, hybrid_chunks, top_k)
+        else:
+            hybrid_chunks = hybrid_chunks[:top_k]
+
+        # --- Minimum relevance threshold ---
+        # Drop chunks below the threshold, but always keep at least 3.
+        _MIN_CHUNKS_FLOOR = 3
+        if len(hybrid_chunks) > _MIN_CHUNKS_FLOOR:
+            filtered = [hc for hc in hybrid_chunks if hc.score >= MIN_RETRIEVAL_SCORE]
+            if len(filtered) < _MIN_CHUNKS_FLOOR:
+                filtered = hybrid_chunks[:_MIN_CHUNKS_FLOOR]
+            hybrid_chunks = filtered
 
         # Sibling expansion: pull in adjacent chunks from the same
         # section to capture tables, sub-clauses, and content that
@@ -402,6 +412,37 @@ class HybridRetriever:
             metadata_terms.update(hc.chunk.defined_terms_present)
 
         all_candidate_terms = set(chunk_term_counts.keys()) | query_terms
+
+        # Query-keyword boosting: find defined terms whose names
+        # contain significant words from the query.  This ensures
+        # terms like "Fixed Incremental Amount" and "Ratio Incremental
+        # Amount" get boosted when the query mentions "incremental",
+        # even if those exact defined term names don't appear in the
+        # retrieved chunk text.
+        _QUERY_KW_MIN_LEN = 4
+        _QUERY_KW_STOP = frozenset({
+            "what", "which", "where", "when", "that", "this", "these",
+            "those", "about", "with", "from", "have", "does", "will",
+            "would", "could", "should", "shall", "being", "been",
+            "were", "some", "more", "most", "also", "only", "than",
+            "then", "into", "over", "under", "such", "each", "every",
+            "other", "both", "either", "neither", "between", "through",
+            "during", "before", "after", "there", "their", "your",
+            "tell", "explain", "describe", "section", "article",
+        })
+        query_keywords = {
+            w.lower()
+            for w in re.split(r"\W+", query)
+            if len(w) >= _QUERY_KW_MIN_LEN and w.lower() not in _QUERY_KW_STOP
+        }
+        query_keyword_terms: set[str] = set()
+        if query_keywords:
+            for term in self._definitions_index.definitions:
+                term_lower = term.lower()
+                if any(kw in term_lower for kw in query_keywords):
+                    query_keyword_terms.add(term)
+                    all_candidate_terms.add(term)
+
         if not all_candidate_terms:
             return chunks, {}
 
@@ -426,6 +467,12 @@ class HybridRetriever:
             # user needs than high-frequency generic terms.
             if term in metadata_terms and term not in self._ubiquitous_terms:
                 score += 3.0
+            # Boost terms whose names contain significant query
+            # keywords.  Ensures "Fixed Incremental Amount" is
+            # boosted when the query mentions "incremental", even
+            # if the exact term isn't in retrieved chunk text.
+            if term in query_keyword_terms and term not in query_terms:
+                score += 10.0
             term_scores[term] = score
 
         # Boost long definitions that need chunk promotion.  Short

@@ -115,4 +115,5 @@ def test_encode_called_with_correct_args(mock_st_cls: MagicMock) -> None:
         ["test"],
         show_progress_bar=False,
         convert_to_numpy=True,
+        batch_size=64,
     )
