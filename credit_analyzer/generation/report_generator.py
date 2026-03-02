@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from credit_analyzer.config import QA_CHUNK_TEXT_MAX_CHARS, QA_DEFINITION_MAX_CHARS
+from credit_analyzer.config import QA_DEFINITION_MAX_CHARS, REPORT_MAX_WORKERS
 from credit_analyzer.generation.report_template import (
     ALL_REPORT_SECTIONS,
     ReportSectionTemplate,
@@ -197,17 +199,19 @@ def _build_extraction_context(
             f"{preamble_text}\n"
         )
 
-    for hc in chunks:
+    # Sort chunks by document position so cross-references flow naturally.
+    sorted_chunks = sorted(
+        chunks,
+        key=lambda hc: (hc.chunk.article_number, hc.chunk.section_id, hc.chunk.chunk_index),
+    )
+
+    for hc in sorted_chunks:
         c = hc.chunk
         pages = _format_page_numbers(c.page_numbers)
-        text = c.text
-        # Promoted definition chunks are not truncated; they must be read in full.
-        if hc.source != "definition" and len(text) > QA_CHUNK_TEXT_MAX_CHARS:
-            text = text[:QA_CHUNK_TEXT_MAX_CHARS].rstrip() + "..."
         parts.append(
             f"--- Source: {c.section_title} "
             f"(Section {c.section_id}, Pages {pages}) ---\n"
-            f"{text}\n"
+            f"{c.text}\n"
         )
 
     if definitions:
@@ -257,14 +261,18 @@ def _retrieve_for_section(
     all_chunks: dict[str, HybridChunk] = {}
     all_definitions: dict[str, str] = {}
 
-    for rq in queries:
-        result = retriever.retrieve(
+    def _run_query(rq: RetrievalQuery) -> RetrievalResult:
+        return retriever.retrieve(
             query=rq.query,
             document_id=document_id,
             top_k=top_k,
             section_filter=rq.section_filter,
         )
 
+    with ThreadPoolExecutor(max_workers=len(queries)) as pool:
+        results = pool.map(_run_query, queries)
+
+    for result in results:
         for hc in result.chunks:
             existing = all_chunks.get(hc.chunk.chunk_id)
             if existing is None or hc.score > existing.score:
@@ -347,28 +355,31 @@ class ReportGenerator:
 
         total = len(sections)
         system_prompt = get_extraction_system_prompt()
+        wall_clock_start = time.monotonic()
 
-        for idx, template in enumerate(sections):
-            progress = idx / max(total, 1)
+        # --- Phase 1: Generate Section 1 first (extracts borrower name) ---
+        first_section = sections[0] if sections else None
+        remaining_sections = list(sections[1:]) if len(sections) > 1 else []
+
+        if first_section is not None:
             _notify(
                 progress_callback,
-                f"Generating: {template.title}...",
-                progress,
+                f"Generating: {first_section.title}...",
+                0.0,
             )
-
             try:
                 generated = self._generate_section(
-                    template, document_id, system_prompt
+                    first_section, document_id, system_prompt
                 )
             except Exception as exc:
                 logger.exception(
                     "Failed to generate section %d: %s",
-                    template.section_number,
-                    template.title,
+                    first_section.section_number,
+                    first_section.title,
                 )
                 generated = GeneratedSection(
-                    section_number=template.section_number,
-                    title=template.title,
+                    section_number=first_section.section_number,
+                    title=first_section.title,
                     body="",
                     confidence="LOW",
                     sources=[],
@@ -377,13 +388,62 @@ class ReportGenerator:
                 )
 
             report.sections.append(generated)
-            report.total_duration_seconds += generated.duration_seconds
 
-            # Try to extract borrower name from Section 1
-            if template.section_number == 1 and generated.status == "complete":
+            if first_section.section_number == 1 and generated.status == "complete":
                 borrower = _extract_borrower_name(generated.body)
                 if borrower:
                     report.borrower_name = borrower
+
+        # --- Phase 2: Generate remaining sections in parallel ---
+        if remaining_sections:
+            completed_count = 1  # Section 1 already done
+
+            def _generate_with_error_handling(
+                template: ReportSectionTemplate,
+            ) -> GeneratedSection:
+                try:
+                    return self._generate_section(
+                        template, document_id, system_prompt
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "Failed to generate section %d: %s",
+                        template.section_number,
+                        template.title,
+                    )
+                    return GeneratedSection(
+                        section_number=template.section_number,
+                        title=template.title,
+                        body="",
+                        confidence="LOW",
+                        sources=[],
+                        status="error",
+                        error_message=str(exc),
+                    )
+
+            with ThreadPoolExecutor(max_workers=REPORT_MAX_WORKERS) as pool:
+                future_to_template = {
+                    pool.submit(_generate_with_error_handling, t): t
+                    for t in remaining_sections
+                }
+
+                results_map: dict[int, GeneratedSection] = {}
+                for future in as_completed(future_to_template):
+                    section_result = future.result()
+                    results_map[section_result.section_number] = section_result
+                    completed_count += 1
+                    _notify(
+                        progress_callback,
+                        f"Completed: {section_result.title}",
+                        completed_count / max(total, 1),
+                    )
+
+            # Append in original section order
+            for t in remaining_sections:
+                report.sections.append(results_map[t.section_number])
+
+        # Track wall-clock time instead of sum of section times
+        report.total_duration_seconds = time.monotonic() - wall_clock_start
 
         _notify(progress_callback, "Report complete.", 1.0)
         return report
@@ -468,12 +528,20 @@ def _extract_borrower_name(section_body: str) -> str | None:
     Returns:
         The borrower name if found, otherwise None.
     """
+    # Try "BORROWER: Name" on one line first.
     match = re.search(
         r"(?i)BORROWER\s*:\s*(.+?)(?:\n|$)", section_body
     )
+    if not match:
+        # Try "BORROWER\n Name" where name is on the next non-empty line.
+        match = re.search(
+            r"(?i)BORROWER\s*\n+\s*(.+?)(?:\n|$)", section_body
+        )
     if match:
         name = match.group(1).strip().rstrip(".")
-        if name and name.upper() != "NOT FOUND":
+        # Strip trailing citation like "(Preamble, p. 9)"
+        name = re.sub(r"\s*\(.*$", "", name).strip().rstrip(",.")
+        if name and name.upper() not in ("NOT FOUND", "NOT IDENTIFIED IN THE PROVIDED CONTEXT"):
             return name
     return None
 

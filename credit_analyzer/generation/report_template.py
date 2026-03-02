@@ -72,11 +72,18 @@ knowledge, market conventions, or assumptions.
 Every dollar amount, ratio, percentage, and date must have a citation.
 3. State dollar amounts, ratios, and percentages exactly as written in the \
 document. Do not round or reformat.
-4. If a field is not in the context, write "NOT FOUND" for that field. Do \
-not guess or infer.
-5. Write like a senior IB analyst briefing a colleague. Concise, precise, \
-no legal boilerplate. Summarize provisions in practical business terms, \
-not verbatim legal language.
+4. STRICT OMISSION RULE: If a field or category is not in the context, \
+SILENTLY SKIP IT. Do not write "NOT FOUND", "Not identified", "not \
+included in the provided context", or any variation. Simply do not mention \
+it. The reader will infer absence from omission. The only exception: if \
+the ENTIRE extraction task has zero relevant data, write one sentence: \
+"Not identified in the provided context."
+5. BE CONCISE. Write like a senior IB analyst briefing a colleague -- short \
+bullet points, not paragraphs. Summarize provisions in practical business \
+terms. Focus on MATERIAL items: dollar-amount baskets, ratio tests, key \
+conditions. Skip boilerplate, ordinary-course, and de minimis baskets \
+(e.g. trade payables, statutory liens, workers comp, UCC filings). \
+Aim for the shortest output that captures all material economics.
 
 At the end of your response, on separate lines:
 Confidence: HIGH | MEDIUM | LOW
@@ -105,24 +112,23 @@ SECTION_01_TRANSACTION_OVERVIEW = ReportSectionTemplate(
         RetrievalQuery("recitals whereas borrower holdings"),
     ),
     extraction_prompt="""\
-Extract the following fields. Write NOT FOUND for any field absent from \
-the context.
+Extract the following fields. Skip any not in the context.
 
 BORROWER: Legal entity name
-PARENT / HOLDINGS: Entity name (if any)
-SPONSOR: Private equity owner (if named or defined)
-PURPOSE: Purpose of the credit facilities
-CLOSING DATE: Effective date of the agreement
-GOVERNING LAW: Jurisdiction
+PARENT / HOLDINGS: Entity name
+SPONSOR: Private equity owner
+PURPOSE: One sentence on purpose of facilities
+CLOSING DATE: Date
+FACILITY SIZES: Total commitment amount, split by facility if applicable
 
-Cite the Section or page for each field.""",
+Keep each field to one line. Cite Section and page.""",
 )
 
 
-SECTION_02_FACILITY_SUMMARY = ReportSectionTemplate(
+SECTION_02_FACILITY_AND_PRICING = ReportSectionTemplate(
     section_number=2,
-    title="Facility Summary",
-    top_k=15,
+    title="Facility Summary and Pricing",
+    top_k=18,
     max_generation_tokens=1500,
     retrieval_queries=(
         RetrievalQuery(
@@ -134,103 +140,67 @@ SECTION_02_FACILITY_SUMMARY = ReportSectionTemplate(
             section_filter="facility_terms",
         ),
         RetrievalQuery(
-            "delayed draw incremental facility accordion",
-            section_filter="facility_terms",
-        ),
-    ),
-    extraction_prompt="""\
-For EACH credit facility in the agreement, extract:
-
-FACILITY TYPE: (Revolving, Term Loan A, Term Loan B, Delayed Draw, etc.)
-COMMITMENT / PRINCIPAL: Dollar amount
-MATURITY DATE:
-AMORTIZATION: Quarterly amounts or annual percentages (if applicable)
-MANDATORY PREPAYMENT: Excess cash flow sweep %, asset sale proceeds %, \
-step-downs by leverage level
-VOLUNTARY PREPAYMENT: Call protection, prepayment premiums, soft call periods
-INCREMENTAL CAPACITY: (if described in facility terms)
-
-List each facility separately. Cite Section numbers for every data point. \
-Write NOT FOUND for any field absent from the context.""",
-)
-
-
-SECTION_03_PRICING = ReportSectionTemplate(
-    section_number=3,
-    title="Pricing",
-    top_k=15,
-    max_generation_tokens=1500,
-    retrieval_queries=(
-        RetrievalQuery(
             "applicable rate applicable margin SOFR spread ABR spread",
             section_filter="facility_terms",
         ),
         RetrievalQuery(
-            "pricing grid leverage step-down",
-            section_filter="facility_terms",
-        ),
-        RetrievalQuery(
-            "commitment fee letter of credit fee ticking fee OID floor",
+            "pricing grid leverage step-down commitment fee OID floor",
             section_filter="facility_terms",
         ),
     ),
     extraction_prompt="""\
-For each facility, extract the complete pricing terms:
+For EACH credit facility, extract structure and pricing together. Skip \
+fields not in context.
 
-SOFR / TERM SOFR SPREAD:
-ABR / BASE RATE SPREAD:
-SOFR FLOOR:
-COMMITMENT FEE: (for revolvers)
-LC FEE:
-TICKING FEE: (for delayed draw, if applicable)
-OID / UPFRONT FEE:
+FACILITY TYPE: (Revolving, Term Loan A/B, Delayed Draw, etc.)
+COMMITMENT / PRINCIPAL: Dollar amount
+MATURITY DATE:
+SOFR SPREAD / ABR SPREAD: Initial rates
+SOFR FLOOR / ABR FLOOR:
+AMORTIZATION: Brief summary
+MANDATORY PREPAYMENT: ECF sweep %, asset sale %, step-downs
+VOLUNTARY PREPAYMENT: Call protection, soft call
+COMMITMENT FEE / LC FEE / OID:
 
-If there is a leverage-based pricing grid:
-- List each tier: [Leverage Range] -> [SOFR Spread] / [ABR Spread] / \
-[Commitment Fee]
-- Note which leverage definition is used (e.g. First Lien Net Leverage Ratio)
+If there is a leverage-based pricing grid, list tiers concisely: \
+[Leverage Range] -> [SOFR] / [ABR]. Note which leverage definition is used.
 
-If pricing is fixed, state "Fixed pricing -- no leverage-based grid."
+List each facility separately. Keep it concise -- bullet points, not \
+paragraphs. Cite Section numbers and page numbers.
 
-Cite Section numbers. Write NOT FOUND for absent fields.""",
+Do not include incremental facilities in this section -- those belong \
+in the debt capacity section
+""",
 )
 
 
-SECTION_04_BANK_GROUP = ReportSectionTemplate(
-    section_number=4,
+SECTION_03_BANK_GROUP = ReportSectionTemplate(
+    section_number=3,
     title="Bank Group",
     top_k=10,
-    max_generation_tokens=800,
+    max_generation_tokens=600,
     include_preamble=True,
     retrieval_queries=(
         RetrievalQuery("administrative agent collateral agent arranger bookrunner"),
         RetrievalQuery("lender commitment schedule syndication"),
     ),
     extraction_prompt="""\
-Extract the bank group and agent roles:
+Extract agent roles and bank group. Skip roles not in context.
 
 ADMINISTRATIVE AGENT:
-COLLATERAL AGENT: (if different)
+COLLATERAL AGENT: (if different from admin agent)
 LEAD ARRANGERS / BOOKRUNNERS:
-SYNDICATION AGENT(S):
-DOCUMENTATION AGENT(S):
 
-If a commitment schedule lists individual lender commitments, summarize:
-- Total number of lenders
-- Top 3-5 lenders by commitment size (name and amount)
-
-If individual commitments are not available, write "Individual lender \
-commitments not identified."
-
-Cite relevant sections, schedules, or pages.""",
+If lender commitments are listed, note total number of lenders and \
+aggregate facility size. Keep it brief. Cite sections.""",
 )
 
 
-SECTION_05_FINANCIAL_COVENANTS = ReportSectionTemplate(
-    section_number=5,
+SECTION_04_FINANCIAL_COVENANTS = ReportSectionTemplate(
+    section_number=4,
     title="Financial Covenants",
     top_k=18,
-    max_generation_tokens=2000,
+    max_generation_tokens=1200,
     retrieval_queries=(
         RetrievalQuery(
             "financial covenant maintenance covenant leverage ratio",
@@ -250,35 +220,28 @@ SECTION_05_FINANCIAL_COVENANTS = ReportSectionTemplate(
         ),
     ),
     extraction_prompt="""\
-Extract ALL financial maintenance covenants. For each:
+Extract MAINTENANCE covenants only. Do NOT include incurrence-only tests \
+(those belong in the debt capacity section).
 
+For each maintenance covenant:
 COVENANT TYPE: (e.g. Maximum Total Net Leverage, Minimum Interest Coverage)
-TEST LEVELS: List ALL step-downs/step-ups by period:
-  [Period/Quarter] -> [Test Level]
-TESTING FREQUENCY: (quarterly, annual)
-FACILITIES TESTED: (revolver-only, all facilities)
-SPRINGING CONDITIONS: (e.g. only tested when revolver > X% drawn)
-RATIO DEFINITION: Brief note on how EBITDA is defined for covenant purposes
+TEST LEVELS: List step-downs/step-ups by period
+TESTING: Frequency, which facilities, springing conditions
 
-EQUITY CURE RIGHTS (if any):
-- Number of cures permitted
-- Max consecutive quarters
-- Max over life of facility
-- Limitations on cure amount or source
+EQUITY CURE RIGHTS: If present, summarize in 2-3 bullet points (number \
+of cures, limits, key conditions).
 
-If COVENANT-LITE with no financial maintenance covenants, state:
-"COVENANT-LITE: No financial maintenance covenants. [Note if incurrence \
-tests exist.]"
+If covenant-lite, state that in one sentence.
 
-Cite Section numbers for every data point.""",
+Keep it concise. Cite Section numbers.""",
 )
 
 
-SECTION_06_DEBT_CAPACITY = ReportSectionTemplate(
-    section_number=6,
+SECTION_05_DEBT_CAPACITY = ReportSectionTemplate(
+    section_number=5,
     title="Negative Covenants -- Debt Capacity",
     top_k=20,
-    max_generation_tokens=2500,
+    max_generation_tokens=1500,
     retrieval_queries=(
         RetrievalQuery(
             "indebtedness limitation on indebtedness incurrence",
@@ -302,48 +265,31 @@ SECTION_06_DEBT_CAPACITY = ReportSectionTemplate(
         ),
     ),
     extraction_prompt="""\
-This is the most important section. Extract the COMPLETE debt capacity \
-framework.
+Extract the debt capacity framework. ONLY include baskets with a stated \
+dollar amount, ratio test, or grower formula. Skip ordinary-course, \
+boilerplate, and immaterial baskets (trade payables, statutory items, \
+intercompany without caps, deferred payments, swap agreements, etc.).
 
-INCREMENTAL FACILITIES:
-- Fixed dollar amount:
-- Ratio-based capacity (which ratio, what level):
-- Free-and-clear / fungibility (unused ratio capacity if fixed used first):
-- MFN protection (spread cap, sunset period):
-- Maturity / WAL restrictions vs existing:
-- Other conditions (no default, pro forma compliance):
+INCREMENTAL FACILITIES: Fixed amount, ratio capacity, MFN terms.
 
-INCREMENTAL EQUIVALENT DEBT:
-- Permitted? (yes/no)
-- Dollar / ratio capacity (shared with or separate from incremental):
-- Lien priority permitted (pari passu, junior, unsecured):
-- Key conditions:
+INCREMENTAL EQUIVALENT DEBT: If permitted, capacity and lien priority.
 
-GENERAL DEBT BASKETS (from Indebtedness negative covenant):
-- General / freebie basket ($):
-- Ratio debt basket (which ratio, what level):
-- Capital lease / purchase money:
-- Acquired / assumed debt in acquisitions:
-- Intercompany debt:
-- Grower mechanism (greater of $X and Y% of Total Assets/EBITDA):
-- Credit agreement refinancing debt:
-- Other material carve-outs with amounts:
+MATERIAL DEBT BASKETS: List only the economically significant baskets \
+(general basket, ratio basket, capital leases, acquired debt, refinancing \
+debt) with dollar amount or ratio test and Section reference. Use one \
+bullet per basket.
 
-For EACH basket note:
-1. Dollar amount or ratio test
-2. Whether capped or grows with the business
-3. Lien priority or maturity restrictions
-4. Section/subsection reference (e.g. Section 7.03(b)(iv))
+Note grower mechanisms (greater of $X and Y% of metric).
 
-If baskets use defined terms for amounts, extract the full formula.""",
+Keep this section tight -- aim for one line per basket. Cite Section refs.""",
 )
 
 
-SECTION_07_LIENS = ReportSectionTemplate(
-    section_number=7,
+SECTION_06_LIENS = ReportSectionTemplate(
+    section_number=6,
     title="Negative Covenants -- Liens",
     top_k=15,
-    max_generation_tokens=1200,
+    max_generation_tokens=800,
     retrieval_queries=(
         RetrievalQuery(
             "liens limitation on liens permitted liens",
@@ -351,26 +297,23 @@ SECTION_07_LIENS = ReportSectionTemplate(
         ),
     ),
     extraction_prompt="""\
-Extract the Liens covenant structure:
+Extract the Liens covenant. Keep it short.
 
-GENERAL PROHIBITION: (one sentence summary)
+GENERAL PROHIBITION: One sentence.
 
-PERMITTED LIENS -- list each material basket:
-- General / freebie lien basket ($):
-- Ratio-based lien basket (if any):
-- Capital lease / purchase money liens:
-- Grower baskets:
-- Other material carve-outs with amounts:
+MATERIAL PERMITTED LIENS: List ONLY baskets with a dollar amount, ratio \
+test, or grower formula. Skip statutory liens, tax liens, easements, \
+UCC filings, judgment liens, workers comp, and other ordinary-course items.
 
-For each basket, note the dollar amount or formula and the Section reference.""",
+One bullet per basket with amount and Section reference.""",
 )
 
 
-SECTION_08_RESTRICTED_PAYMENTS = ReportSectionTemplate(
-    section_number=8,
+SECTION_07_RESTRICTED_PAYMENTS = ReportSectionTemplate(
+    section_number=7,
     title="Negative Covenants -- Restricted Payments",
     top_k=18,
-    max_generation_tokens=1800,
+    max_generation_tokens=1000,
     retrieval_queries=(
         RetrievalQuery(
             "restricted payments dividends distributions repurchases",
@@ -382,30 +325,22 @@ SECTION_08_RESTRICTED_PAYMENTS = ReportSectionTemplate(
         ),
     ),
     extraction_prompt="""\
-Extract the Restricted Payments covenant:
+Extract the Restricted Payments covenant. Keep it concise.
 
-GENERAL PROHIBITION: (one sentence summary)
+GENERAL PROHIBITION: One sentence.
 
-KEY RP BASKETS:
-- General / freebie basket ($):
-- Builder basket / Available Amount:
-  - Starter amount:
-  - Builder components (e.g. 50% CNI, equity contribution credits):
-  - Conditions for usage (ratio test, no default):
-- Ratio-based RP basket (if separate from builder):
-- Tax distributions:
-- Management / sponsor fees:
-- Other material RP carve-outs with amounts:
-
-For each basket, note dollar amount/formula, conditions, and Section ref.""",
+KEY RP BASKETS: List only material baskets with dollar amounts, ratio \
+tests, or builder mechanics. For each, note amount/formula, key conditions, \
+and Section reference. Skip intercompany, tax, and other routine baskets \
+unless they have notable dollar caps. One bullet per basket.""",
 )
 
 
-SECTION_09_INVESTMENTS_AND_ASSET_SALES = ReportSectionTemplate(
-    section_number=9,
+SECTION_08_INVESTMENTS_AND_ASSET_SALES = ReportSectionTemplate(
+    section_number=8,
     title="Negative Covenants -- Investments and Asset Sales",
     top_k=15,
-    max_generation_tokens=1500,
+    max_generation_tokens=1000,
     retrieval_queries=(
         RetrievalQuery(
             "investments permitted investments unrestricted subsidiary",
@@ -417,64 +352,42 @@ SECTION_09_INVESTMENTS_AND_ASSET_SALES = ReportSectionTemplate(
         ),
     ),
     extraction_prompt="""\
-INVESTMENTS:
-- General / freebie basket ($):
-- Ratio-based investment basket:
-- Investments in unrestricted subsidiaries:
-- Investments funded with Available Amount / builder:
-- Grower baskets:
-- Other material carve-outs with amounts:
+Extract material items only. Skip ordinary-course and immaterial baskets.
 
-ASSET SALES / DISPOSITIONS:
-- De minimis / freebie threshold:
-- Annual or aggregate cap:
-- Fair market value requirements:
-- Mandatory prepayment from net proceeds:
-  - Percentage of Net Cash Proceeds:
-  - Step-downs by leverage:
-  - Reinvestment period and conditions:
+INVESTMENTS: List only baskets with dollar amounts or ratio tests. One \
+bullet per basket with amount and Section reference.
 
-Cite Section references for each item.""",
+ASSET SALES: Summarize thresholds, mandatory prepayment %, leverage \
+step-downs, reinvestment period. Keep it brief.
+
+Cite Section references.""",
 )
 
 
-SECTION_10_OTHER_PROVISIONS = ReportSectionTemplate(
-    section_number=10,
+SECTION_09_OTHER_PROVISIONS = ReportSectionTemplate(
+    section_number=9,
     title="Other Notable Provisions",
     top_k=12,
-    max_generation_tokens=1200,
+    max_generation_tokens=800,
     retrieval_queries=(
         RetrievalQuery("affirmative covenants financial statements reporting"),
         RetrievalQuery("events of default cross-default change of control"),
         RetrievalQuery("amendment waiver required lenders AHYDO yank-a-bank"),
     ),
     extraction_prompt="""\
-Extract any of the following provisions that are FOUND. Omit items not \
-in the context -- do not write NOT FOUND for optional items here.
+Extract ONLY provisions actually present in the context. Skip entire \
+categories if not found -- do not mention them at all.
 
-REPORTING REQUIREMENTS:
-- Annual financial statements (delivery deadline, audit requirement):
-- Quarterly financial statements (delivery deadline):
-- Compliance certificate timing:
-
-KEY EVENTS OF DEFAULT:
-- Payment default (cure period):
-- Financial covenant default (cure period):
-- Cross-default threshold:
-- Change of control triggers:
-- Bankruptcy (voluntary vs involuntary, cure period):
-
-OTHER NOTABLE ITEMS (only if found):
-- AHYDO savings clause
+Possible items to look for (include only if found):
+- Reporting requirements (delivery deadlines)
+- Events of default (payment, covenant, cross-default, change of control)
+- Amendment thresholds (Required Lenders definition, % needed)
 - Yank-a-bank provisions
-- Amendment thresholds (% of lenders for various types)
 - Defaulting lender provisions
-- Anti-Serta protections
-- EBITDA add-backs (uncapped vs capped)
-- Unrestricted subsidiary designation capacity
-- Make-whole / applicable premium
+- EBITDA add-back caps
+- Any other notable or unusual provisions
 
-Cite Section references for each item found.""",
+Keep each item to 1-2 bullet points. Cite Section references.""",
 )
 
 
@@ -484,13 +397,12 @@ Cite Section references for each item found.""",
 
 ALL_REPORT_SECTIONS: tuple[ReportSectionTemplate, ...] = (
     SECTION_01_TRANSACTION_OVERVIEW,
-    SECTION_02_FACILITY_SUMMARY,
-    SECTION_03_PRICING,
-    SECTION_04_BANK_GROUP,
-    SECTION_05_FINANCIAL_COVENANTS,
-    SECTION_06_DEBT_CAPACITY,
-    SECTION_07_LIENS,
-    SECTION_08_RESTRICTED_PAYMENTS,
-    SECTION_09_INVESTMENTS_AND_ASSET_SALES,
-    SECTION_10_OTHER_PROVISIONS,
+    SECTION_02_FACILITY_AND_PRICING,
+    SECTION_03_BANK_GROUP,
+    SECTION_04_FINANCIAL_COVENANTS,
+    SECTION_05_DEBT_CAPACITY,
+    SECTION_06_LIENS,
+    SECTION_07_RESTRICTED_PAYMENTS,
+    SECTION_08_INVESTMENTS_AND_ASSET_SALES,
+    SECTION_09_OTHER_PROVISIONS,
 )

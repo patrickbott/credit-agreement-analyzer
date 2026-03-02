@@ -28,9 +28,10 @@ class ClaudeProvider(LLMProvider):
         api_key: str | None = None,
     ) -> None:
         self._model = model
-        # max_retries=3 handles transient rate-limits and network blips automatically.
-        # The SDK applies exponential backoff between attempts.
-        self._client: Any = anthropic.Anthropic(api_key=api_key, max_retries=3)
+        # max_retries=5 handles transient rate-limits and network blips automatically.
+        # The SDK applies exponential backoff between attempts. Bumped from 3 to 5
+        # to accommodate parallel report section generation hitting rate limits.
+        self._client: Any = anthropic.Anthropic(api_key=api_key, max_retries=5)
 
     def complete(
         self,

@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from credit_analyzer.config import QA_CHUNK_TEXT_MAX_CHARS, QA_DEFINITION_MAX_CHARS
+from credit_analyzer.config import QA_DEFINITION_MAX_CHARS
 from credit_analyzer.retrieval.hybrid_retriever import HybridChunk
 
 # ---------------------------------------------------------------------------
@@ -189,19 +189,20 @@ def build_context_prompt(
             f"{preamble_text}\n"
         )
 
-    for hc in chunks:
+    # Sort chunks by document position so cross-references flow naturally.
+    # Score information is preserved on each HybridChunk for debugging/UI.
+    sorted_chunks = sorted(
+        chunks,
+        key=lambda hc: (hc.chunk.article_number, hc.chunk.section_id, hc.chunk.chunk_index),
+    )
+
+    for hc in sorted_chunks:
         c = hc.chunk
         pages = _format_page_numbers(c.page_numbers)
-        text = c.text
-        # Promoted definition chunks (source="definition") are exempt
-        # from truncation.  They were promoted specifically because
-        # their full text is needed (pricing grids, ratio tables).
-        if hc.source != "definition" and len(text) > QA_CHUNK_TEXT_MAX_CHARS:
-            text = text[:QA_CHUNK_TEXT_MAX_CHARS].rstrip() + "..."
         parts.append(
             f"--- Source: {c.section_title} "
             f"(Section {c.section_id}, Pages {pages}) ---\n"
-            f"{text}\n"
+            f"{c.text}\n"
         )
 
     if definitions:
