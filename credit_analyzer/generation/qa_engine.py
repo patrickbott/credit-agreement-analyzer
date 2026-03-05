@@ -7,8 +7,10 @@ assembly, conversation history, response parsing, and source citations.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
-from dataclasses import dataclass
+import re
+from collections.abc import Generator, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 
 from credit_analyzer.config import (
     QA_MAX_CONTEXT_CHUNKS,
@@ -28,8 +30,11 @@ from credit_analyzer.generation.response_parser import (
     SourceCitation,
     citations_from_chunks,
     enrich_citations,
+    enrich_inline_citations,
     extract_answer_body,
+    inline_citations_from_sources,
     parse_confidence,
+    parse_inline_citations,
     parse_sources_from_llm,
 )
 from credit_analyzer.llm.base import LLMProvider, LLMResponse
@@ -65,6 +70,136 @@ class QAResponse:
     confidence: ConfidenceLevel
     retrieved_chunks: list[HybridChunk]
     llm_response: LLMResponse
+    inline_citations: list = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Multi-query retrieval helpers
+# ---------------------------------------------------------------------------
+
+
+def _expand_query(question: str) -> list[str]:
+    """Generate additional retrieval queries from a question.
+
+    Uses rule-based expansion to create complementary queries that search
+    different aspects of the same question. This is cheaper than LLM-based
+    expansion and catches cases where key terms appear in definitions,
+    schedules, or different section types.
+
+    Returns 1-3 queries (always includes the original).
+    """
+    queries = [question]
+    question_lower = question.lower()
+
+    # Extract key noun phrases that might be defined terms
+    # Look for capitalized multi-word phrases (common in credit agreements)
+    defined_term_pattern = re.compile(
+        r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b'
+    )
+    terms = defined_term_pattern.findall(question)
+
+    # Also catch fully capitalized terms like "SOFR" or "ABR"
+    upper_terms = re.findall(r'\b([A-Z]{2,})\b', question)
+
+    # Also detect common credit agreement terms in lowercase questions.
+    # Maps lowercase phrases to their canonical defined-term form.
+    _TERM_ALIASES: dict[str, str] = {
+        "applicable margin": "Applicable Margin",
+        "applicable rate": "Applicable Rate",
+        "sofr spread": "Applicable Margin SOFR spread",
+        "interest rate": "Applicable Rate interest rate",
+        "pricing grid": "Applicable Rate pricing grid",
+        "base rate": "Alternate Base Rate",
+        "abr": "Alternate Base Rate ABR",
+        "commitment fee": "Commitment Fee",
+        "lc fee": "Letter of Credit Fee",
+        "leverage ratio": "Total Net Leverage Ratio",
+        "coverage ratio": "Fixed Charge Coverage Ratio",
+        "ebitda": "Consolidated EBITDA",
+        "consolidated ebitda": "Consolidated EBITDA",
+        "available amount": "Available Amount",
+        "permitted investments": "Permitted Investments",
+        "permitted liens": "Permitted Liens",
+        "permitted indebtedness": "Permitted Indebtedness",
+        "change of control": "Change of Control",
+        "required lenders": "Required Lenders",
+        "net income": "Consolidated Net Income",
+        "excess cash flow": "Excess Cash Flow",
+    }
+    alias_terms: list[str] = []
+    for alias, canonical in _TERM_ALIASES.items():
+        if alias in question_lower:
+            alias_terms.append(canonical)
+
+    # Build a definitions-focused query if we found potential defined terms
+    all_terms = terms + upper_terms + alias_terms
+    if all_terms:
+        def_query = "definition " + " ".join(all_terms[:3])
+        queries.append(def_query)
+
+    # Build a broader structural query using key financial terms
+    financial_keywords = {
+        "margin", "spread", "rate", "pricing", "interest", "sofr", "libor",
+        "abr", "floor", "grid", "step-down", "step-up",
+        "leverage", "ratio", "covenant", "test", "threshold",
+        "basket", "cap", "amount", "limit",
+        "maturity", "amortization", "prepayment", "sweep",
+        "dividend", "distribution", "restricted payment",
+        "lien", "collateral", "security",
+        "incremental", "accordion", "facility",
+    }
+    matched_keywords = [kw for kw in financial_keywords if kw in question_lower]
+
+    if matched_keywords and len(queries) < 3:
+        # Add a query that targets the likely section type
+        broad_query = question + " " + " ".join(matched_keywords[:3])
+        if broad_query != question:
+            queries.append(broad_query)
+
+    return queries[:3]  # Cap at 3 queries
+
+
+def _retrieve_multi_query(
+    retriever: HybridRetriever,
+    queries: list[str],
+    document_id: str,
+    top_k: int,
+    section_types_exclude: tuple[str, ...] | None = None,
+) -> RetrievalResult:
+    """Run multiple retrieval queries and merge results.
+
+    Deduplicates by chunk_id, keeping the highest score for each chunk.
+    Merges injected definitions from all query results.
+    """
+    all_chunks: dict[str, HybridChunk] = {}
+    all_definitions: dict[str, str] = {}
+
+    def _run(q: str) -> RetrievalResult:
+        return retriever.retrieve(
+            query=q,
+            document_id=document_id,
+            top_k=top_k,
+            section_types_exclude=section_types_exclude,
+        )
+
+    with ThreadPoolExecutor(max_workers=len(queries)) as pool:
+        results = list(pool.map(_run, queries))
+
+    for result in results:
+        for hc in result.chunks:
+            existing = all_chunks.get(hc.chunk.chunk_id)
+            if existing is None or hc.score > existing.score:
+                all_chunks[hc.chunk.chunk_id] = hc
+        all_definitions.update(result.injected_definitions)
+
+    sorted_chunks = sorted(
+        all_chunks.values(), key=lambda hc: hc.score, reverse=True
+    )[:top_k]
+
+    return RetrievalResult(
+        chunks=sorted_chunks,
+        injected_definitions=all_definitions,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -135,9 +270,11 @@ class QAEngine:
         """
         retrieval_query = self._maybe_reformulate(question)
 
-        result: RetrievalResult = self._retriever.retrieve(
-            query=retrieval_query,
-            document_id=document_id,
+        queries = _expand_query(retrieval_query)
+        result: RetrievalResult = _retrieve_multi_query(
+            self._retriever,
+            queries,
+            document_id,
             top_k=self._max_chunks,
             section_types_exclude=self._section_types_exclude,
         )
@@ -169,6 +306,14 @@ class QAEngine:
         if not citations:
             citations = citations_from_chunks(result.chunks)
 
+        inline_citations = parse_inline_citations(raw_text)
+        if inline_citations:
+            inline_citations = enrich_inline_citations(
+                inline_citations, result.chunks, body=answer_body,
+            )
+        elif not inline_citations and citations:
+            inline_citations = inline_citations_from_sources(answer_body, citations)
+
         self._history.append(
             ConversationTurn(question=question, answer=answer_body)
         )
@@ -179,6 +324,88 @@ class QAEngine:
             confidence=confidence,
             retrieved_chunks=result.chunks,
             llm_response=llm_response,
+            inline_citations=inline_citations,
+        )
+
+    def ask_stream(
+        self,
+        question: str,
+        document_id: str,
+    ) -> Generator[str | QAResponse, None, None]:
+        """Stream an answer, yielding tokens then the final QAResponse.
+
+        Yields str tokens as they arrive from the LLM, then yields a
+        final QAResponse object with parsed citations and confidence.
+        Callers should check isinstance() to distinguish tokens from
+        the final response.
+        """
+        retrieval_query = self._maybe_reformulate(question)
+
+        queries = _expand_query(retrieval_query)
+        result: RetrievalResult = _retrieve_multi_query(
+            self._retriever,
+            queries,
+            document_id,
+            top_k=self._max_chunks,
+            section_types_exclude=self._section_types_exclude,
+        )
+
+        recent_history = self._history[-self._max_history:]
+
+        user_prompt = build_context_prompt(
+            chunks=result.chunks,
+            definitions=result.injected_definitions,
+            history=recent_history,
+            question=question,
+            preamble_text=self._preamble_text,
+            preamble_page_numbers=self._preamble_page_numbers,
+        )
+
+        # Stream tokens from LLM
+        full_text_parts: list[str] = []
+        start = __import__("time").perf_counter()
+        for token in self._llm.stream_complete(
+            system_prompt=QA_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            max_tokens=self._max_gen_tokens,
+        ):
+            full_text_parts.append(token)
+            yield token
+        duration = __import__("time").perf_counter() - start
+
+        raw_text = "".join(full_text_parts)
+        answer_body = _strip_markdown(extract_answer_body(raw_text))
+        confidence = parse_confidence(raw_text)
+        raw_citations = parse_sources_from_llm(raw_text)
+        citations = enrich_citations(raw_citations, result.chunks)
+
+        if not citations:
+            citations = citations_from_chunks(result.chunks)
+
+        inline_citations = parse_inline_citations(raw_text)
+        if inline_citations:
+            inline_citations = enrich_inline_citations(
+                inline_citations, result.chunks, body=answer_body,
+            )
+        elif not inline_citations and citations:
+            inline_citations = inline_citations_from_sources(answer_body, citations)
+
+        self._history.append(
+            ConversationTurn(question=question, answer=answer_body)
+        )
+
+        yield QAResponse(
+            answer=answer_body,
+            sources=citations,
+            confidence=confidence,
+            retrieved_chunks=result.chunks,
+            llm_response=LLMResponse(
+                text=raw_text,
+                tokens_used=0,
+                model=self._llm.model_name(),
+                duration_seconds=duration,
+            ),
+            inline_citations=inline_citations,
         )
 
     def clear_history(self) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from dataclasses import dataclass
 
 
@@ -39,3 +40,18 @@ class LLMProvider(ABC):
     @abstractmethod
     def model_name(self) -> str:
         """Return the identifier of the model in use."""
+
+    def stream_complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+    ) -> Generator[str, None, None]:
+        """Stream completion tokens as they are generated.
+
+        Default implementation falls back to non-streaming complete().
+        Subclasses may override for true streaming.
+        """
+        response = self.complete(system_prompt, user_prompt, temperature, max_tokens)
+        yield response.text

@@ -81,6 +81,16 @@ class ClaudeProvider(LLMProvider):
             duration_seconds=duration,
         )
 
+    def stream_complete(self, system_prompt: str, user_prompt: str, max_tokens: int = 2048):
+        """Stream completion tokens as they are generated."""
+        with self._client.messages.stream(
+            model=self._model,
+            max_tokens=max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        ) as stream:
+            yield from stream.text_stream
+
     def is_available(self) -> bool:
         """Check whether the Anthropic API is reachable with the configured key."""
         try:
