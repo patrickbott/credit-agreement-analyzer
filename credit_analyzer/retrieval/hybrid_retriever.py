@@ -6,6 +6,7 @@ import math
 import re
 from collections import Counter
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
 
@@ -56,6 +57,26 @@ class RetrievalResult:
     chunks: list[HybridChunk]
     injected_definitions: dict[str, str]
 
+
+def _query_term_overlap(query: str, text: str, min_overlap: int = 1) -> bool:
+    """Check if text shares enough significant terms with the query.
+
+    Uses simple keyword matching (lowercased, 4+ char words) to filter
+    out siblings that are topically unrelated to the query.
+    """
+    _STOP = frozenset({
+        "that", "this", "with", "from", "have", "been", "were", "shall",
+        "such", "each", "upon", "into", "under", "more", "than", "also",
+    })
+    query_words = {
+        w.lower() for w in query.split()
+        if len(w) >= 4 and w.lower() not in _STOP
+    }
+    if not query_words:
+        return True  # Can't filter, allow through
+    text_lower = text.lower()
+    overlap = sum(1 for w in query_words if w in text_lower)
+    return overlap >= min_overlap
 
 
 def _compute_term_document_frequency(
@@ -172,21 +193,24 @@ class HybridRetriever:
         """
         # Over-fetch candidates for reranking when a reranker is available.
         rerank_k = top_k * RERANK_CANDIDATES_MULTIPLIER if self._reranker else top_k
-        fetch_k = rerank_k * 2
+        fetch_k = rerank_k
 
-        # Vector search
-        query_embedding = self._embedder.embed_query(query)
+        # Run embedding and BM25 in parallel; vector search follows (needs embedding result).
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            embed_future = pool.submit(self._embedder.embed_query, query)
+            bm25_future = pool.submit(
+                self._bm25_store.search,
+                query,
+                top_k=fetch_k,
+                section_filter=section_filter,
+                section_types_exclude=section_types_exclude,
+            )
+            query_embedding = embed_future.result()
+            bm25_results = bm25_future.result()
+
         vector_results = self._vector_store.search(
             document_id,
             query_embedding,
-            top_k=fetch_k,
-            section_filter=section_filter,
-            section_types_exclude=section_types_exclude,
-        )
-
-        # BM25 search
-        bm25_results = self._bm25_store.search(
-            query,
             top_k=fetch_k,
             section_filter=section_filter,
             section_types_exclude=section_types_exclude,
@@ -239,7 +263,10 @@ class HybridRetriever:
         # Drop chunks below the threshold, but always keep at least 3.
         _MIN_CHUNKS_FLOOR = 3
         if len(hybrid_chunks) > _MIN_CHUNKS_FLOOR:
-            filtered = [hc for hc in hybrid_chunks if hc.score >= MIN_RETRIEVAL_SCORE]
+            filtered = [
+                hc for hc in hybrid_chunks
+                if hc.score >= MIN_RETRIEVAL_SCORE or hc.chunk.chunk_type == "definition"
+            ]
             if len(filtered) < _MIN_CHUNKS_FLOOR:
                 filtered = hybrid_chunks[:_MIN_CHUNKS_FLOOR]
             hybrid_chunks = filtered
@@ -247,7 +274,7 @@ class HybridRetriever:
         # Sibling expansion: pull in adjacent chunks from the same
         # section to capture tables, sub-clauses, and content that
         # was split across chunk boundaries.
-        hybrid_chunks = self._expand_siblings(hybrid_chunks, top_k)
+        hybrid_chunks = self._expand_siblings(hybrid_chunks, top_k, query)
 
         # Definition injection + expansion
         injected: dict[str, str] = {}
@@ -262,6 +289,7 @@ class HybridRetriever:
         self,
         chunks: list[HybridChunk],
         top_k: int,
+        query: str = "",
     ) -> list[HybridChunk]:
         """Pull in sibling chunks from the same section as retrieved chunks.
 
@@ -311,6 +339,9 @@ class HybridRetriever:
                 if sibling.chunk_id in existing_ids:
                     continue
                 if sibling.token_count > budget:
+                    continue
+                # Skip siblings with no query term overlap
+                if query and not _query_term_overlap(query, sibling.text):
                     continue
                 siblings_to_add.append(
                     HybridChunk(

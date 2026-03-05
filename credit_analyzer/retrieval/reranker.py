@@ -8,6 +8,7 @@ independent bi-encoder / BM25 scores used in the first stage.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -55,7 +56,7 @@ class Reranker:
         scores: list[float] = self._model.predict(pairs).tolist()  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
 
         scored = [
-            _HybridChunk(chunk=hc.chunk, score=float(s), source=hc.source)
+            _HybridChunk(chunk=hc.chunk, score=1.0 / (1.0 + math.exp(-float(s))), source=hc.source)
             for hc, s in zip(chunks, scores, strict=True)
         ]
         scored.sort(key=lambda hc: hc.score, reverse=True)
