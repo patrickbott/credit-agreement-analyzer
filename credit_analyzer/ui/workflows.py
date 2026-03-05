@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from collections import Counter
@@ -103,40 +104,42 @@ def build_processed_document(
     _progress(progress_callback, "Chunking agreement text...", 0.18)
     chunks = Chunker().chunk_document(sections, definitions_index)
 
-    # Embedding is the slowest step — give it 18%..90% of the progress bar
-    # and report per-batch so the bar moves continuously.
-    _EMBED_START = 0.20
-    _EMBED_END = 0.90
+    # Build a content-hash-based document_id so re-uploading the same PDF
+    # reuses the existing ChromaDB collection instead of recomputing embeddings.
+    content_hash = hashlib.sha256(pdf_path.read_bytes()).hexdigest()[:12]
+    document_id = _build_document_id(pdf_path, content_hash=content_hash)
 
-    def _on_embed_progress(completed: int, total: int) -> None:
-        frac = completed / total if total > 0 else 1.0
-        pct = _EMBED_START + frac * (_EMBED_END - _EMBED_START)
-        _progress(
-            progress_callback,
-            f"Building embeddings ({completed}/{total} chunks)...",
-            pct,
+    existing_docs = vector_store.list_documents()
+    if document_id in existing_docs:
+        # Collection already exists — skip expensive embedding computation.
+        # Rebuild chunks from ChromaDB so the BM25 index stays in sync.
+        logger.info("Reusing existing ChromaDB collection %r (content unchanged).", document_id)
+        _progress(progress_callback, "Reusing cached embeddings...", 0.90)
+        chunks = vector_store.get_all_chunks(document_id)
+    else:
+        # Embedding is the slowest step — give it 18%..90% of the progress bar
+        # and report per-batch so the bar moves continuously.
+        _EMBED_START = 0.20
+        _EMBED_END = 0.90
+
+        def _on_embed_progress(completed: int, total: int) -> None:
+            frac = completed / total if total > 0 else 1.0
+            pct = _EMBED_START + frac * (_EMBED_END - _EMBED_START)
+            _progress(
+                progress_callback,
+                f"Building embeddings ({completed}/{total} chunks)...",
+                pct,
+            )
+
+        _on_embed_progress(0, len(chunks))
+        embeddings = embedder.embed(
+            [build_search_text(chunk) for chunk in chunks],
+            progress_callback=_on_embed_progress,
         )
 
-    _on_embed_progress(0, len(chunks))
-    embeddings = embedder.embed(
-        [build_search_text(chunk) for chunk in chunks],
-        progress_callback=_on_embed_progress,
-    )
-
-    _progress(progress_callback, "Creating hybrid search index...", 0.92)
-    # Each run creates a new timestamped collection. Old collections persist in
-    # chroma_data/ until manually pruned; this is acceptable for demo use but
-    # should be replaced with a reuse/cleanup strategy in production.
-    document_id = _build_document_id(pdf_path)
-    try:
-        vector_store.delete_collection(document_id)
-    except ValueError:
-        # Collection does not yet exist - nothing to delete.
-        pass
-    except Exception:
-        logger.warning("Could not delete existing collection %r; proceeding with create.", document_id)
-    vector_store.create_collection(document_id)
-    vector_store.add_chunks(document_id, chunks, embeddings)
+        _progress(progress_callback, "Creating hybrid search index...", 0.92)
+        vector_store.create_collection(document_id)
+        vector_store.add_chunks(document_id, chunks, embeddings)
 
     bm25_store = BM25Store()
     bm25_store.build_index(chunks)
@@ -187,8 +190,10 @@ def build_processed_document(
     )
 
 
-def _build_document_id(pdf_path: Path) -> str:
+def _build_document_id(pdf_path: Path, content_hash: str | None = None) -> str:
     stem = re.sub(r"[^a-z0-9]+", "-", pdf_path.stem.lower()).strip("-")
+    if content_hash:
+        return f"{stem or 'agreement'}-{content_hash}"
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     return f"{stem or 'agreement'}-{timestamp}"
 

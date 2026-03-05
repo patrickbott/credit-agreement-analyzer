@@ -100,6 +100,7 @@ class VectorStore:
         self._client: Any = chromadb.PersistentClient(  # pyright: ignore[reportUnknownMemberType]
             path=path,
         )
+        self._collection_cache: dict[str, Any] = {}
 
     def create_collection(self, document_id: str, embedding_model: str = EMBEDDING_MODEL) -> None:
         """Create or replace a collection for a document.
@@ -139,9 +140,10 @@ class VectorStore:
         if not chunks:
             return
 
-        collection: Any = self._client.get_collection(  # pyright: ignore[reportUnknownMemberType]
-            name=document_id,
-        )
+        collection = self._collection_cache.get(document_id)
+        if collection is None:
+            collection = self._client.get_collection(name=document_id)  # pyright: ignore[reportUnknownMemberType]
+            self._collection_cache[document_id] = collection
 
         ids = [c.chunk_id for c in chunks]
         documents = [c.text for c in chunks]
@@ -177,9 +179,10 @@ class VectorStore:
         Returns:
             List of RetrievedChunk objects sorted by similarity (best first).
         """
-        collection: Any = self._client.get_collection(  # pyright: ignore[reportUnknownMemberType]
-            name=document_id,
-        )
+        collection = self._collection_cache.get(document_id)
+        if collection is None:
+            collection = self._client.get_collection(name=document_id)  # pyright: ignore[reportUnknownMemberType]
+            self._collection_cache[document_id] = collection
 
         # Check for embedding model mismatch
         col_meta: dict[str, Any] = collection.metadata or {}  # pyright: ignore[reportUnknownMemberType]
@@ -230,6 +233,40 @@ class VectorStore:
             results.append(RetrievedChunk(chunk=chunk, score=similarity))
 
         return results
+
+    def get_all_chunks(self, document_id: str) -> list[Chunk]:
+        """Retrieve all chunks from a collection.
+
+        Used to rebuild the BM25 index from a previously indexed document
+        without recomputing embeddings.
+        """
+        collection = self._collection_cache.get(document_id)
+        if collection is None:
+            collection = self._client.get_collection(name=document_id)  # pyright: ignore[reportUnknownMemberType]
+            self._collection_cache[document_id] = collection
+
+        result: Any = collection.get(include=["documents", "metadatas"])  # pyright: ignore[reportUnknownMemberType]
+
+        ids_list = cast(list[str], result["ids"])
+        if not ids_list:
+            return []
+
+        docs_list = cast(list[str], result["documents"])
+        metas_list = cast(
+            list[Mapping[str, str | int | float | bool]],
+            result["metadatas"],
+        )
+
+        chunks: list[Chunk] = []
+        for chunk_id, doc_text, meta in zip(
+            ids_list,
+            docs_list,
+            metas_list,
+            strict=True,
+        ):
+            chunks.append(metadata_to_chunk(chunk_id, doc_text, meta))
+
+        return chunks
 
     def delete_collection(self, document_id: str) -> None:
         """Delete a document's collection.
