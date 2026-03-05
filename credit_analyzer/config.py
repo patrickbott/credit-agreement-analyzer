@@ -6,6 +6,8 @@ app startup to catch misconfiguration before it surfaces mid-pipeline.
 """
 
 import os
+import shutil
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv  # pyright: ignore[reportMissingTypeStubs]
@@ -17,41 +19,48 @@ PROJECT_ROOT: Path = Path(__file__).parent.parent
 CHROMA_DATA_DIR: Path = PROJECT_ROOT / "chroma_data"
 
 # Override via TESSERACT_CMD env var (macOS/Linux: /usr/local/bin/tesseract).
-TESSERACT_CMD: str = os.environ.get(
-    "TESSERACT_CMD",
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+_DEFAULT_TESSERACT = (
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    if sys.platform == "win32"
+    else (shutil.which("tesseract") or "/usr/bin/tesseract")
 )
+TESSERACT_CMD: str = os.environ.get("TESSERACT_CMD", _DEFAULT_TESSERACT)
 
 # --- PDF Extraction ---
 # Pages with fewer extracted characters than this threshold trigger OCR fallback.
 OCR_TEXT_LENGTH_THRESHOLD: int = 100
 
 # --- Chunking ---
-CHUNK_TARGET_TOKENS: int = 600
-CHUNK_MAX_TOKENS: int = 800
-CHUNK_OVERLAP_TOKENS: int = 100
-MIN_DEFINITION_CHUNK_TOKENS: int = 50
+CHUNK_TARGET_TOKENS: int = int(os.environ.get("CHUNK_TARGET_TOKENS", "800"))
+CHUNK_MAX_TOKENS: int = int(os.environ.get("CHUNK_MAX_TOKENS", "1200"))
+CHUNK_OVERLAP_TOKENS: int = int(os.environ.get("CHUNK_OVERLAP_TOKENS", "200"))
+MIN_DEFINITION_CHUNK_TOKENS: int = int(os.environ.get("MIN_DEFINITION_CHUNK_TOKENS", "50"))
 TIKTOKEN_ENCODING: str = "cl100k_base"
 
 # --- Retrieval ---
 # Reciprocal Rank Fusion constant (standard default is 60).
-RRF_K: int = 60
+RRF_K: int = 50
 # Upper bound on injected definition chunks per query (primary + recursive expansion).
-MAX_DEFINITIONS_INJECTED: int = 18
+MAX_DEFINITIONS_INJECTED: int = int(os.environ.get("MAX_DEFINITIONS_INJECTED", "12"))
 # Total sibling-chunk token budget added per section during context expansion.
 SIBLING_EXPANSION_MAX_TOKENS: int = 800
 # Minimum relevance score (after reranking) to keep a chunk. Chunks below this
 # threshold are dropped even if top_k hasn't been filled. A floor of 3 chunks
 # is always retained regardless of this threshold.
-MIN_RETRIEVAL_SCORE: float = 0.15
+MIN_RETRIEVAL_SCORE: float = float(os.environ.get("MIN_RETRIEVAL_SCORE", "0.25"))
 # Cross-encoder reranker model for second-stage scoring.
 RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 # Number of candidates to over-fetch from hybrid search for reranking.
 RERANK_CANDIDATES_MULTIPLIER: int = 3
+# BM25 tuning parameters. k1 controls term frequency saturation (lower = less
+# weight to boilerplate like "Borrower"/"shall"). b controls length normalization
+# (lower = less penalty for varied-size definitions).
+BM25_K1: float = 1.2    # default BM25Plus is 1.5
+BM25_B: float = 0.5     # default BM25Plus is 0.75
 
 # --- Report Generation ---
 # Maximum parallel workers for report section generation.
-REPORT_MAX_WORKERS: int = 2
+REPORT_MAX_WORKERS: int = int(os.environ.get("REPORT_MAX_WORKERS", "3"))
 
 # --- LLM ---
 LLM_PROVIDER: str = os.environ.get("LLM_PROVIDER", "claude")  # claude | ollama | internal
