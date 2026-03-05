@@ -41,6 +41,25 @@ class SourceCitation:
     relevant_text_snippet: str
 
 
+@dataclass
+class InlineCitation:
+    """A numbered citation marker embedded in the LLM answer body.
+
+    Attributes:
+        marker_number: The citation number (1, 2, 3...).
+        section_id: The section identifier (e.g. "7.06").
+        section_title: Human-readable section title (filled by enrichment).
+        page_numbers: Page numbers where the cited text appears.
+        snippet: Source text excerpt for tooltip display.
+    """
+
+    marker_number: int
+    section_id: str
+    section_title: str
+    page_numbers: list[int]
+    snippet: str
+
+
 # ---------------------------------------------------------------------------
 # Regex patterns
 # ---------------------------------------------------------------------------
@@ -62,6 +81,19 @@ _SOURCES_LINE_RE = re.compile(
 # Individual citation like "Section 7.06 (pp. 45-46)" or "Section 7.06"
 _CITATION_RE = re.compile(
     r"Section\s+([\d.]+(?:\([A-Za-z0-9]+\))*)\s*(?:\(pp?\.\s*([\d,\s\-]+)\))?",
+    re.IGNORECASE,
+)
+
+# Matches a "References:" block containing numbered citation lines.
+# Tolerant of blank lines and optional whitespace between header and entries.
+_REFERENCES_BLOCK_RE = re.compile(
+    r"(?:^|\n)\s*\*{0,2}References?\*{0,2}\s*:\s*\n\s*\n?((?:\s*\[\d+\]\s*.+\n?\s*\n?)+)",
+    re.IGNORECASE,
+)
+
+# Individual reference line: [1] Section 7.06(a) (pp. 45-46)
+_REFERENCE_LINE_RE = re.compile(
+    r"\[(\d+)\]\s*Section\s+([\d.]+(?:\([A-Za-z0-9]+\))*)\s*(?:\(pp?\.\s*([\d,\s\-]+)\))?",
     re.IGNORECASE,
 )
 
@@ -150,6 +182,42 @@ def parse_sources_from_llm(text: str) -> list[SourceCitation]:
     return citations
 
 
+def parse_inline_citations(text: str) -> list[InlineCitation]:
+    """Parse the References block to build an inline citation index.
+
+    Returns an ordered list of InlineCitation objects. Returns an empty
+    list if no References block is found (backwards-compatible fallback).
+    """
+    match = _REFERENCES_BLOCK_RE.search(text)
+    if not match:
+        return []
+
+    refs_text = match.group(1)
+    citations: list[InlineCitation] = []
+    seen_numbers: set[int] = set()
+
+    for ref_match in _REFERENCE_LINE_RE.finditer(refs_text):
+        num = int(ref_match.group(1))
+        if num in seen_numbers:
+            continue
+        seen_numbers.add(num)
+        section_id = ref_match.group(2)
+        page_str = ref_match.group(3)
+        page_numbers = parse_page_numbers(page_str) if page_str else []
+        citations.append(
+            InlineCitation(
+                marker_number=num,
+                section_id=section_id,
+                section_title="",
+                page_numbers=page_numbers,
+                snippet="",
+            )
+        )
+
+    citations.sort(key=lambda c: c.marker_number)
+    return citations
+
+
 def enrich_citations(
     citations: Sequence[SourceCitation],
     chunks: Sequence[HybridChunk],
@@ -214,6 +282,159 @@ def enrich_citations(
     return enriched
 
 
+def enrich_inline_citations(
+    citations: Sequence[InlineCitation],
+    chunks: Sequence[HybridChunk],
+    body: str = "",
+) -> list[InlineCitation]:
+    """Fill in section_title and snippet from retrieved chunks.
+
+    When *body* is provided, searches chunk text for keywords near each
+    marker to produce a more relevant snippet.
+    """
+    # Collect ALL chunks per section (not just the best), so we can search
+    # for the most relevant chunk when a section has many chunks.
+    section_all_chunks: dict[str, list[HybridChunk]] = {}
+    for hc in chunks:
+        sid = hc.chunk.section_id
+        section_all_chunks.setdefault(sid, []).append(hc)
+
+    # Build marker → nearby keywords from the body text
+    marker_keywords: dict[int, list[str]] = {}
+    if body:
+        for m in re.finditer(r"\[(\d+)\]", body):
+            num = int(m.group(1))
+            # Grab ~80 chars before the marker for keyword extraction
+            window_start = max(0, m.start() - 80)
+            window = body[window_start:m.start()]
+            # Extract dollar amounts, percentages, ratios, and key terms
+            keywords = re.findall(
+                r"\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion))?|"
+                r"\d+\.\d+[x%]|"
+                r"\d+(?:\.\d+)?%|"
+                r"[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*",
+                window,
+            )
+            if keywords:
+                marker_keywords[num] = keywords
+
+    enriched: list[InlineCitation] = []
+    for cite in citations:
+        matched_chunks: list[HybridChunk] = []
+        for candidate_id in _section_lookup_candidates(cite.section_id):
+            matched_chunks = section_all_chunks.get(candidate_id, [])
+            if matched_chunks:
+                break
+
+        if not matched_chunks:
+            enriched.append(cite)
+            continue
+
+        # Pick the best chunk — prefer one containing keywords near the marker
+        best_hc = max(matched_chunks, key=lambda hc: hc.score)
+        keywords = marker_keywords.get(cite.marker_number, [])
+        if keywords and len(matched_chunks) > 1:
+            # Score each chunk by how many keywords it contains
+            def _keyword_score(hc: HybridChunk) -> int:
+                text_lower = hc.chunk.text.lower()
+                return sum(1 for kw in keywords if kw.lower() in text_lower)
+
+            best_by_keywords = max(matched_chunks, key=_keyword_score)
+            if _keyword_score(best_by_keywords) > 0:
+                best_hc = best_by_keywords
+
+        # Build a targeted snippet — try to find the region containing keywords
+        snippet = _make_targeted_snippet(best_hc.chunk.text, keywords)
+
+        enriched.append(
+            InlineCitation(
+                marker_number=cite.marker_number,
+                section_id=cite.section_id,
+                section_title=best_hc.chunk.section_title,
+                page_numbers=cite.page_numbers or list(best_hc.chunk.page_numbers),
+                snippet=snippet,
+            )
+        )
+
+    return enriched
+
+
+_BODY_MARKER_RE = re.compile(r"\[(\d+)\]")
+
+# Section reference that may appear near a [N] marker in body text.
+_NEARBY_SECTION_RE = re.compile(
+    r"Section\s+([\d.]+(?:\([A-Za-z0-9]+\))*)",
+    re.IGNORECASE,
+)
+
+
+def inline_citations_from_sources(
+    body: str,
+    sources: Sequence[SourceCitation],
+) -> list[InlineCitation]:
+    """Build inline citations by matching [N] markers to nearby Section refs.
+
+    Scans the text around each [N] marker for a ``Section X.XX`` mention
+    and maps it to the corresponding SourceCitation.  Falls back to
+    positional mapping (marker N → source N) only when no nearby section
+    reference is found.
+    """
+    if not sources:
+        return []
+
+    # Build lookup from section_id → SourceCitation
+    source_by_id: dict[str, SourceCitation] = {}
+    for src in sources:
+        if src.section_id not in source_by_id:
+            source_by_id[src.section_id] = src
+
+    citations: list[InlineCitation] = []
+    seen: set[int] = set()
+
+    for m in _BODY_MARKER_RE.finditer(body):
+        num = int(m.group(1))
+        if num in seen:
+            continue
+        seen.add(num)
+
+        # Look for "Section X.XX" within ~120 chars before the marker
+        window_start = max(0, m.start() - 120)
+        window = body[window_start:m.start()]
+        sec_matches = list(_NEARBY_SECTION_RE.finditer(window))
+
+        matched_src: SourceCitation | None = None
+        if sec_matches:
+            # Use the closest (last) section reference before the marker
+            nearest_sid = sec_matches[-1].group(1)
+            matched_src = source_by_id.get(nearest_sid)
+            # Try parent section if subsection not found
+            if matched_src is None:
+                for candidate in _section_lookup_candidates(nearest_sid):
+                    matched_src = source_by_id.get(candidate)
+                    if matched_src is not None:
+                        break
+
+        # Positional fallback
+        if matched_src is None:
+            idx = num - 1
+            if 0 <= idx < len(sources):
+                matched_src = sources[idx]
+
+        if matched_src is not None:
+            citations.append(
+                InlineCitation(
+                    marker_number=num,
+                    section_id=matched_src.section_id,
+                    section_title=matched_src.section_title,
+                    page_numbers=list(matched_src.page_numbers),
+                    snippet=matched_src.relevant_text_snippet,
+                )
+            )
+
+    citations.sort(key=lambda c: c.marker_number)
+    return citations
+
+
 def extract_answer_body(text: str) -> str:
     """Strip the Confidence and Sources metadata lines from the answer.
 
@@ -224,7 +445,7 @@ def extract_answer_body(text: str) -> str:
         The answer portion with trailing metadata removed.
     """
     earliest_idx = len(text)
-    for pattern in (_CONFIDENCE_RE, _SOURCES_LINE_RE):
+    for pattern in (_CONFIDENCE_RE, _SOURCES_LINE_RE, _REFERENCES_BLOCK_RE):
         match = pattern.search(text)
         if match and match.start() < earliest_idx:
             earliest_idx = match.start()
@@ -270,10 +491,45 @@ def citations_from_chunks(
 _SNIPPET_MAX_CHARS: int = 200
 
 
-def _make_snippet(text: str) -> str:
+def _make_snippet(text: str, *, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
     """Extract a short, single-line preview from chunk text."""
-    snippet = text[:_SNIPPET_MAX_CHARS].replace("\n", " ").strip()
-    if len(text) > _SNIPPET_MAX_CHARS:
+    snippet = text[:max_chars].replace("\n", " ").strip()
+    if len(text) > max_chars:
+        snippet += "..."
+    return snippet
+
+
+def _make_targeted_snippet(
+    text: str, keywords: list[str], max_chars: int = 300
+) -> str:
+    """Extract a snippet centered on the first keyword match in the text.
+
+    Falls back to the first *max_chars* characters if no keyword is found.
+    """
+    if not keywords:
+        return _make_snippet(text, max_chars=max_chars)
+
+    text_lower = text.lower()
+    best_pos: int | None = None
+    for kw in keywords:
+        pos = text_lower.find(kw.lower())
+        if pos != -1 and (best_pos is None or pos < best_pos):
+            best_pos = pos
+
+    if best_pos is None:
+        return _make_snippet(text, max_chars=max_chars)
+
+    # Center a window around the match
+    half = max_chars // 2
+    start = max(0, best_pos - half)
+    end = min(len(text), start + max_chars)
+    # Re-adjust start if we hit the end
+    start = max(0, end - max_chars)
+
+    snippet = text[start:end].replace("\n", " ").strip()
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(text):
         snippet += "..."
     return snippet
 

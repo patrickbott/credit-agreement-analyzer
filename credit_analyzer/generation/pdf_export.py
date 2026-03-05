@@ -238,6 +238,33 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
             self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
             self.multi_cell(w=_CONTENT_W, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
 
+    def render_inline_references(self, citations: list) -> None:  # pyright: ignore[reportUnknownParameterType]
+        """Render a numbered reference list below the section body."""
+        if not citations:
+            return
+        self.ln(3)  # pyright: ignore[reportUnknownMemberType]
+        self.set_font(_FONT_FAMILY, "B", 7.5)  # pyright: ignore[reportUnknownMemberType]
+        self.set_text_color(*_MUTED)  # pyright: ignore[reportUnknownMemberType]
+        self._reset_x()
+        self.cell(w=_CONTENT_W, h=4, text="REFERENCES")  # pyright: ignore[reportUnknownMemberType]
+        self.ln(4)  # pyright: ignore[reportUnknownMemberType]
+
+        self.set_font(_FONT_FAMILY, "", 7.5)  # pyright: ignore[reportUnknownMemberType]
+        for cite in citations:
+            pages = ", ".join(str(p) for p in cite.page_numbers)
+            ref_text = f"[{cite.marker_number}] Section {cite.section_id}"
+            if cite.section_title:
+                ref_text += f" | {cite.section_title}"
+            if pages:
+                ref_text += f" (pp. {pages})"
+            if cite.snippet:
+                short = cite.snippet[:150].replace("\n", " ")
+                if len(cite.snippet) > 150:
+                    short += "..."
+                ref_text += f" -- {short}"
+            self._reset_x()
+            self.multi_cell(w=_CONTENT_W, h=4, text=ref_text)  # pyright: ignore[reportUnknownMemberType]
+
     def render_sources_line(self, sources_text: str) -> None:
         """Render a compact sources line below the body."""
         self.ln(2)  # pyright: ignore[reportUnknownMemberType]
@@ -328,6 +355,7 @@ def report_to_pdf_bytes(report: GeneratedReport) -> bytes:
             continue
 
         pdf.render_body_text(section.body)
+        pdf.render_inline_references(getattr(section, "inline_citations", []))
 
         # Sources
         if section.sources:
