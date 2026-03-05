@@ -219,6 +219,59 @@ def test_extract_file_not_found(extractor: PDFExtractor) -> None:
 
 @patch("credit_analyzer.processing.pdf_extractor.pdfplumber.open")
 @patch("credit_analyzer.processing.pdf_extractor.fitz.open")
+def test_extract_preserves_allcaps_legal_headers(
+    mock_fitz_open: MagicMock,
+    mock_plumber_open: MagicMock,
+    extractor: PDFExtractor,
+    tmp_path: Path,
+) -> None:
+    """Extraction must not strip all-caps section markers from page text.
+
+    Credit agreements use ALL CAPS for article headers (ARTICLE I), section
+    titles (DEFINITIONS, NEGATIVE COVENANTS), and defined-term labels
+    (APPLICABLE MARGIN).  These are parsed by the section detector and
+    definitions parser.  Applying remove_page_artifacts() to raw page text
+    silently deletes them, producing 0 definitions and empty sections.
+
+    If this test fails, check that remove_page_artifacts() is not being
+    called anywhere in pdf_extractor.py.
+    """
+    legal_text = (
+        "ARTICLE I\n"
+        "DEFINITIONS\n"
+        "\n"
+        '"Applicable Margin" means the applicable rate per the pricing grid.\n'
+        "\n"
+        "NEGATIVE COVENANTS\n"
+        "\n"
+        "The Borrower shall not permit Consolidated Total Debt to exceed limits.\n"
+    ) * 5  # repeat to stay well above OCR threshold
+
+    fitz_pages = [_make_fitz_page(legal_text)]
+    fitz_doc = _make_fitz_doc(fitz_pages)
+    fitz_doc.close = MagicMock()
+
+    plumber_pages = [_make_plumber_page()]
+    plumber_doc = _make_plumber_doc(plumber_pages)
+    plumber_doc.close = MagicMock()
+
+    mock_fitz_open.return_value = fitz_doc
+    mock_plumber_open.return_value = plumber_doc
+
+    pdf_file = tmp_path / "agreement.pdf"
+    pdf_file.touch()
+
+    doc = extractor.extract(pdf_file)
+
+    page_text = doc.pages[0].text
+    assert "ARTICLE I" in page_text, "ARTICLE I stripped from page text"
+    assert "DEFINITIONS" in page_text, "DEFINITIONS stripped from page text"
+    assert "NEGATIVE COVENANTS" in page_text, "NEGATIVE COVENANTS stripped from page text"
+    assert "Applicable Margin" in page_text, "Defined term label stripped from page text"
+
+
+@patch("credit_analyzer.processing.pdf_extractor.pdfplumber.open")
+@patch("credit_analyzer.processing.pdf_extractor.fitz.open")
 def test_extract_source_path_preserved(
     mock_fitz_open: MagicMock,
     mock_plumber_open: MagicMock,

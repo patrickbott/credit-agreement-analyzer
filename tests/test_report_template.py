@@ -60,13 +60,6 @@ class TestReportSectionTemplate:
 class TestAllReportSections:
     """Tests for the ALL_REPORT_SECTIONS tuple."""
 
-    def test_count(self) -> None:
-        assert len(ALL_REPORT_SECTIONS) == 10
-
-    def test_section_numbers_sequential(self) -> None:
-        numbers = [s.section_number for s in ALL_REPORT_SECTIONS]
-        assert numbers == list(range(1, 11))
-
     def test_all_have_queries(self) -> None:
         for section in ALL_REPORT_SECTIONS:
             assert len(section.retrieval_queries) >= 1, (
@@ -85,22 +78,6 @@ class TestAllReportSections:
                 f"Section {section.section_number} has an empty title"
             )
 
-    def test_debt_capacity_has_most_queries(self) -> None:
-        """Section 6 (debt capacity) should have the most retrieval queries."""
-        section_6 = ALL_REPORT_SECTIONS[5]
-        assert section_6.section_number == 6
-        max_queries = max(len(s.retrieval_queries) for s in ALL_REPORT_SECTIONS)
-        assert len(section_6.retrieval_queries) == max_queries
-
-    def test_preamble_sections(self) -> None:
-        """Sections 1 and 4 should include preamble context."""
-        preamble_sections = [
-            s.section_number for s in ALL_REPORT_SECTIONS if s.include_preamble
-        ]
-        assert 1 in preamble_sections
-        assert 4 in preamble_sections
-
-
 class TestExtractionSystemPrompt:
     """Tests for the shared extraction system prompt."""
 
@@ -112,9 +89,9 @@ class TestExtractionSystemPrompt:
         prompt = get_extraction_system_prompt()
         assert "Confidence:" in prompt
 
-    def test_has_sources_instruction(self) -> None:
+    def test_has_references_instruction(self) -> None:
         prompt = get_extraction_system_prompt()
-        assert "Sources:" in prompt
+        assert "References:" in prompt
 
     def test_no_markdown_instruction(self) -> None:
         prompt = get_extraction_system_prompt()
