@@ -32,6 +32,7 @@ from credit_analyzer.ui.theme import (
     metric_card,
     panel_card,
     rail_card,
+    render_inline_citations,
 )
 from credit_analyzer.ui.workflows import (
     ProcessedDocument,
@@ -96,6 +97,10 @@ def main() -> None:
         st.stop()
 
     _initialize_state()
+
+    # Warm up models on startup to avoid cold-start latency on first query
+    load_embedder()
+    load_reranker()
 
     st.markdown(
         hero_card(
@@ -506,11 +511,37 @@ def _run_pending_chat_question(
     qa_engine = _get_or_create_qa_engine(document, provider)
 
     try:
-        with st.chat_message("assistant"), st.spinner("Generating answer..."):
-            response = qa_engine.ask(question, document.document_id)
-        st.session_state.chat_messages[document.document_id].append(
-            {"role": "assistant", "response": response}
-        )
+        with st.chat_message("assistant"):
+            response_placeholder = st.empty()
+            streamed_text = ""
+            final_response = None
+
+            for item in qa_engine.ask_stream(question, document.document_id):
+                if isinstance(item, QAResponse):
+                    final_response = item
+                else:
+                    streamed_text += item
+                    response_placeholder.markdown(streamed_text + "\u258c")
+
+            if final_response is not None:
+                # Replace streaming preview with final parsed answer
+                response_placeholder.empty()
+                if final_response.inline_citations:
+                    cited_html = render_inline_citations(
+                        final_response.answer, final_response.inline_citations
+                    )
+                    response_placeholder.markdown(
+                        f'<div class="section-answer">{cited_html}</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    response_placeholder.write(final_response.answer)
+                st.markdown(confidence_pill(final_response.confidence), unsafe_allow_html=True)
+
+        if final_response is not None:
+            st.session_state.chat_messages[document.document_id].append(
+                {"role": "assistant", "response": final_response}
+            )
     except Exception as exc:
         st.error(f"Could not generate an answer: {exc}")
 
@@ -530,7 +561,16 @@ def _render_chat_message(message: dict[str, Any]) -> None:
 
     response: QAResponse = message["response"]
     with st.chat_message("assistant"):
-        st.write(response.answer)
+        if response.inline_citations:
+            cited_html = render_inline_citations(
+                response.answer, response.inline_citations
+            )
+            st.markdown(
+                f'<div class="section-answer">{cited_html}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.write(response.answer)
         st.markdown(confidence_pill(response.confidence), unsafe_allow_html=True)
         expander_label = (
             f"Sources ({len(response.sources)})"
@@ -736,7 +776,9 @@ def _render_report_section(section: GeneratedSection) -> None:
             f"{conf_pill}"
             "</div></div>"
             '<div class="report-section-body">'
-            f'<div class="report-body">{format_report_body(section.body)}</div>'
+            f'<div class="report-body">'
+            f'{format_report_body(section.body, inline_citations=getattr(section, "inline_citations", None))}'
+            f'</div>'
             "</div>"
             f"{sources_html}"
             "</div>"

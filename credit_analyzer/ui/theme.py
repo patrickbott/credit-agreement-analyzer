@@ -559,8 +559,8 @@ div[data-testid="stButton"] > button:hover {{
   color: var(--rbc-blue);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin: 1rem 0 0.35rem 0;
-  padding-bottom: 0.25rem;
+  margin: 0.7rem 0 0.2rem 0;
+  padding-bottom: 0.2rem;
   border-bottom: 1px solid rgba(0, 81, 165, 0.1);
 }}
 
@@ -569,8 +569,8 @@ div[data-testid="stButton"] > button:hover {{
 }}
 
 .report-body .rb-field {{
-  margin: 0.45rem 0;
-  line-height: 1.55;
+  margin: 0.18rem 0;
+  line-height: 1.45;
 }}
 
 .report-body .rb-field-label {{
@@ -588,29 +588,29 @@ div[data-testid="stButton"] > button:hover {{
 }}
 
 .report-body .rb-para {{
-  margin: 0.4rem 0;
-  line-height: 1.55;
+  margin: 0.15rem 0;
+  line-height: 1.45;
 }}
 
 .report-body ul.rb-list {{
-  margin: 0.3rem 0 0.3rem 1.1rem;
+  margin: 0.15rem 0 0.15rem 1.1rem;
   padding: 0;
   list-style: disc;
 }}
 
 .report-body ul.rb-list li {{
-  margin: 0.2rem 0;
-  line-height: 1.5;
+  margin: 0.1rem 0;
+  line-height: 1.4;
 }}
 
 .report-body ol.rb-list {{
-  margin: 0.3rem 0 0.3rem 1.1rem;
+  margin: 0.15rem 0 0.15rem 1.1rem;
   padding: 0;
 }}
 
 .report-body ol.rb-list li {{
-  margin: 0.2rem 0;
-  line-height: 1.5;
+  margin: 0.1rem 0;
+  line-height: 1.4;
 }}
 
 .report-body .rb-sub-list {{
@@ -624,6 +624,71 @@ div[data-testid="stButton"] > button:hover {{
   line-height: 1.45;
   font-size: 0.87rem;
 }}
+
+/* Ensure tooltips are not clipped by Streamlit overflow */
+.report-section,
+.report-section-body,
+.report-body,
+.section-answer,
+[data-testid="stChatMessage"],
+[data-testid="stMarkdownContainer"] {{
+  overflow: visible !important;
+}}
+
+/* Inline citation tooltips */
+.cite-marker {{
+  display: inline;
+  position: relative;
+  cursor: help;
+  color: var(--rbc-blue);
+  font-size: 0.75em;
+  font-weight: 700;
+  vertical-align: super;
+  line-height: 0;
+  padding: 0 2px;
+}}
+
+.cite-marker .cite-tooltip {{
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 280px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.4;
+  vertical-align: baseline;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.10);
+  z-index: 1000;
+  pointer-events: none;
+  white-space: normal;
+}}
+
+.cite-marker:hover .cite-tooltip {{
+  display: block;
+}}
+
+.cite-tooltip-header {{
+  display: block;
+  font-weight: 700;
+  color: var(--rbc-blue);
+  font-size: 0.8rem;
+  margin-bottom: 0.15rem;
+}}
+
+.cite-tooltip-pages {{
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+}}
+
 </style>
 """
 
@@ -686,6 +751,56 @@ def confidence_pill(confidence: str) -> str:
     return f'<span class="pill pill-{tone}">{escape(confidence.upper())}</span>'
 
 
+# Matches [1], [2], etc. in body text
+_INLINE_MARKER_RE = re.compile(r"\[(\d+)\]")
+
+
+def render_inline_citations(body: str, citations: list) -> str:
+    """Replace [N] markers in body text with hover-tooltip HTML spans.
+
+    Args:
+        body: The answer text containing [1], [2] markers.
+        citations: List of InlineCitation objects (must have marker_number,
+            section_id, section_title, page_numbers, snippet attributes).
+
+    Returns:
+        HTML string with tooltip spans. If citations is empty, returns
+        the body HTML-escaped with markers left as plain text.
+    """
+    if not citations:
+        return escape(body)
+
+    cite_map = {c.marker_number: c for c in citations}
+
+    parts: list[str] = []
+    last_end = 0
+    for m in _INLINE_MARKER_RE.finditer(body):
+        # Escape the text between markers
+        parts.append(escape(body[last_end:m.start()]))
+        num = int(m.group(1))
+        cite = cite_map.get(num)
+        if cite is None:
+            # Still render as superscript for visual consistency
+            parts.append(f'<span class="cite-marker">[{num}]</span>')
+        else:
+            title = escape(f"Section {cite.section_id}")
+            if cite.section_title:
+                title = escape(f"Section {cite.section_id} | {cite.section_title}")
+            pages_str = escape(
+                ", ".join(str(p) for p in cite.page_numbers) or "n/a"
+            )
+            parts.append(
+                f'<span class="cite-marker">[{num}]'
+                f'<span class="cite-tooltip">'
+                f'<span class="cite-tooltip-header">{title}</span>'
+                f'<span class="cite-tooltip-pages">pp. {pages_str}</span>'
+                f"</span></span>"
+            )
+        last_end = m.end()
+    parts.append(escape(body[last_end:]))
+    return "".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Report body text formatter
 # ---------------------------------------------------------------------------
@@ -710,7 +825,7 @@ _NUMBERED_RE = re.compile(r"^(\d+)\.\s+(.+)")
 _BULLET_RE = re.compile(r"^[-*]\s+(.+)")
 
 
-def format_report_body(body: str) -> str:
+def format_report_body(body: str, inline_citations: list | None = None) -> str:
     """Convert plain-text report section body to styled HTML.
 
     Recognises headings (standalone ALL-CAPS lines), field labels
@@ -758,6 +873,8 @@ def format_report_body(body: str) -> str:
         stripped_val = val.strip()
         if stripped_val.upper() == "NOT FOUND" or stripped_val.upper().startswith("NOT FOUND"):
             return f'<span class="rb-not-found">{escape(stripped_val)}</span>'
+        if inline_citations:
+            return render_inline_citations(stripped_val, inline_citations)
         return escape(stripped_val)
 
     for line in lines:
@@ -825,7 +942,7 @@ def format_report_body(body: str) -> str:
             continue
 
         # Regular paragraph text
-        parts.append(f'<div class="rb-para">{escape(stripped)}</div>')
+        parts.append(f'<div class="rb-para">{style_value(stripped)}</div>')
 
     # Final flush
     flush_bullets()
