@@ -110,15 +110,12 @@ class Chunk:
 def build_search_text(chunk: Chunk) -> str:
     """Build context-enriched text for embedding and keyword indexing.
 
-    Prepends the section title and article context to the raw chunk
-    text so that embedding models and BM25 can associate the chunk
-    with its structural location in the agreement.  This generalizes
-    across different naming conventions because the embedding model
-    handles synonym matching (e.g. 'Financial Condition Covenants'
-    clusters near 'Financial Maintenance' in embedding space).
-
-    The raw ``chunk.text`` is preserved for prompt context assembly
-    where the header would be redundant.
+    Prepends structural context (article, section, type) to the raw chunk
+    text so that embedding models and BM25 can disambiguate structurally
+    similar clauses. For example, a debt basket in Section 7.03 gets tagged
+    with its article context ("Negative Covenants") and section type
+    ("negative_covenants"), helping distinguish it from similar language
+    in definitions or facility terms.
 
     Args:
         chunk: The chunk to enrich.
@@ -126,8 +123,17 @@ def build_search_text(chunk: Chunk) -> str:
     Returns:
         Text suitable for embedding or BM25 indexing.
     """
-    header = f"[Section {chunk.section_id}: {chunk.section_title}]"
-    return f"{header}\n{chunk.text}"
+    parts: list[str] = []
+    # Article context helps group related sections
+    if chunk.article_title:
+        parts.append(f"[Article {chunk.article_number}: {chunk.article_title}]")
+    parts.append(f"[Section {chunk.section_id}: {chunk.section_title}]")
+    # Section type tag aids BM25 keyword matching on filtered queries
+    if chunk.section_type:
+        type_label = chunk.section_type.replace("_", " ")
+        parts.append(f"[Type: {type_label}]")
+    parts.append(chunk.text)
+    return "\n".join(parts)
 
 
 # Paragraph split patterns, tried in order of preference.
@@ -450,9 +456,10 @@ class Chunker:
         for para in paragraphs:
             para_tokens = _count_tokens(para, self._encoding)
 
-            # If a single paragraph exceeds max, include it as-is (don't split mid-sentence)
+            # If a single paragraph exceeds max, split at clause/sentence boundaries
             if para_tokens > CHUNK_MAX_TOKENS and not current_parts:
-                chunks.append(para)
+                sub_chunks = self._split_oversized_paragraph(para)
+                chunks.extend(sub_chunks)
                 continue
 
             if current_tokens + para_tokens > CHUNK_TARGET_TOKENS and current_parts:
@@ -460,12 +467,28 @@ class Chunker:
                 chunk_text = "\n\n".join(current_parts)
                 chunks.append(chunk_text)
 
-                # Build overlap: take paragraphs from the end of the current chunk
+                # Build overlap: take paragraphs from the end of the current chunk.
+                # If the last paragraph exceeds the overlap budget, take its
+                # trailing sentences to ensure nonzero overlap.
                 overlap_parts: list[str] = []
                 overlap_tokens = 0
                 for prev_para in reversed(current_parts):
                     prev_tokens = _count_tokens(prev_para, self._encoding)
                     if overlap_tokens + prev_tokens > CHUNK_OVERLAP_TOKENS:
+                        # If we have nothing yet, take trailing sentences from this paragraph
+                        if not overlap_parts:
+                            sentences = re.split(r"(?<=\.)\s+", prev_para)
+                            tail: list[str] = []
+                            tail_tokens = 0
+                            for sent in reversed(sentences):
+                                sent_tokens = _count_tokens(sent, self._encoding)
+                                if tail_tokens + sent_tokens > CHUNK_OVERLAP_TOKENS:
+                                    break
+                                tail.insert(0, sent)
+                                tail_tokens += sent_tokens
+                            if tail:
+                                overlap_parts = [" ".join(tail)]
+                                overlap_tokens = tail_tokens
                         break
                     overlap_parts.insert(0, prev_para)
                     overlap_tokens += prev_tokens
@@ -481,3 +504,53 @@ class Chunker:
             chunks.append("\n\n".join(current_parts))
 
         return chunks
+
+    def _split_oversized_paragraph(self, para: str) -> list[str]:
+        """Split an oversized paragraph at clause or sentence boundaries.
+
+        Tries clause markers like (a), (b), (i), (ii) first, then
+        semicolons, then sentence-ending periods. Falls back to the
+        full paragraph if no split points are found.
+        """
+        # Try splitting at legal clause markers: (a), (b), (i), (ii), etc.
+        clause_parts = re.split(r"(?=\([a-z]\)|\([ivx]+\))", para)
+        if len(clause_parts) > 1:
+            return self._merge_splits_to_target(clause_parts)
+
+        # Try splitting at semicolons (common in legal enumeration)
+        semi_parts = para.split(";")
+        if len(semi_parts) > 1:
+            # Re-attach the semicolons
+            semi_parts = [p.strip() + ";" for p in semi_parts[:-1]] + [semi_parts[-1].strip()]
+            return self._merge_splits_to_target(semi_parts)
+
+        # Try splitting at sentence boundaries
+        sentence_parts = re.split(r"(?<=\.)\s+(?=[A-Z])", para)
+        if len(sentence_parts) > 1:
+            return self._merge_splits_to_target(sentence_parts)
+
+        # No good split point found — return as-is
+        return [para]
+
+    def _merge_splits_to_target(self, parts: list[str]) -> list[str]:
+        """Merge small split parts back together to approach CHUNK_TARGET_TOKENS."""
+        chunks: list[str] = []
+        current: list[str] = []
+        current_tokens = 0
+
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            part_tokens = _count_tokens(part, self._encoding)
+            if current_tokens + part_tokens > CHUNK_TARGET_TOKENS and current:
+                chunks.append("\n".join(current))
+                current = [part]
+                current_tokens = part_tokens
+            else:
+                current.append(part)
+                current_tokens += part_tokens
+
+        if current:
+            chunks.append("\n".join(current))
+        return chunks if chunks else parts

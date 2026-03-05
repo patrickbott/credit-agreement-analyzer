@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from credit_analyzer.processing.section_detector import DocumentSection
 
@@ -53,6 +53,15 @@ class DefinitionsIndex:
     """
 
     definitions: dict[str, str]
+    _terms_pattern: re.Pattern[str] | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.definitions:
+            # Sort longest-first so the alternation matches the longest term
+            sorted_terms = sorted(self.definitions.keys(), key=len, reverse=True)
+            pattern = r"\b(?:" + "|".join(re.escape(t) for t in sorted_terms) + r")\b"
+            # frozen=True requires object.__setattr__ for post_init
+            object.__setattr__(self, "_terms_pattern", re.compile(pattern))
 
     def lookup(self, term: str) -> str | None:
         """Look up a defined term by exact name.
@@ -68,9 +77,9 @@ class DefinitionsIndex:
     def find_terms_in_text(self, text: str) -> list[str]:
         """Find all defined terms that appear in the given text.
 
-        Searches for each known defined term as a whole word in the text.
-        Returns terms sorted longest-first to support greedy matching
-        by downstream consumers.
+        Uses a single pre-compiled alternation regex instead of O(n) per-term
+        compilations. Also detects sub-terms contained within longer matches
+        (e.g. "Net Income" inside "Consolidated Net Income").
 
         Args:
             text: The text to scan for defined terms.
@@ -78,15 +87,22 @@ class DefinitionsIndex:
         Returns:
             List of matching defined term names, longest first.
         """
-        found: list[str] = []
-        for term in self.definitions:
-            # Whole-word match to avoid partial hits (e.g. "Loan" inside "Loans")
-            # Use word boundary but allow for possessives and plurals at the end
-            if re.search(r"\b" + re.escape(term) + r"\b", text):
-                found.append(term)
-        # Sort longest first so callers doing greedy replacement get the right match
-        found.sort(key=len, reverse=True)
-        return found
+        if self._terms_pattern is None:
+            return []
+        direct_matches = set(self._terms_pattern.findall(text))
+        # Also find sub-terms that are wholly contained within longer matches
+        # (regex alternation consumes the longest match, hiding sub-terms)
+        found = set()
+        for m in direct_matches:
+            if m in self.definitions:
+                found.add(m)
+            # Check if any shorter defined terms are sub-terms of this match
+            for term in self.definitions:
+                if term != m and term in m:
+                    found.add(term)
+        result = list(found)
+        result.sort(key=len, reverse=True)
+        return result
 
     def get_definitions_for_terms(self, terms: Sequence[str]) -> dict[str, str]:
         """Retrieve definitions for a list of terms.
