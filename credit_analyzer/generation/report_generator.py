@@ -29,8 +29,11 @@ from credit_analyzer.generation.response_parser import (
     SourceCitation,
     citations_from_chunks,
     enrich_citations,
+    enrich_inline_citations,
     extract_answer_body,
+    inline_citations_from_sources,
     parse_confidence,
+    parse_inline_citations,
     parse_sources_from_llm,
 )
 from credit_analyzer.llm.base import LLMProvider, LLMResponse
@@ -76,6 +79,7 @@ class GeneratedSection:
     error_message: str = ""
     duration_seconds: float = 0.0
     chunk_count: int = 0
+    inline_citations: list = field(default_factory=list)
 
 
 @dataclass
@@ -500,6 +504,14 @@ class ReportGenerator:
         if not sources:
             sources = citations_from_chunks(result.chunks)
 
+        inline_cites = parse_inline_citations(raw_text)
+        if inline_cites:
+            inline_cites = enrich_inline_citations(
+                inline_cites, result.chunks, body=body,
+            )
+        elif not inline_cites and sources:
+            inline_cites = inline_citations_from_sources(body, sources)
+
         return GeneratedSection(
             section_number=template.section_number,
             title=template.title,
@@ -509,6 +521,7 @@ class ReportGenerator:
             status="complete",
             duration_seconds=llm_response.duration_seconds,
             chunk_count=len(result.chunks),
+            inline_citations=inline_cites,
         )
 
 

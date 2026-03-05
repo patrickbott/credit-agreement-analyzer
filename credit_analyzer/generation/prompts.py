@@ -38,6 +38,13 @@ where the user might look (e.g., "check the definitions section" or \
 the document.
 5. Do not assume provisions exist if they are not in the context.
 
+INLINE CITATIONS:
+Place a bracketed number [1], [2], etc. immediately after each specific \
+factual claim (dollar amounts, ratios, percentages, dates, covenant tests). \
+Use sequential numbering starting from [1]. If the same source supports \
+multiple claims, reuse the same number. Do NOT let citations make your \
+response longer -- keep the same concise style.
+
 RESPONSE STYLE:
 1. Write like a senior investment banking analyst briefing a colleague, not \
 like a lawyer.
@@ -61,7 +68,9 @@ answer the question, confidence must be MEDIUM or LOW. You only see a \
 subset of the full agreement, so absence from the context does not mean \
 the provision does not exist elsewhere in the document.
 
-Sources: Section X.XX (pp. XX-XX), Section Y.YY (pp. YY-YY)
+References:
+[1] Section X.XX (pp. XX-XX)
+[2] Section Y.YY (pp. YY-YY)
 """
 
 REFORMULATION_SYSTEM_PROMPT: str = """\
@@ -223,7 +232,9 @@ def build_context_prompt(
         parts.append("\n=== PREVIOUS Q&A IN THIS SESSION ===")
         for turn in history:
             parts.append(f"User: {turn.question}")
-            parts.append(f"Assistant: {turn.answer}")
+            # Truncate long prior answers to save tokens (~200 tokens)
+            answer = turn.answer[:800] + "..." if len(turn.answer) > 800 else turn.answer
+            parts.append(f"Assistant: {answer}")
 
     parts.append(f"\n=== CURRENT QUESTION ===\n{question}")
 

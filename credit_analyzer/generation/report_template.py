@@ -8,7 +8,7 @@ objects.  Each ``ReportSectionTemplate`` defines:
 - optional flags for special handling (e.g. sub-section splitting).
 
 Prompts are tuned for Claude Sonnet: structured output with explicit
-field labels, strict citation requirements, and clear NOT FOUND markers.
+field labels, strict citation requirements, and silent omission of missing data.
 """
 
 from __future__ import annotations
@@ -85,9 +85,18 @@ conditions. Skip boilerplate, ordinary-course, and de minimis baskets \
 (e.g. trade payables, statutory liens, workers comp, UCC filings). \
 Aim for the shortest output that captures all material economics.
 
+INLINE CITATIONS:
+Place a bracketed number [1], [2], etc. immediately after each specific \
+factual claim (dollar amounts, ratios, percentages, dates, covenant tests). \
+Use sequential numbering starting from [1]. If the same source supports \
+multiple claims, reuse the same number. Do NOT let citations make your \
+response longer -- keep the same concise bullet-point style.
+
 At the end of your response, on separate lines:
 Confidence: HIGH | MEDIUM | LOW
-Sources: Section X.XX (pp. XX-XX), Section Y.YY (pp. YY-YY)
+References:
+[1] Section X.XX (pp. XX-XX)
+[2] Section Y.YY (pp. YY-YY)
 """
 
 
@@ -128,8 +137,8 @@ Keep each field to one line. Cite Section and page.""",
 SECTION_02_FACILITY_AND_PRICING = ReportSectionTemplate(
     section_number=2,
     title="Facility Summary and Pricing",
-    top_k=18,
-    max_generation_tokens=1500,
+    top_k=20,
+    max_generation_tokens=2000,
     retrieval_queries=(
         RetrievalQuery(
             "revolving credit facility term loan commitment amount maturity",
@@ -139,12 +148,13 @@ SECTION_02_FACILITY_AND_PRICING = ReportSectionTemplate(
             "amortization repayment schedule mandatory prepayment",
             section_filter="facility_terms",
         ),
+        # Unfiltered: pricing info often lives in definitions ("Applicable Rate")
+        # and schedules (Schedule 1.1A) rather than facility_terms sections
         RetrievalQuery(
-            "applicable rate applicable margin SOFR spread ABR spread",
-            section_filter="facility_terms",
+            "Applicable Rate Applicable Margin SOFR spread ABR spread pricing grid",
         ),
         RetrievalQuery(
-            "pricing grid leverage step-down commitment fee OID floor",
+            "commitment fee letter of credit fee OID original issue discount floor",
             section_filter="facility_terms",
         ),
     ),
@@ -214,9 +224,9 @@ SECTION_04_FINANCIAL_COVENANTS = ReportSectionTemplate(
             "equity cure right financial covenant testing",
             section_filter="financial_covenants",
         ),
+        # Unfiltered: leverage/coverage ratio definitions contain test levels
         RetrievalQuery(
-            "maximum total leverage first lien leverage senior secured",
-            section_filter="financial_covenants",
+            "Consolidated EBITDA Total Net Leverage Ratio Fixed Charge Coverage",
         ),
     ),
     extraction_prompt="""\
@@ -241,7 +251,7 @@ SECTION_05_DEBT_CAPACITY = ReportSectionTemplate(
     section_number=5,
     title="Negative Covenants -- Debt Capacity",
     top_k=20,
-    max_generation_tokens=1500,
+    max_generation_tokens=2000,
     retrieval_queries=(
         RetrievalQuery(
             "indebtedness limitation on indebtedness incurrence",
@@ -255,13 +265,9 @@ SECTION_05_DEBT_CAPACITY = ReportSectionTemplate(
             "ratio debt incurrence test permitted indebtedness",
             section_filter="negative_covenants",
         ),
+        # Unfiltered: key definitions contain basket amounts and grower formulas
         RetrievalQuery(
-            "general debt basket fixed dollar amount",
-            section_filter="negative_covenants",
-        ),
-        RetrievalQuery(
-            "credit agreement refinancing indebtedness",
-            section_filter="negative_covenants",
+            "Permitted Indebtedness Available Incremental Amount Fixed Incremental Amount",
         ),
     ),
     extraction_prompt="""\
@@ -295,6 +301,10 @@ SECTION_06_LIENS = ReportSectionTemplate(
             "liens limitation on liens permitted liens",
             section_filter="negative_covenants",
         ),
+        # Unfiltered: "Permitted Liens" definition often contains the basket list
+        RetrievalQuery(
+            "Permitted Liens general lien basket",
+        ),
     ),
     extraction_prompt="""\
 Extract the Liens covenant. Keep it short.
@@ -323,6 +333,10 @@ SECTION_07_RESTRICTED_PAYMENTS = ReportSectionTemplate(
             "available amount builder basket cumulative credit",
             section_filter="negative_covenants",
         ),
+        # Unfiltered: "Available Amount" and "Restricted Payment" definitions
+        RetrievalQuery(
+            "Available Amount Cumulative Credit builder basket definition",
+        ),
     ),
     extraction_prompt="""\
 Extract the Restricted Payments covenant. Keep it concise.
@@ -350,6 +364,10 @@ SECTION_08_INVESTMENTS_AND_ASSET_SALES = ReportSectionTemplate(
             "asset sales dispositions mandatory prepayment reinvestment",
             section_filter="negative_covenants",
         ),
+        # Unfiltered: "Permitted Investments" and "Permitted Acquisitions" definitions
+        RetrievalQuery(
+            "Permitted Investments Permitted Acquisitions asset sale definition",
+        ),
     ),
     extraction_prompt="""\
 Extract material items only. Skip ordinary-course and immaterial baskets.
@@ -364,27 +382,64 @@ Cite Section references.""",
 )
 
 
-SECTION_09_OTHER_PROVISIONS = ReportSectionTemplate(
+SECTION_09_EVENTS_OF_DEFAULT = ReportSectionTemplate(
     section_number=9,
+    title="Events of Default and Amendments",
+    top_k=15,
+    max_generation_tokens=1000,
+    retrieval_queries=(
+        RetrievalQuery(
+            "events of default cross-default acceleration",
+            section_filter="events_of_default",
+        ),
+        RetrievalQuery(
+            "change of control put option",
+            section_filter="events_of_default",
+        ),
+        # Unfiltered: "Required Lenders" and "Change of Control" definitions
+        RetrievalQuery(
+            "Required Lenders amendment waiver voting threshold Change of Control",
+        ),
+    ),
+    extraction_prompt="""\
+Extract ONLY provisions actually present in the context.
+
+EVENTS OF DEFAULT:
+- Payment default (grace period)
+- Covenant default (cure period)
+- Cross-default threshold
+- Change of control definition and trigger
+- Bankruptcy / insolvency
+- Judgment default threshold
+
+AMENDMENT PROVISIONS:
+- Required Lenders definition (% threshold)
+- Unanimous lender consent items
+- Supermajority items if any
+
+Keep each item to 1-2 bullet points. Cite Section references.""",
+)
+
+
+SECTION_10_OTHER_PROVISIONS = ReportSectionTemplate(
+    section_number=10,
     title="Other Notable Provisions",
     top_k=12,
     max_generation_tokens=800,
     retrieval_queries=(
         RetrievalQuery("affirmative covenants financial statements reporting"),
-        RetrievalQuery("events of default cross-default change of control"),
-        RetrievalQuery("amendment waiver required lenders AHYDO yank-a-bank"),
+        RetrievalQuery("EBITDA add-back adjustment definition consolidated"),
+        RetrievalQuery("yank-a-bank defaulting lender replacement"),
     ),
     extraction_prompt="""\
 Extract ONLY provisions actually present in the context. Skip entire \
-categories if not found -- do not mention them at all.
+categories if not found.
 
 Possible items to look for (include only if found):
-- Reporting requirements (delivery deadlines)
-- Events of default (payment, covenant, cross-default, change of control)
-- Amendment thresholds (Required Lenders definition, % needed)
+- Reporting requirements (delivery deadlines, compliance certificates)
+- EBITDA add-back caps (cost savings, synergies, run-rate)
 - Yank-a-bank provisions
 - Defaulting lender provisions
-- EBITDA add-back caps
 - Any other notable or unusual provisions
 
 Keep each item to 1-2 bullet points. Cite Section references.""",
@@ -404,5 +459,6 @@ ALL_REPORT_SECTIONS: tuple[ReportSectionTemplate, ...] = (
     SECTION_06_LIENS,
     SECTION_07_RESTRICTED_PAYMENTS,
     SECTION_08_INVESTMENTS_AND_ASSET_SALES,
-    SECTION_09_OTHER_PROVISIONS,
+    SECTION_09_EVENTS_OF_DEFAULT,
+    SECTION_10_OTHER_PROVISIONS,
 )
