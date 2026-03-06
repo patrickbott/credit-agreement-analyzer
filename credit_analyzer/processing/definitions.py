@@ -92,7 +92,7 @@ class DefinitionsIndex:
         direct_matches = set(self._terms_pattern.findall(text))
         # Also find sub-terms that are wholly contained within longer matches
         # (regex alternation consumes the longest match, hiding sub-terms)
-        found = set()
+        found: set[str] = set()
         for m in direct_matches:
             if m in self.definitions:
                 found.add(m)

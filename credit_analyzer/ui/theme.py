@@ -1137,9 +1137,12 @@ def nav_item(section_number: int, title: str, anchor: str) -> str:
         title: Section title text.
         anchor: The HTML anchor id to link to.
     """
+    safe_anchor = _safe(anchor)
+    scroll_js = f"parent.document.getElementById('{safe_anchor}')"
+    scroll_js += "?.scrollIntoView({behavior:'smooth',block:'start'})"
     return (
         f'<a class="quick-nav-item" href="javascript:void(0)"'
-        f' onclick="parent.document.getElementById(\'{_safe(anchor)}\')?.scrollIntoView({{behavior:\'smooth\',block:\'start\'}})">'
+        f' onclick="{scroll_js}">'
         f'<span class="nav-num">{section_number}</span>'
         f"<span>{_safe(title)}</span>"
         "</a>"

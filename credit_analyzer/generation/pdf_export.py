@@ -16,6 +16,7 @@ from fpdf import FPDF  # pyright: ignore[reportMissingTypeStubs]
 
 if TYPE_CHECKING:
     from credit_analyzer.generation.report_generator import GeneratedReport
+    from credit_analyzer.generation.response_parser import InlineCitation
 
 # ---------------------------------------------------------------------------
 # Brand colours (RGB tuples)
@@ -238,7 +239,7 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
             self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
             self.multi_cell(w=_CONTENT_W, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
 
-    def render_inline_references(self, citations: list) -> None:  # pyright: ignore[reportUnknownParameterType]
+    def render_inline_references(self, citations: list[InlineCitation]) -> None:
         """Render a numbered reference list below the section body."""
         if not citations:
             return
@@ -355,7 +356,7 @@ def report_to_pdf_bytes(report: GeneratedReport) -> bytes:
             continue
 
         pdf.render_body_text(section.body)
-        pdf.render_inline_references(getattr(section, "inline_citations", []))
+        pdf.render_inline_references(section.inline_citations)
 
         # Sources
         if section.sources:

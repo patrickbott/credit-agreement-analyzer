@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Generator
 from typing import Any, cast
 
 import anthropic  # pyright: ignore[reportMissingTypeStubs]
@@ -81,7 +82,13 @@ class ClaudeProvider(LLMProvider):
             duration_seconds=duration,
         )
 
-    def stream_complete(self, system_prompt: str, user_prompt: str, max_tokens: int = 2048):
+    def stream_complete(  # noqa: ARG002
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+    ) -> Generator[str, None, None]:
         """Stream completion tokens as they are generated."""
         with self._client.messages.stream(
             model=self._model,

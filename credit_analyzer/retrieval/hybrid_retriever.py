@@ -26,7 +26,7 @@ from credit_analyzer.retrieval.embedder import Embedder
 from credit_analyzer.retrieval.reranker import Reranker
 from credit_analyzer.retrieval.vector_store import VectorStore
 
-SourceLabel = Literal["vector", "bm25", "both", "definition"]
+SourceLabel = Literal["vector", "bm25", "both", "definition", "preamble"]
 
 # ---------------------------------------------------------------------------
 # Synonym-aware sibling filter
