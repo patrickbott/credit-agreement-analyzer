@@ -24,9 +24,9 @@ from credit_analyzer.llm.factory import get_provider
 from credit_analyzer.retrieval.embedder import Embedder
 from credit_analyzer.retrieval.reranker import Reranker
 from credit_analyzer.retrieval.vector_store import VectorStore
-from credit_analyzer.ui.demo_report import SUGGESTED_QUESTIONS
 from credit_analyzer.ui.clipboard import clipboard_js_snippet
 from credit_analyzer.ui.definitions_browser import filter_definitions
+from credit_analyzer.ui.demo_report import SUGGESTED_QUESTIONS
 from credit_analyzer.ui.theme import (
     APP_CSS,
     confidence_pill,
@@ -327,7 +327,7 @@ def _render_document_tab(active_document: ProcessedDocument | None) -> None:
             st.markdown(
                 empty_state(
                     "Ready to Review",
-                    "Upload and index a credit agreement to inspect its structure, ask questions, and generate a report.",
+                    "Upload and index a credit agreement to inspect structure, ask questions, and generate a report.",
                     icon="document",
                 ),
                 unsafe_allow_html=True,

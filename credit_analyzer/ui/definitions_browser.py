@@ -17,9 +17,7 @@ def filter_definitions(
     query_lower = query.strip().lower()
     results: list[tuple[str, str]] = []
     for term, definition in sorted(index.definitions.items()):
-        if not query_lower:
-            results.append((term, definition))
-        elif query_lower in term.lower() or query_lower in definition.lower():
+        if not query_lower or query_lower in term.lower() or query_lower in definition.lower():
             results.append((term, definition))
     return results
 
