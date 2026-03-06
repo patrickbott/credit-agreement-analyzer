@@ -339,9 +339,9 @@ def enrich_inline_citations(
         keywords = marker_keywords.get(cite.marker_number, [])
         if keywords and len(matched_chunks) > 1:
             # Score each chunk by how many keywords it contains
-            def _keyword_score(hc: HybridChunk) -> int:
+            def _keyword_score(hc: HybridChunk, _kws: list[str] = keywords) -> int:
                 text_lower = hc.chunk.text.lower()
-                return sum(1 for kw in keywords if kw.lower() in text_lower)
+                return sum(1 for kw in _kws if kw.lower() in text_lower)
 
             best_by_keywords = max(matched_chunks, key=_keyword_score)
             if _keyword_score(best_by_keywords) > 0:

@@ -432,7 +432,7 @@ def _build_all_chunks() -> list[Chunk]:
 def _build_definitions_index() -> dict[str, str]:
     """Build a definitions dict from the definition fixture chunks."""
     definitions: dict[str, str] = {}
-    for key, spec in _FIXTURE_CHUNKS.items():
+    for _key, spec in _FIXTURE_CHUNKS.items():
         if spec["chunk_type"] == "definition":
             for term in spec.get("defined_terms_present", []):
                 definitions[term] = spec["text"]

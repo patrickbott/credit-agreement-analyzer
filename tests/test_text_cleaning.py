@@ -9,7 +9,6 @@ from credit_analyzer.utils.text_cleaning import (
     strip_markdown,
 )
 
-
 # ---------------------------------------------------------------------------
 # strip_markdown
 # ---------------------------------------------------------------------------
@@ -62,7 +61,7 @@ def test_normalize_whitespace_strips_edges() -> None:
 
 def test_normalize_whitespace_preserves_double_newlines() -> None:
     result = normalize_whitespace("para one\n\npara two")
-    assert "para one\n\npara two" == result
+    assert result == "para one\n\npara two"
 
 
 # ---------------------------------------------------------------------------

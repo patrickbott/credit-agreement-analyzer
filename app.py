@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections import defaultdict
 from html import escape as _html_escape
 from pathlib import Path
@@ -171,10 +172,8 @@ def _remove_document(document_id: str) -> None:
     st.session_state.chat_messages.pop(document_id, None)
     st.session_state.generated_reports.pop(document_id, None)
     st.session_state.pop(f"qa_engine_{document_id}", None)
-    try:
+    with contextlib.suppress(Exception):
         load_vector_store().delete_collection(document_id)
-    except Exception:
-        pass  # Collection may not exist or already be deleted.
     # Switch active document to the next available, or None.
     remaining = list(documents.keys())
     st.session_state.active_document_id = remaining[0] if remaining else None
@@ -238,10 +237,9 @@ def _render_sidebar(
             ),
             unsafe_allow_html=True,
         )
-        if not provider_status["ready"]:
-            if st.button("Retry Connection", key="retry-model", width="stretch"):
-                st.session_state.provider_status = None
-                st.rerun()
+        if not provider_status["ready"] and st.button("Retry Connection", key="retry-model", width="stretch"):
+            st.session_state.provider_status = None
+            st.rerun()
 
         st.markdown("---")
         st.caption("DOCUMENTS")
