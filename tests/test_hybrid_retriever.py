@@ -12,6 +12,8 @@ from credit_analyzer.retrieval.hybrid_retriever import (
     HybridChunk,
     HybridRetriever,
     RetrievalResult,
+    _query_term_overlap,
+    merge_multi_query_results,
 )
 from credit_analyzer.retrieval.vector_store import RetrievedChunk, VectorStore
 
@@ -496,3 +498,201 @@ def test_recursive_definition_expansion() -> None:
     assert "Leverage Ratio" in result.injected_definitions
     # "Unrelated Term" not referenced by anything in the chain
     assert "Unrelated Term" not in result.injected_definitions
+
+
+# ---------------------------------------------------------------------------
+# _query_term_overlap — synonym-aware sibling filter
+# ---------------------------------------------------------------------------
+
+
+def test_query_term_overlap_exact_match() -> None:
+    """Direct word match passes the filter."""
+    assert _query_term_overlap("What is the spread?", "The spread is 2.5%.")
+
+
+def test_query_term_overlap_synonym_match() -> None:
+    """Synonym expansion: 'spread' matches sibling text containing 'margin'."""
+    assert _query_term_overlap(
+        "What is the SOFR spread?",
+        "The applicable margin shall be determined by the pricing grid.",
+    )
+
+
+def test_query_term_overlap_synonym_reverse() -> None:
+    """Synonym expansion works in the other direction too."""
+    assert _query_term_overlap(
+        "What is the margin?",
+        "The spread over SOFR is set forth in the table below.",
+    )
+
+
+def test_query_term_overlap_covenant_synonym() -> None:
+    """'covenant' matches 'restriction'."""
+    assert _query_term_overlap(
+        "What are the covenants?",
+        "The following restrictions shall apply to the Borrower.",
+    )
+
+
+def test_query_term_overlap_unrelated_rejected() -> None:
+    """Completely unrelated sibling text is rejected."""
+    assert not _query_term_overlap(
+        "What is the SOFR spread?",
+        "Tax returns shall be filed annually with the applicable authority.",
+    )
+
+
+def test_query_term_overlap_empty_query_passes() -> None:
+    """If query has no usable words (all short or stop words), allow through."""
+    assert _query_term_overlap("is it?", "Some chunk text about anything.")
+
+
+def test_query_term_overlap_debt_synonym() -> None:
+    """'debt' matches 'indebtedness'."""
+    assert _query_term_overlap(
+        "What are the debt limits?",
+        "The Borrower shall not incur Indebtedness in excess of the amount.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sibling expansion with query filter
+# ---------------------------------------------------------------------------
+
+
+def _make_sibling_chunks(
+    section_id: str,
+    texts: list[str],
+) -> list[Chunk]:
+    """Build a sequence of chunks in the same section."""
+    chunks: list[Chunk] = []
+    for i, text in enumerate(texts):
+        chunks.append(
+            Chunk(
+                chunk_id=f"{section_id}_chunk_{i}",
+                text=text,
+                section_id=section_id,
+                section_title="Test Section",
+                article_number=7,
+                article_title="TEST ARTICLE",
+                section_type="negative_covenants",
+                chunk_type="text",
+                page_numbers=[10 + i],
+                defined_terms_present=[],
+                chunk_index=i,
+                token_count=50,
+            )
+        )
+    return chunks
+
+
+def test_sibling_expansion_allows_synonym_match() -> None:
+    """Sibling with synonym vocabulary is included via expansion."""
+    section_chunks = _make_sibling_chunks("sec_7.01", [
+        "The spread over SOFR shall be as set forth below.",
+        "The applicable margin is determined by the leverage ratio grid.",
+        "Tax withholding provisions apply to all payments.",
+    ])
+
+    retriever = _make_retriever(
+        vector_results=[
+            RetrievedChunk(chunk=section_chunks[0], score=0.9),
+        ],
+        indexed_chunks=section_chunks,
+    )
+
+    result = retriever.retrieve(
+        "What is the SOFR spread?", "doc1", top_k=5,
+    )
+
+    chunk_ids = [hc.chunk.chunk_id for hc in result.chunks]
+    # Sibling about margin should be included (synonym of spread)
+    assert "sec_7.01_chunk_1" in chunk_ids
+    # Sibling about tax withholding should be excluded (unrelated)
+    assert "sec_7.01_chunk_2" not in chunk_ids
+
+
+def test_sibling_expansion_blocks_unrelated() -> None:
+    """Completely unrelated sibling is filtered out."""
+    section_chunks = _make_sibling_chunks("sec_7.01", [
+        "The Borrower shall not incur Indebtedness.",
+        "Notices shall be sent to the address specified herein.",
+    ])
+
+    retriever = _make_retriever(
+        vector_results=[
+            RetrievedChunk(chunk=section_chunks[0], score=0.9),
+        ],
+        indexed_chunks=section_chunks,
+    )
+
+    result = retriever.retrieve(
+        "What are the debt limits?", "doc1", top_k=5,
+    )
+
+    chunk_ids = [hc.chunk.chunk_id for hc in result.chunks]
+    assert "sec_7.01_chunk_0" in chunk_ids
+    # Notices sibling should be filtered out
+    assert "sec_7.01_chunk_1" not in chunk_ids
+
+
+# ---------------------------------------------------------------------------
+# Round-robin merge
+# ---------------------------------------------------------------------------
+
+
+def test_round_robin_preserves_diversity() -> None:
+    """Niche query results are not crowded out by a dominant query."""
+    q1_chunks = [
+        HybridChunk(chunk=_make_chunk(chunk_id=f"q1_c{i}"), score=0.9, source="vector")
+        for i in range(10)
+    ]
+    q2_chunks = [
+        HybridChunk(chunk=_make_chunk(chunk_id=f"q2_c{i}"), score=0.3, source="bm25")
+        for i in range(3)
+    ]
+
+    result = merge_multi_query_results(
+        per_query_results=[q1_chunks, q2_chunks],
+        per_query_definitions=[{}, {}],
+        top_k=5,
+    )
+
+    merged_ids = {hc.chunk.chunk_id for hc in result.chunks}
+    assert len(result.chunks) == 5
+    q2_in_merged = merged_ids & {f"q2_c{i}" for i in range(3)}
+    assert len(q2_in_merged) >= 2
+
+
+def test_round_robin_deduplicates() -> None:
+    """Shared chunk IDs across queries appear only once."""
+    shared = HybridChunk(chunk=_make_chunk(chunk_id="shared"), score=0.8, source="both")
+    q1 = [shared, HybridChunk(chunk=_make_chunk(chunk_id="q1_only"), score=0.7, source="vector")]
+    q2 = [
+        HybridChunk(chunk=_make_chunk(chunk_id="shared"), score=0.6, source="bm25"),
+        HybridChunk(chunk=_make_chunk(chunk_id="q2_only"), score=0.5, source="bm25"),
+    ]
+
+    result = merge_multi_query_results(
+        per_query_results=[q1, q2],
+        per_query_definitions=[{}, {}],
+        top_k=10,
+    )
+
+    ids = [hc.chunk.chunk_id for hc in result.chunks]
+    assert ids.count("shared") == 1
+    assert "q1_only" in ids
+    assert "q2_only" in ids
+
+
+def test_round_robin_respects_top_k() -> None:
+    """Merged result never exceeds top_k."""
+    q1 = [HybridChunk(chunk=_make_chunk(chunk_id=f"a{i}"), score=0.9, source="vector") for i in range(10)]
+    q2 = [HybridChunk(chunk=_make_chunk(chunk_id=f"b{i}"), score=0.8, source="bm25") for i in range(10)]
+
+    result = merge_multi_query_results(
+        per_query_results=[q1, q2],
+        per_query_definitions=[{}, {}],
+        top_k=6,
+    )
+    assert len(result.chunks) == 6

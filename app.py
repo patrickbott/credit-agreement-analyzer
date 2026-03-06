@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from html import escape
+from html import escape as _html_escape
 from pathlib import Path
 from typing import Any, cast
 
@@ -32,13 +32,21 @@ from credit_analyzer.ui.theme import (
     metric_card,
     panel_card,
     rail_card,
+    render_citation_footnotes,
     render_inline_citations,
+    render_source_footnotes,
 )
 from credit_analyzer.ui.workflows import (
     ProcessedDocument,
     build_processed_document,
     save_uploaded_pdf,
 )
+
+
+def _safe(text: str) -> str:
+    """HTML-escape and neutralise $ for Streamlit's LaTeX parser."""
+    return _html_escape(text).replace("$", "&#36;")
+
 
 st.set_page_config(
     page_title="RBC Credit Agreement Analyzer",
@@ -534,6 +542,13 @@ def _run_pending_chat_question(
                         f'<div class="section-answer">{cited_html}</div>',
                         unsafe_allow_html=True,
                     )
+                elif final_response.sources:
+                    answer_html = _safe(final_response.answer)
+                    footnotes_html = render_source_footnotes(final_response.sources)
+                    response_placeholder.markdown(
+                        f'<div class="section-answer">{answer_html}{footnotes_html}</div>',
+                        unsafe_allow_html=True,
+                    )
                 else:
                     response_placeholder.write(final_response.answer)
                 st.markdown(confidence_pill(final_response.confidence), unsafe_allow_html=True)
@@ -569,30 +584,32 @@ def _render_chat_message(message: dict[str, Any]) -> None:
                 f'<div class="section-answer">{cited_html}</div>',
                 unsafe_allow_html=True,
             )
+        elif response.sources:
+            # No inline citations — render answer + source footnotes block
+            answer_html = _safe(response.answer)
+            footnotes_html = render_source_footnotes(response.sources)
+            st.markdown(
+                f'<div class="section-answer">{answer_html}{footnotes_html}</div>',
+                unsafe_allow_html=True,
+            )
         else:
             st.write(response.answer)
         st.markdown(confidence_pill(response.confidence), unsafe_allow_html=True)
-        expander_label = (
-            f"Sources ({len(response.sources)})"
-            if response.sources
-            else "Retrieved context"
-        )
-        with st.expander(expander_label, expanded=False):
-            if response.sources:
-                for source in response.sources:
-                    _render_source_card(source)
-            if response.retrieved_chunks:
-                st.caption("Retrieved chunks")
+        if response.retrieved_chunks:
+            n_chunks = len(response.retrieved_chunks)
+            with st.expander(f"Retrieved context ({n_chunks} chunks)", expanded=False):
+                sorted_chunks = sorted(
+                    response.retrieved_chunks, key=lambda c: c.score, reverse=True
+                )
                 retrieved_df = pd.DataFrame(
                     [
                         {
-                            "section_id": chunk.chunk.section_id,
+                            "section": chunk.chunk.section_id,
                             "title": chunk.chunk.section_title,
-                            "score": round(chunk.score, 3),
-                            "source": chunk.source,
-                            "pages": ", ".join(str(page) for page in chunk.chunk.page_numbers),
+                            "relevance": round(chunk.score, 3),
+                            "pages": ", ".join(str(p) for p in chunk.chunk.page_numbers),
                         }
-                        for chunk in response.retrieved_chunks
+                        for chunk in sorted_chunks
                     ]
                 )
                 _show_dataframe(retrieved_df, width="stretch", hide_index=True)
@@ -710,9 +727,9 @@ def _render_report(report: GeneratedReport) -> None:
     st.markdown(
         (
             '<div class="report-header">'
-            f'<p class="report-header-borrower">{escape(report.borrower_name)}</p>'
+            f'<p class="report-header-borrower">{_safe(report.borrower_name)}</p>'
             f'<p class="report-header-meta">Credit Agreement Analysis  |  '
-            f'{escape(report.generated_at.strftime("%B %d, %Y  %H:%M"))}</p>'
+            f'{_safe(report.generated_at.strftime("%B %d, %Y  %H:%M"))}</p>'
             f"{stats_html}"
             "</div>"
         ),
@@ -744,43 +761,41 @@ def _render_report_section(section: GeneratedSection) -> None:
                 '<div class="report-section">'
                 '<div class="report-section-head">'
                 f'<div style="display:flex;align-items:center;">{num_html}'
-                f'<span class="report-section-title">{escape(section.title)}</span></div>'
+                f'<span class="report-section-title">{_safe(section.title)}</span></div>'
                 f'<div class="report-section-badges">{confidence_pill("LOW")}</div>'
                 "</div>"
-                f'<div class="report-error-body">Generation error: {escape(section.error_message)}</div>'
+                f'<div class="report-error-body">Generation error: {_safe(section.error_message)}</div>'
                 "</div>"
             ),
             unsafe_allow_html=True,
         )
         return
 
-    # Sources bar
-    sources_html = ""
-    if section.sources:
-        chips = "".join(
-            f'<span class="report-source-chip">Sec. {escape(src.section_id)}'
-            f" pp. {escape(', '.join(str(p) for p in src.page_numbers) or 'n/a')}"
-            "</span>"
-            for src in section.sources
-        )
-        sources_html = f'<div class="report-sources">{chips}</div>'
+    # Build footnotes from inline citations or fall back to source citations
+    inline_cites = getattr(section, "inline_citations", None)
+    if inline_cites:
+        footnotes_html = render_citation_footnotes(inline_cites)
+    elif section.sources:
+        footnotes_html = render_source_footnotes(section.sources)
+    else:
+        footnotes_html = ""
 
     st.markdown(
         (
             '<div class="report-section">'
             '<div class="report-section-head">'
             f'<div style="display:flex;align-items:center;">{num_html}'
-            f'<span class="report-section-title">{escape(section.title)}</span></div>'
+            f'<span class="report-section-title">{_safe(section.title)}</span></div>'
             '<div class="report-section-badges">'
             f'<span class="badge-chunks">{section.chunk_count} chunks | {section.duration_seconds:.1f}s</span>'
             f"{conf_pill}"
             "</div></div>"
             '<div class="report-section-body">'
             f'<div class="report-body">'
-            f'{format_report_body(section.body, inline_citations=getattr(section, "inline_citations", None))}'
+            f'{format_report_body(section.body, inline_citations=inline_cites)}'
             f'</div>'
             "</div>"
-            f"{sources_html}"
+            f"{footnotes_html}"
             "</div>"
         ),
         unsafe_allow_html=True,
@@ -792,23 +807,6 @@ def _render_report_section(section: GeneratedSection) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _render_source_card(source: Any) -> None:
-    page_text = ", ".join(str(page) for page in source.page_numbers) or "n/a"
-    title = f"Section {source.section_id}"
-    if source.section_title:
-        title = f"{title} | {source.section_title}"
-
-    st.markdown(
-        (
-            '<section class="source-card">'
-            f'<p class="source-title">{escape(title)}</p>'
-            f'<p class="source-meta">Pages: {escape(page_text)}</p>'
-            f'<p class="source-snippet">'
-            f'{escape(source.relevant_text_snippet or "No snippet available.")}</p>'
-            "</section>"
-        ),
-        unsafe_allow_html=True,
-    )
 
 
 def _configured_model_name() -> str:

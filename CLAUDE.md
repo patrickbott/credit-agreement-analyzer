@@ -87,3 +87,20 @@ All knobs live in `config.py` and can be overridden via `.env`:
 - Tests use real objects (no heavy mocking); most are unit tests over small text fixtures
 - The embedder and ChromaDB tests require no API key but will download models on first run
 - LLM tests mock the provider to avoid API calls
+
+| Test file | Covers |
+|---|---|
+| `test_chunker.py` | Token-based chunking, overlap, definition detection |
+| `test_pdf_extractor.py` | PDF text extraction and OCR fallback |
+| `test_section_detector.py` | Section type classification |
+| `test_definitions.py` | DefinitionsIndex term parsing and lookup |
+| `test_embedder.py` | Embedding model (downloads model on first run) |
+| `test_vector_store.py` | ChromaDB storage and search |
+| `test_bm25_store.py` | BM25Plus index and search |
+| `test_hybrid_retriever.py` | Full retrieval pipeline with mocks |
+| `test_qa_engine.py` | Q&A with history-aware reformulation |
+| `test_report_template.py` | Section template structure and prompts |
+| `test_report_generator.py` | Report generation with mocked LLM |
+| `test_inline_citations.py` | Citation parsing and enrichment |
+| `test_text_cleaning.py` | Markdown stripping utilities |
+| `test_llm.py` | LLM provider mocks |

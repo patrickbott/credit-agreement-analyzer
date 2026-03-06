@@ -91,9 +91,12 @@ _REFERENCES_BLOCK_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Individual reference line: [1] Section 7.06(a) (pp. 45-46)
+# Individual reference line: [1] Section 7.06(a) (pp. 45-46) -- "quote"
+# Group 1: marker number, 2: section id, 3: page numbers, 4: optional quote
 _REFERENCE_LINE_RE = re.compile(
-    r"\[(\d+)\]\s*Section\s+([\d.]+(?:\([A-Za-z0-9]+\))*)\s*(?:\(pp?\.\s*([\d,\s\-]+)\))?",
+    r"\[(\d+)\]\s*Section\s+([\d.]+(?:\([A-Za-z0-9]+\))*)\s*"
+    r"(?:\(pp?\.\s*([\d,\s\-]+)\))?"
+    r'(?:\s*--\s*["\u201c](.+?)["\u201d])?',
     re.IGNORECASE,
 )
 
@@ -204,13 +207,14 @@ def parse_inline_citations(text: str) -> list[InlineCitation]:
         section_id = ref_match.group(2)
         page_str = ref_match.group(3)
         page_numbers = parse_page_numbers(page_str) if page_str else []
+        quote = (ref_match.group(4) or "").strip()
         citations.append(
             InlineCitation(
                 marker_number=num,
                 section_id=section_id,
                 section_title="",
                 page_numbers=page_numbers,
-                snippet="",
+                snippet=quote,
             )
         )
 
@@ -343,8 +347,10 @@ def enrich_inline_citations(
             if _keyword_score(best_by_keywords) > 0:
                 best_hc = best_by_keywords
 
-        # Build a targeted snippet — try to find the region containing keywords
-        snippet = _make_targeted_snippet(best_hc.chunk.text, keywords)
+        # Prefer LLM-provided quote; fall back to keyword-targeted snippet
+        snippet = cite.snippet
+        if not snippet:
+            snippet = _make_targeted_snippet(best_hc.chunk.text, keywords)
 
         enriched.append(
             InlineCitation(
@@ -360,6 +366,70 @@ def enrich_inline_citations(
 
 
 _BODY_MARKER_RE = re.compile(r"\[(\d+)\]")
+
+
+def build_citations_from_chunks(
+    body: str,
+    chunks: Sequence[HybridChunk],
+) -> tuple[list[InlineCitation], str]:
+    """Build inline citations by mapping [N] markers to numbered context chunks.
+
+    The context prompt numbers chunks [Source 1], [Source 2], etc.
+    The LLM uses [1], [2] in its answer. We map N -> chunks[N-1].
+
+    Citations are renumbered sequentially (1, 2, 3...) in the order they
+    first appear in the body, and the body text is updated to match.
+
+    Returns:
+        A tuple of (citations, renumbered_body).
+    """
+    if not chunks:
+        return [], body
+
+    # Collect unique source numbers in order of first appearance.
+    seen_order: list[int] = []
+    seen_set: set[int] = set()
+    for m in _BODY_MARKER_RE.finditer(body):
+        num = int(m.group(1))
+        if num not in seen_set:
+            idx = num - 1
+            if 0 <= idx < len(chunks):
+                seen_order.append(num)
+                seen_set.add(num)
+
+    if not seen_order:
+        return [], body
+
+    # Build old_num -> new_num mapping (sequential starting from 1).
+    renumber_map: dict[int, int] = {}
+    for new_num, old_num in enumerate(seen_order, 1):
+        renumber_map[old_num] = new_num
+
+    # Build citations with new numbering.
+    citations: list[InlineCitation] = []
+    for old_num in seen_order:
+        idx = old_num - 1
+        hc = chunks[idx]
+        citations.append(InlineCitation(
+            marker_number=renumber_map[old_num],
+            section_id=hc.chunk.section_id,
+            section_title=hc.chunk.section_title,
+            page_numbers=list(hc.chunk.page_numbers),
+            snippet=_make_snippet(hc.chunk.text),
+        ))
+
+    # Rewrite markers in body text.
+    def _replace_marker(m: re.Match[str]) -> str:
+        num = int(m.group(1))
+        new = renumber_map.get(num)
+        if new is not None:
+            return f"[{new}]"
+        return m.group(0)  # Leave unmatched markers as-is
+
+    renumbered_body = _BODY_MARKER_RE.sub(_replace_marker, body)
+
+    return citations, renumbered_body
+
 
 # Section reference that may appear near a [N] marker in body text.
 _NEARBY_SECTION_RE = re.compile(

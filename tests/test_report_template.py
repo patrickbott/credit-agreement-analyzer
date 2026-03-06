@@ -89,9 +89,9 @@ class TestExtractionSystemPrompt:
         prompt = get_extraction_system_prompt()
         assert "Confidence:" in prompt
 
-    def test_has_references_instruction(self) -> None:
+    def test_has_citation_instruction(self) -> None:
         prompt = get_extraction_system_prompt()
-        assert "References:" in prompt
+        assert "source number" in prompt.lower() or "[Source" in prompt
 
     def test_no_markdown_instruction(self) -> None:
         prompt = get_extraction_system_prompt()

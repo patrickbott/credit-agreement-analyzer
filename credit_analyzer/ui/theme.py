@@ -5,6 +5,19 @@ from __future__ import annotations
 import re
 from html import escape
 
+
+def _safe(text: str) -> str:
+    """HTML-escape text and neutralise ``$`` signs for Streamlit.
+
+    Streamlit's ``st.markdown(…, unsafe_allow_html=True)`` still passes
+    the string through its markdown/LaTeX renderer *before* injecting
+    HTML.  Bare ``$`` signs therefore get interpreted as inline-math
+    delimiters, which silently eats dollar amounts like ``$15,000,000``.
+    Replacing ``$`` with the HTML entity ``&#36;`` prevents this.
+    """
+    return escape(text).replace("$", "&#36;")
+
+
 RBC_BLUE = "#0051A5"
 RBC_BLUE_DEEP = "#003B7A"
 RBC_GOLD = "#FFCC00"
@@ -280,7 +293,6 @@ div[data-testid="stButton"] > button:hover {{
 .section-answer {{
   color: var(--ink);
   line-height: 1.5;
-  white-space: pre-wrap;
 }}
 
 .pill {{
@@ -361,34 +373,7 @@ div[data-testid="stButton"] > button:hover {{
   opacity: 0.92;
 }}
 
-.source-card {{
-  background: rgba(0, 81, 165, 0.04);
-  border: 1px solid rgba(0, 81, 165, 0.08);
-  border-radius: 14px;
-  padding: 0.8rem 0.9rem;
-  margin-bottom: 0.7rem;
-}}
-
-.source-title {{
-  color: var(--ink);
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin: 0;
-}}
-
-.source-meta {{
-  color: var(--muted);
-  font-size: 0.84rem;
-  margin: 0.15rem 0 0.45rem 0;
-}}
-
-.source-snippet {{
-  color: var(--ink);
-  font-size: 0.93rem;
-  line-height: 1.45;
-  margin: 0;
-  white-space: pre-wrap;
-}}
+/* source-card CSS removed – sources now rendered as footnotes */
 
 .subtle-note {{
   color: var(--muted);
@@ -527,16 +512,7 @@ div[data-testid="stButton"] > button:hover {{
   background: rgba(244, 247, 251, 0.5);
 }}
 
-.report-source-chip {{
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 0.22rem 0.55rem;
-  background: rgba(0, 81, 165, 0.06);
-  color: var(--rbc-blue-deep);
-  font-size: 0.72rem;
-  font-weight: 600;
-}}
+/* report-source-chip removed – sources now rendered as footnotes */
 
 .report-error-body {{
   padding: 0.9rem 1.1rem;
@@ -627,66 +603,75 @@ div[data-testid="stButton"] > button:hover {{
 
 /* Ensure tooltips are not clipped by Streamlit overflow */
 .report-section,
-.report-section-body,
-.report-body,
-.section-answer,
-[data-testid="stChatMessage"],
-[data-testid="stMarkdownContainer"] {{
-  overflow: visible !important;
-}}
+/* overflow overrides removed – no longer needed without hover tooltips */
 
-/* Inline citation tooltips */
+/* Inline citation markers (superscript) */
 .cite-marker {{
   display: inline;
-  position: relative;
-  cursor: help;
   color: var(--rbc-blue);
   font-size: 0.75em;
   font-weight: 700;
   vertical-align: super;
   line-height: 0;
-  padding: 0 2px;
+  padding: 0 1px;
 }}
 
-.cite-marker .cite-tooltip {{
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: 280px;
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.45rem 0.65rem;
-  font-size: 0.82rem;
-  font-weight: 400;
-  line-height: 1.4;
-  vertical-align: baseline;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.10);
-  z-index: 1000;
-  pointer-events: none;
-  white-space: normal;
+/* Footnotes block */
+.cite-footnotes {{
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
 }}
 
-.cite-marker:hover .cite-tooltip {{
-  display: block;
-}}
-
-.cite-tooltip-header {{
-  display: block;
+.cite-footnotes-title {{
+  font-size: 0.78rem;
   font-weight: 700;
-  color: var(--rbc-blue);
-  font-size: 0.8rem;
-  margin-bottom: 0.15rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.4rem;
 }}
 
-.cite-tooltip-pages {{
-  display: block;
-  font-size: 0.75rem;
+.cite-fn {{
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}}
+
+.cite-fn + .cite-fn {{
+  border-top: 1px solid rgba(213, 223, 236, 0.4);
+}}
+
+.cite-fn-num {{
+  flex-shrink: 0;
+  color: var(--rbc-blue);
+  font-weight: 700;
+  min-width: 1.4em;
+}}
+
+.cite-fn-body {{
+  flex: 1;
+  min-width: 0;
+}}
+
+.cite-fn-header {{
+  font-weight: 600;
+  color: var(--ink);
+}}
+
+.cite-fn-pages {{
   color: var(--muted);
+  font-size: 0.8rem;
+  margin-left: 0.3rem;
+}}
+
+.cite-fn-snippet {{
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-top: 0.15rem;
+  line-height: 1.4;
 }}
 
 </style>
@@ -696,13 +681,13 @@ div[data-testid="stButton"] > button:hover {{
 def hero_card(title: str, copy: str, eyebrow: str | None = None) -> str:
     """Render the app hero block."""
     eyebrow_markup = (
-        f'<div class="hero-eyebrow">{escape(eyebrow)}</div>' if eyebrow else ""
+        f'<div class="hero-eyebrow">{_safe(eyebrow)}</div>' if eyebrow else ""
     )
     return (
         '<section class="hero-card">'
         f"{eyebrow_markup}"
-        f'<h1 class="hero-title">{escape(title)}</h1>'
-        f'<p class="hero-copy">{escape(copy)}</p>'
+        f'<h1 class="hero-title">{_safe(title)}</h1>'
+        f'<p class="hero-copy">{_safe(copy)}</p>'
         "</section>"
     )
 
@@ -711,9 +696,9 @@ def metric_card(label: str, value: str, caption: str) -> str:
     """Render a compact metric card."""
     return (
         '<section class="metric-card">'
-        f'<div class="metric-label">{escape(label)}</div>'
-        f'<div class="metric-value">{escape(value)}</div>'
-        f'<div class="metric-caption">{escape(caption)}</div>'
+        f'<div class="metric-label">{_safe(label)}</div>'
+        f'<div class="metric-value">{_safe(value)}</div>'
+        f'<div class="metric-caption">{_safe(caption)}</div>'
         "</section>"
     )
 
@@ -722,8 +707,8 @@ def panel_card(title: str, copy: str | None = None) -> str:
     """Render a lightweight informational panel."""
     return (
         '<section class="panel-card">'
-        f'<h3 class="panel-title">{escape(title)}</h3>'
-        f'<p class="panel-copy">{escape(copy or "")}</p>'
+        f'<h3 class="panel-title">{_safe(title)}</h3>'
+        f'<p class="panel-copy">{_safe(copy or "")}</p>'
         "</section>"
     )
 
@@ -733,9 +718,9 @@ def rail_card(label: str, value: str, meta: str | None = None, tone: str = "read
     safe_tone = "warning" if tone == "warning" else "ready"
     return (
         f'<section class="rail-card is-{safe_tone}">'
-        f'<div class="rail-label">{escape(label)}</div>'
-        f'<div class="rail-value">{escape(value)}</div>'
-        f'<div class="rail-meta">{escape(meta or "")}</div>'
+        f'<div class="rail-label">{_safe(label)}</div>'
+        f'<div class="rail-value">{_safe(value)}</div>'
+        f'<div class="rail-meta">{_safe(meta or "")}</div>'
         "</section>"
     )
 
@@ -748,15 +733,74 @@ def confidence_pill(confidence: str) -> str:
         tone = "high"
     elif lowered == "low":
         tone = "low"
-    return f'<span class="pill pill-{tone}">{escape(confidence.upper())}</span>'
+    return f'<span class="pill pill-{tone}">{_safe(confidence.upper())}</span>'
 
 
 # Matches [1], [2], etc. in body text
 _INLINE_MARKER_RE = re.compile(r"\[(\d+)\]")
 
 
+def render_citation_markers(body: str, citations: list) -> str:
+    """Replace [N] markers with styled superscripts only (no footnotes).
+
+    Use this inside ``format_report_body`` where footnotes are rendered
+    separately at the section level.
+    """
+    if not citations:
+        return _safe(body)
+
+    parts: list[str] = []
+    last_end = 0
+    for m in _INLINE_MARKER_RE.finditer(body):
+        parts.append(_safe(body[last_end:m.start()]))
+        num = int(m.group(1))
+        parts.append(f'<span class="cite-marker">[{num}]</span>')
+        last_end = m.end()
+    parts.append(_safe(body[last_end:]))
+    return "".join(parts)
+
+
+def render_citation_footnotes(citations: list) -> str:
+    """Render footnotes block from a list of InlineCitation objects."""
+    if not citations:
+        return ""
+
+    parts = ['<div class="cite-footnotes">']
+    parts.append('<div class="cite-footnotes-title">Sources</div>')
+    for cite in sorted(citations, key=lambda c: c.marker_number):
+        title = _safe(f"Section {cite.section_id}")
+        if cite.section_title:
+            title = _safe(f"Section {cite.section_id} | {cite.section_title}")
+        pages_str = (
+            ", ".join(str(p) for p in cite.page_numbers)
+            if cite.page_numbers
+            else ""
+        )
+        pages_html = (
+            f' <span class="cite-fn-pages">pp. {_safe(pages_str)}</span>'
+            if pages_str
+            else ""
+        )
+        snippet_html = ""
+        if cite.snippet:
+            snippet_html = (
+                f'<div class="cite-fn-snippet">{_safe(cite.snippet)}</div>'
+            )
+        parts.append(
+            f'<div class="cite-fn">'
+            f'<span class="cite-fn-num">[{cite.marker_number}]</span>'
+            f'<div class="cite-fn-body">'
+            f'<span class="cite-fn-header">{title}</span>'
+            f"{pages_html}"
+            f"{snippet_html}"
+            f"</div></div>"
+        )
+    parts.append("</div>")
+    return "".join(parts)
+
+
 def render_inline_citations(body: str, citations: list) -> str:
-    """Replace [N] markers in body text with hover-tooltip HTML spans.
+    """Replace [N] markers with styled superscripts and append a footnotes block.
 
     Args:
         body: The answer text containing [1], [2] markers.
@@ -764,40 +808,59 @@ def render_inline_citations(body: str, citations: list) -> str:
             section_id, section_title, page_numbers, snippet attributes).
 
     Returns:
-        HTML string with tooltip spans. If citations is empty, returns
-        the body HTML-escaped with markers left as plain text.
+        HTML string with superscript markers and a footnotes section.
+        If citations is empty, returns the body HTML-escaped with
+        markers left as plain text.
     """
     if not citations:
-        return escape(body)
+        return _safe(body)
 
-    cite_map = {c.marker_number: c for c in citations}
+    body_html = render_citation_markers(body, citations)
+    footnotes_html = render_citation_footnotes(citations)
+    return body_html + footnotes_html
 
-    parts: list[str] = []
-    last_end = 0
-    for m in _INLINE_MARKER_RE.finditer(body):
-        # Escape the text between markers
-        parts.append(escape(body[last_end:m.start()]))
-        num = int(m.group(1))
-        cite = cite_map.get(num)
-        if cite is None:
-            # Still render as superscript for visual consistency
-            parts.append(f'<span class="cite-marker">[{num}]</span>')
-        else:
-            title = escape(f"Section {cite.section_id}")
-            if cite.section_title:
-                title = escape(f"Section {cite.section_id} | {cite.section_title}")
-            pages_str = escape(
-                ", ".join(str(p) for p in cite.page_numbers) or "n/a"
+
+def render_source_footnotes(sources: list) -> str:
+    """Render a list of SourceCitation objects as a footnotes HTML block.
+
+    Used as a fallback when inline citations are not available but
+    SourceCitation objects exist (e.g. from the Sources: line).
+    """
+    if not sources:
+        return ""
+
+    parts = ['<div class="cite-footnotes">']
+    parts.append('<div class="cite-footnotes-title">Sources</div>')
+    for i, src in enumerate(sources, 1):
+        title = _safe(f"Section {src.section_id}")
+        if src.section_title:
+            title = _safe(f"Section {src.section_id} | {src.section_title}")
+        pages_str = (
+            ", ".join(str(p) for p in src.page_numbers)
+            if src.page_numbers
+            else ""
+        )
+        pages_html = (
+            f' <span class="cite-fn-pages">pp. {_safe(pages_str)}</span>'
+            if pages_str
+            else ""
+        )
+        snippet_html = ""
+        if src.relevant_text_snippet:
+            snippet_html = (
+                f'<div class="cite-fn-snippet">'
+                f"{_safe(src.relevant_text_snippet)}</div>"
             )
-            parts.append(
-                f'<span class="cite-marker">[{num}]'
-                f'<span class="cite-tooltip">'
-                f'<span class="cite-tooltip-header">{title}</span>'
-                f'<span class="cite-tooltip-pages">pp. {pages_str}</span>'
-                f"</span></span>"
-            )
-        last_end = m.end()
-    parts.append(escape(body[last_end:]))
+        parts.append(
+            f'<div class="cite-fn">'
+            f'<span class="cite-fn-num">[{i}]</span>'
+            f'<div class="cite-fn-body">'
+            f'<span class="cite-fn-header">{title}</span>'
+            f"{pages_html}"
+            f"{snippet_html}"
+            f"</div></div>"
+        )
+    parts.append("</div>")
     return "".join(parts)
 
 
@@ -872,10 +935,10 @@ def format_report_body(body: str, inline_citations: list | None = None) -> str:
         """Wrap NOT FOUND in muted style."""
         stripped_val = val.strip()
         if stripped_val.upper() == "NOT FOUND" or stripped_val.upper().startswith("NOT FOUND"):
-            return f'<span class="rb-not-found">{escape(stripped_val)}</span>'
+            return f'<span class="rb-not-found">{_safe(stripped_val)}</span>'
         if inline_citations:
-            return render_inline_citations(stripped_val, inline_citations)
-        return escape(stripped_val)
+            return render_citation_markers(stripped_val, inline_citations)
+        return _safe(stripped_val)
 
     for line in lines:
         stripped = line.strip()
@@ -916,7 +979,7 @@ def format_report_body(body: str, inline_citations: list | None = None) -> str:
         heading_match = _HEADING_RE.match(stripped)
         if heading_match and len(stripped) > 3:
             parts.append(
-                f'<div class="rb-heading">{escape(stripped)}</div>'
+                f'<div class="rb-heading">{_safe(stripped)}</div>'
             )
             continue
 
@@ -928,7 +991,7 @@ def format_report_body(body: str, inline_citations: list | None = None) -> str:
             if value:
                 parts.append(
                     f'<div class="rb-field">'
-                    f'<span class="rb-field-label">{escape(label)}</span> '
+                    f'<span class="rb-field-label">{_safe(label)}</span> '
                     f'<span class="rb-field-value">{style_value(value)}</span>'
                     f"</div>"
                 )
@@ -936,7 +999,7 @@ def format_report_body(body: str, inline_citations: list | None = None) -> str:
                 # Label only, value on next lines (e.g. "MANDATORY PREPAYMENT:")
                 parts.append(
                     f'<div class="rb-field">'
-                    f'<span class="rb-field-label">{escape(label)}</span>'
+                    f'<span class="rb-field-label">{_safe(label)}</span>'
                     f"</div>"
                 )
             continue

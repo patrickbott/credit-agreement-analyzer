@@ -43,11 +43,11 @@ RRF_K: int = 50
 # Upper bound on injected definition chunks per query (primary + recursive expansion).
 MAX_DEFINITIONS_INJECTED: int = int(os.environ.get("MAX_DEFINITIONS_INJECTED", "12"))
 # Total sibling-chunk token budget added per section during context expansion.
-SIBLING_EXPANSION_MAX_TOKENS: int = 800
+SIBLING_EXPANSION_MAX_TOKENS: int = 1200
 # Minimum relevance score (after reranking) to keep a chunk. Chunks below this
 # threshold are dropped even if top_k hasn't been filled. A floor of 3 chunks
 # is always retained regardless of this threshold.
-MIN_RETRIEVAL_SCORE: float = float(os.environ.get("MIN_RETRIEVAL_SCORE", "0.25"))
+MIN_RETRIEVAL_SCORE: float = float(os.environ.get("MIN_RETRIEVAL_SCORE", "0.15"))
 # Cross-encoder reranker model for second-stage scoring.
 RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 # Number of candidates to over-fetch from hybrid search for reranking.

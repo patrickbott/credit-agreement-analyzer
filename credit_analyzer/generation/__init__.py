@@ -22,6 +22,7 @@ from credit_analyzer.generation.report_template import (
 from credit_analyzer.generation.response_parser import (
     ConfidenceLevel,
     SourceCitation,
+    build_citations_from_chunks,
     citations_from_chunks,
     enrich_citations,
     extract_answer_body,
@@ -43,6 +44,7 @@ __all__ = [
     "RetrievalQuery",
     "SectionStatus",
     "SourceCitation",
+    "build_citations_from_chunks",
     "build_context_prompt",
     "build_reformulation_prompt",
     "citations_from_chunks",

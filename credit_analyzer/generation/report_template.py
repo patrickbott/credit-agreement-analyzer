@@ -86,17 +86,15 @@ conditions. Skip boilerplate, ordinary-course, and de minimis baskets \
 Aim for the shortest output that captures all material economics.
 
 INLINE CITATIONS:
-Place a bracketed number [1], [2], etc. immediately after each specific \
-factual claim (dollar amounts, ratios, percentages, dates, covenant tests). \
-Use sequential numbering starting from [1]. If the same source supports \
-multiple claims, reuse the same number. Do NOT let citations make your \
+Each context excerpt is labeled [Source 1], [Source 2], etc. When you make \
+a specific factual claim (dollar amounts, ratios, percentages, dates, \
+covenant tests), place the corresponding source number in brackets \
+immediately after the claim, e.g. [1], [2]. Reuse the same number when \
+the same source supports multiple claims. Do NOT let citations make your \
 response longer -- keep the same concise bullet-point style.
 
-At the end of your response, on separate lines:
+At the end of your response, on a separate line:
 Confidence: HIGH | MEDIUM | LOW
-References:
-[1] Section X.XX (pp. XX-XX)
-[2] Section Y.YY (pp. YY-YY)
 """
 
 

@@ -27,20 +27,18 @@ from credit_analyzer.generation.report_template import (
 from credit_analyzer.generation.response_parser import (
     ConfidenceLevel,
     SourceCitation,
+    build_citations_from_chunks,
     citations_from_chunks,
-    enrich_citations,
-    enrich_inline_citations,
     extract_answer_body,
-    inline_citations_from_sources,
     parse_confidence,
-    parse_inline_citations,
-    parse_sources_from_llm,
 )
 from credit_analyzer.llm.base import LLMProvider, LLMResponse
+from credit_analyzer.processing.chunker import Chunk
 from credit_analyzer.retrieval.hybrid_retriever import (
     HybridChunk,
     HybridRetriever,
     RetrievalResult,
+    merge_multi_query_results,
 )
 from credit_analyzer.utils.text_cleaning import strip_markdown as _strip_markdown
 
@@ -187,21 +185,51 @@ def _build_extraction_context(
     extraction_prompt: str,
     preamble_text: str | None = None,
     preamble_page_numbers: Sequence[int] | None = None,
-) -> str:
+) -> tuple[str, list[HybridChunk]]:
     """Assemble the user prompt for a report section extraction.
 
     Similar to the Q&A context builder but without conversation history
     and with the extraction prompt appended instead of a question.
+
+    Returns:
+        A tuple of (prompt_string, numbered_chunks) where numbered_chunks
+        is the list of chunks in the order they were numbered [Source 1],
+        [Source 2], etc. in the prompt.
     """
     parts: list[str] = ["=== CONTEXT FROM CREDIT AGREEMENT ===\n"]
 
+    # Build the numbered source list. Preamble gets [Source 1] when present.
+    numbered: list[HybridChunk] = []
+    source_num = 1
+
     if preamble_text:
-        preamble_pages = _format_page_numbers(preamble_page_numbers or [])
+        preamble_page_list = list(preamble_page_numbers or [])
+        preamble_pages = _format_page_numbers(preamble_page_list)
         page_label = preamble_pages if preamble_pages else "n/a"
         parts.append(
-            f"--- Source: Preamble and Recitals (Pages {page_label}) ---\n"
+            f"[Source {source_num}] Preamble and Recitals "
+            f"(pp. {page_label})\n"
             f"{preamble_text}\n"
         )
+        numbered.append(HybridChunk(
+            chunk=Chunk(
+                chunk_id="__preamble__",
+                text=preamble_text,
+                section_id="Preamble",
+                section_title="Preamble and Recitals",
+                article_number=0,
+                article_title="",
+                section_type="preamble",
+                chunk_type="text",
+                page_numbers=preamble_page_list,
+                defined_terms_present=[],
+                chunk_index=0,
+                token_count=0,
+            ),
+            score=1.0,
+            source="preamble",
+        ))
+        source_num += 1
 
     # Sort chunks by document position so cross-references flow naturally.
     sorted_chunks = sorted(
@@ -213,10 +241,12 @@ def _build_extraction_context(
         c = hc.chunk
         pages = _format_page_numbers(c.page_numbers)
         parts.append(
-            f"--- Source: {c.section_title} "
-            f"(Section {c.section_id}, Pages {pages}) ---\n"
+            f"[Source {source_num}] {c.section_title} "
+            f"(Section {c.section_id}, pp. {pages})\n"
             f"{c.text}\n"
         )
+        numbered.append(hc)
+        source_num += 1
 
     if definitions:
         # Skip definitions whose text already appears in a chunk.
@@ -234,7 +264,7 @@ def _build_extraction_context(
 
     parts.append(f"\n=== EXTRACTION TASK ===\n{extraction_prompt}")
 
-    return "\n".join(parts)
+    return "\n".join(parts), numbered
 
 
 # ---------------------------------------------------------------------------
@@ -248,10 +278,16 @@ def _retrieve_for_section(
     queries: Sequence[RetrievalQuery],
     top_k: int,
 ) -> RetrievalResult:
-    """Run multiple retrieval queries and merge results.
+    """Run multiple retrieval queries and merge results via round-robin.
 
-    Deduplicates by chunk_id, keeping the highest score for each chunk.
-    Merges injected definitions from all query results.
+    Each query's results are kept as a separate list and merged using
+    round-robin interleaving so that every query contributes proportionally
+    to the final result set.  This prevents dominant queries from crowding
+    out niche but important results (e.g. fee-related chunks being dropped
+    because facility-size chunks score higher).
+
+    Unfiltered queries (no section_filter) automatically exclude the
+    ``miscellaneous`` section type to reduce noise.
 
     Args:
         retriever: The hybrid retriever instance.
@@ -262,36 +298,33 @@ def _retrieve_for_section(
     Returns:
         Merged RetrievalResult.
     """
-    all_chunks: dict[str, HybridChunk] = {}
-    all_definitions: dict[str, str] = {}
+    per_query_results: list[list[HybridChunk]] = []
+    per_query_definitions: list[dict[str, str]] = []
 
     def _run_query(rq: RetrievalQuery) -> RetrievalResult:
+        # Unfiltered queries exclude miscellaneous to reduce noise,
+        # matching the behaviour of the Q&A retrieval path.
+        exclude: tuple[str, ...] | None = None
+        if rq.section_filter is None:
+            exclude = ("miscellaneous",)
+
         return retriever.retrieve(
             query=rq.query,
             document_id=document_id,
             top_k=top_k,
             section_filter=rq.section_filter,
+            section_types_exclude=exclude,
         )
 
     with ThreadPoolExecutor(max_workers=len(queries)) as pool:
-        results = pool.map(_run_query, queries)
+        results = list(pool.map(_run_query, queries))
 
     for result in results:
-        for hc in result.chunks:
-            existing = all_chunks.get(hc.chunk.chunk_id)
-            if existing is None or hc.score > existing.score:
-                all_chunks[hc.chunk.chunk_id] = hc
+        per_query_results.append(result.chunks)
+        per_query_definitions.append(result.injected_definitions)
 
-        all_definitions.update(result.injected_definitions)
-
-    # Sort by score descending, take top_k.
-    sorted_chunks = sorted(
-        all_chunks.values(), key=lambda hc: hc.score, reverse=True
-    )[:top_k]
-
-    return RetrievalResult(
-        chunks=sorted_chunks,
-        injected_definitions=all_definitions,
+    return merge_multi_query_results(
+        per_query_results, per_query_definitions, top_k,
     )
 
 
@@ -479,7 +512,7 @@ class ReportGenerator:
         preamble = self._preamble_text if template.include_preamble else None
 
         # Assemble context + extraction prompt
-        user_prompt = _build_extraction_context(
+        user_prompt, numbered_chunks = _build_extraction_context(
             chunks=result.chunks,
             definitions=result.injected_definitions,
             extraction_prompt=template.extraction_prompt,
@@ -498,19 +531,8 @@ class ReportGenerator:
         raw_text = llm_response.text
         body = _strip_markdown(extract_answer_body(raw_text))
         confidence = parse_confidence(raw_text)
-        raw_citations = parse_sources_from_llm(raw_text)
-        sources = enrich_citations(raw_citations, result.chunks)
-
-        if not sources:
-            sources = citations_from_chunks(result.chunks)
-
-        inline_cites = parse_inline_citations(raw_text)
-        if inline_cites:
-            inline_cites = enrich_inline_citations(
-                inline_cites, result.chunks, body=body,
-            )
-        elif not inline_cites and sources:
-            inline_cites = inline_citations_from_sources(body, sources)
+        sources = citations_from_chunks(result.chunks)
+        inline_cites, body = build_citations_from_chunks(body, numbered_chunks)
 
         return GeneratedSection(
             section_number=template.section_number,

@@ -139,7 +139,7 @@ class TestBuildExtractionContext:
 
     def test_includes_context_and_task(self) -> None:
         chunks = [_make_hybrid_chunk()]
-        result = _build_extraction_context(
+        result, numbered = _build_extraction_context(
             chunks=chunks,
             definitions={},
             extraction_prompt="Extract the facility details.",
@@ -147,9 +147,10 @@ class TestBuildExtractionContext:
         assert "CONTEXT FROM CREDIT AGREEMENT" in result
         assert "EXTRACTION TASK" in result
         assert "Extract the facility details." in result
+        assert len(numbered) == 1
 
     def test_includes_preamble_when_provided(self) -> None:
-        result = _build_extraction_context(
+        result, _ = _build_extraction_context(
             chunks=[_make_hybrid_chunk()],
             definitions={},
             extraction_prompt="Extract.",
@@ -157,11 +158,11 @@ class TestBuildExtractionContext:
             preamble_page_numbers=[1, 2, 3],
         )
         assert "Preamble" in result
-        assert "Pages 1-3" in result
+        assert "1-3" in result
         assert "March 3, 2020" in result
 
     def test_no_preamble_when_none(self) -> None:
-        result = _build_extraction_context(
+        result, _ = _build_extraction_context(
             chunks=[_make_hybrid_chunk()],
             definitions={},
             extraction_prompt="Extract.",
@@ -169,7 +170,7 @@ class TestBuildExtractionContext:
         assert "Preamble" not in result
 
     def test_includes_definitions(self) -> None:
-        result = _build_extraction_context(
+        result, _ = _build_extraction_context(
             chunks=[_make_hybrid_chunk()],
             definitions={"Revolver": "means the revolving credit facility"},
             extraction_prompt="Extract.",
@@ -181,12 +182,27 @@ class TestBuildExtractionContext:
         """Definitions whose text appears in chunks are excluded."""
         defn_text = "The Revolving Commitment is $50,000,000."
         chunk = _make_hybrid_chunk(text=defn_text)
-        result = _build_extraction_context(
+        result, _ = _build_extraction_context(
             chunks=[chunk],
             definitions={"Revolving Commitment": defn_text},
             extraction_prompt="Extract.",
         )
         assert "RELEVANT DEFINITIONS" not in result
+
+    def test_numbered_source_format(self) -> None:
+        """Chunks are labeled [Source 1], [Source 2], etc."""
+        chunks = [
+            _make_hybrid_chunk(chunk_id="c1"),
+            _make_hybrid_chunk(chunk_id="c2", section_id="7.06",
+                             section_title="Financial Covenants"),
+        ]
+        result, numbered = _build_extraction_context(
+            chunks=chunks, definitions={}, extraction_prompt="Extract.",
+        )
+        assert "[Source 1]" in result
+        assert "[Source 2]" in result
+        assert "--- Source:" not in result
+        assert len(numbered) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -229,8 +245,8 @@ class TestRetrieveForSection:
         )
         assert len(result.chunks) == 1
 
-    def test_keeps_highest_score(self) -> None:
-        """When same chunk appears with different scores, keeps the highest."""
+    def test_deduplicates_across_queries(self) -> None:
+        """When same chunk appears in multiple queries, it appears only once."""
         retriever = MagicMock(spec=HybridRetriever)
         retriever.retrieve.side_effect = [
             _make_retrieval_result(
@@ -248,7 +264,6 @@ class TestRetrieveForSection:
             top_k=5,
         )
         assert len(result.chunks) == 1
-        assert result.chunks[0].score == 0.9
 
     def test_merges_definitions(self) -> None:
         """Definitions from multiple queries are merged."""
@@ -294,6 +309,23 @@ class TestRetrieveForSection:
         )
         call_kwargs = retriever.retrieve.call_args.kwargs
         assert call_kwargs["section_filter"] == "negative_covenants"
+        # Filtered queries should NOT set section_types_exclude
+        assert call_kwargs["section_types_exclude"] is None
+
+    def test_unfiltered_query_excludes_miscellaneous(self) -> None:
+        """Unfiltered queries auto-exclude the miscellaneous section type."""
+        retriever = MagicMock(spec=HybridRetriever)
+        retriever.retrieve.return_value = _make_retrieval_result()
+
+        _retrieve_for_section(
+            retriever,
+            "doc1",
+            (RetrievalQuery("broad query"),),
+            top_k=5,
+        )
+        call_kwargs = retriever.retrieve.call_args.kwargs
+        assert call_kwargs["section_filter"] is None
+        assert call_kwargs["section_types_exclude"] == ("miscellaneous",)
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +436,7 @@ class TestReportGenerator:
 
         user_prompt: str = llm.complete.call_args.kwargs["user_prompt"]
         assert "$350M" in user_prompt
-        assert "Pages 1-3" in user_prompt
+        assert "1-3" in user_prompt
 
     def test_no_preamble_when_section_skips_it(self) -> None:
         """Sections with include_preamble=False don't get preamble."""

@@ -283,16 +283,17 @@ class TestBuildContextPrompt:
 
     def test_basic_assembly(self) -> None:
         chunks = [_make_hybrid_chunk()]
-        prompt = build_context_prompt(
+        prompt, numbered = build_context_prompt(
             chunks=chunks, definitions={}, history=[], question="What is the leverage ratio?"
         )
         assert "CONTEXT FROM CREDIT AGREEMENT" in prompt
         assert "Section 7.11" in prompt
         assert "CURRENT QUESTION" in prompt
         assert "What is the leverage ratio?" in prompt
+        assert len(numbered) == 1
 
     def test_includes_definitions(self) -> None:
-        prompt = build_context_prompt(
+        prompt, _ = build_context_prompt(
             chunks=[_make_hybrid_chunk()],
             definitions={"Total Leverage Ratio": "means the ratio of X to Y"},
             history=[],
@@ -303,7 +304,7 @@ class TestBuildContextPrompt:
 
     def test_includes_history(self) -> None:
         history = [ConversationTurn(question="What is X?", answer="X is Y.")]
-        prompt = build_context_prompt(
+        prompt, _ = build_context_prompt(
             chunks=[_make_hybrid_chunk()],
             definitions={},
             history=history,
@@ -314,7 +315,7 @@ class TestBuildContextPrompt:
         assert "X is Y." in prompt
 
     def test_no_definitions_section_when_empty(self) -> None:
-        prompt = build_context_prompt(
+        prompt, _ = build_context_prompt(
             chunks=[_make_hybrid_chunk()],
             definitions={},
             history=[],
@@ -323,13 +324,31 @@ class TestBuildContextPrompt:
         assert "RELEVANT DEFINITIONS" not in prompt
 
     def test_no_history_section_when_empty(self) -> None:
-        prompt = build_context_prompt(
+        prompt, _ = build_context_prompt(
             chunks=[_make_hybrid_chunk()],
             definitions={},
             history=[],
             question="Q?",
         )
         assert "PREVIOUS Q&A" not in prompt
+
+    def test_numbered_source_format(self) -> None:
+        """Chunks are labeled [Source 1], [Source 2], etc."""
+        chunks = [
+            _make_hybrid_chunk(chunk_id="c1", section_id="7.11", score=0.9),
+            _make_hybrid_chunk(
+                chunk_id="c2", section_id="7.06",
+                section_title="Restricted Payments",
+                text="Dividend text.", score=0.7,
+            ),
+        ]
+        prompt, numbered = build_context_prompt(
+            chunks=chunks, definitions={}, history=[], question="Q?",
+        )
+        assert "[Source 1]" in prompt
+        assert "[Source 2]" in prompt
+        assert "--- Source:" not in prompt
+        assert len(numbered) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -711,7 +730,7 @@ class TestDefinitionDedup:
             section_id="2.4",
             section_title="Revolving Commitments",
         )
-        prompt = build_context_prompt(
+        prompt, _ = build_context_prompt(
             chunks=[chunk],
             definitions={"Total Revolving Commitments": defn_text},
             history=[],
@@ -726,7 +745,7 @@ class TestDefinitionDedup:
             chunk_id="c1",
             text="Some unrelated chunk text about covenants.",
         )
-        prompt = build_context_prompt(
+        prompt, _ = build_context_prompt(
             chunks=[chunk],
             definitions={"EBITDA": "Earnings before interest, taxes, depreciation."},
             history=[],
@@ -751,7 +770,7 @@ class TestPreambleInjection:
             "$350,000,000 Term Loan Facility\n"
             "$35,000,000 Revolving Credit Facility"
         )
-        prompt = build_context_prompt(
+        prompt, _ = build_context_prompt(
             chunks=[_make_hybrid_chunk()],
             definitions={},
             history=[],
@@ -760,7 +779,7 @@ class TestPreambleInjection:
             preamble_page_numbers=[1, 2, 3],
         )
         assert "Preamble and Recitals" in prompt
-        assert "Pages 1-3" in prompt
+        assert "1-3" in prompt
         assert "$350,000,000" in prompt
         # Preamble should appear before the regular chunk context
         preamble_pos = prompt.index("Preamble")
@@ -769,7 +788,7 @@ class TestPreambleInjection:
 
     def test_no_preamble_when_none(self) -> None:
         """No preamble section when preamble_text is None."""
-        prompt = build_context_prompt(
+        prompt, _ = build_context_prompt(
             chunks=[_make_hybrid_chunk()],
             definitions={},
             history=[],
@@ -780,7 +799,7 @@ class TestPreambleInjection:
 
     def test_no_preamble_when_empty(self) -> None:
         """No preamble section when preamble_text is empty string."""
-        prompt = build_context_prompt(
+        prompt, _ = build_context_prompt(
             chunks=[_make_hybrid_chunk()],
             definitions={},
             history=[],
@@ -803,7 +822,7 @@ class TestPreambleInjection:
 
         user_prompt: str = llm.complete.call_args.kwargs["user_prompt"]
         assert "$350M" in user_prompt
-        assert "Pages 1-3" in user_prompt
+        assert "1-3" in user_prompt
         assert "Preamble" in user_prompt
 
     def test_subsection_citation_enriches_from_parent_section(self) -> None:

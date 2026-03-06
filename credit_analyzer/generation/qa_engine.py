@@ -28,20 +28,17 @@ from credit_analyzer.generation.prompts import (
 from credit_analyzer.generation.response_parser import (
     ConfidenceLevel,
     SourceCitation,
+    build_citations_from_chunks,
     citations_from_chunks,
-    enrich_citations,
-    enrich_inline_citations,
     extract_answer_body,
-    inline_citations_from_sources,
     parse_confidence,
-    parse_inline_citations,
-    parse_sources_from_llm,
 )
 from credit_analyzer.llm.base import LLMProvider, LLMResponse
 from credit_analyzer.retrieval.hybrid_retriever import (
     HybridChunk,
     HybridRetriever,
     RetrievalResult,
+    merge_multi_query_results,
 )
 from credit_analyzer.utils.text_cleaning import strip_markdown as _strip_markdown
 
@@ -166,13 +163,13 @@ def _retrieve_multi_query(
     top_k: int,
     section_types_exclude: tuple[str, ...] | None = None,
 ) -> RetrievalResult:
-    """Run multiple retrieval queries and merge results.
+    """Run multiple retrieval queries and merge results via round-robin.
 
-    Deduplicates by chunk_id, keeping the highest score for each chunk.
-    Merges injected definitions from all query results.
+    Uses round-robin interleaving so every query contributes proportionally,
+    preventing dominant queries from crowding out niche results.
     """
-    all_chunks: dict[str, HybridChunk] = {}
-    all_definitions: dict[str, str] = {}
+    per_query_results: list[list[HybridChunk]] = []
+    per_query_definitions: list[dict[str, str]] = []
 
     def _run(q: str) -> RetrievalResult:
         return retriever.retrieve(
@@ -186,19 +183,11 @@ def _retrieve_multi_query(
         results = list(pool.map(_run, queries))
 
     for result in results:
-        for hc in result.chunks:
-            existing = all_chunks.get(hc.chunk.chunk_id)
-            if existing is None or hc.score > existing.score:
-                all_chunks[hc.chunk.chunk_id] = hc
-        all_definitions.update(result.injected_definitions)
+        per_query_results.append(result.chunks)
+        per_query_definitions.append(result.injected_definitions)
 
-    sorted_chunks = sorted(
-        all_chunks.values(), key=lambda hc: hc.score, reverse=True
-    )[:top_k]
-
-    return RetrievalResult(
-        chunks=sorted_chunks,
-        injected_definitions=all_definitions,
+    return merge_multi_query_results(
+        per_query_results, per_query_definitions, top_k,
     )
 
 
@@ -281,7 +270,7 @@ class QAEngine:
 
         recent_history = self._history[-self._max_history :]
 
-        user_prompt = build_context_prompt(
+        user_prompt, numbered_chunks = build_context_prompt(
             chunks=result.chunks,
             definitions=result.injected_definitions,
             history=recent_history,
@@ -300,19 +289,10 @@ class QAEngine:
         raw_text = llm_response.text
         answer_body = _strip_markdown(extract_answer_body(raw_text))
         confidence = parse_confidence(raw_text)
-        raw_citations = parse_sources_from_llm(raw_text)
-        citations = enrich_citations(raw_citations, result.chunks)
-
-        if not citations:
-            citations = citations_from_chunks(result.chunks)
-
-        inline_citations = parse_inline_citations(raw_text)
-        if inline_citations:
-            inline_citations = enrich_inline_citations(
-                inline_citations, result.chunks, body=answer_body,
-            )
-        elif not inline_citations and citations:
-            inline_citations = inline_citations_from_sources(answer_body, citations)
+        citations = citations_from_chunks(result.chunks)
+        inline_citations, answer_body = build_citations_from_chunks(
+            answer_body, numbered_chunks,
+        )
 
         self._history.append(
             ConversationTurn(question=question, answer=answer_body)
@@ -352,7 +332,7 @@ class QAEngine:
 
         recent_history = self._history[-self._max_history:]
 
-        user_prompt = build_context_prompt(
+        user_prompt, numbered_chunks = build_context_prompt(
             chunks=result.chunks,
             definitions=result.injected_definitions,
             history=recent_history,
@@ -376,19 +356,10 @@ class QAEngine:
         raw_text = "".join(full_text_parts)
         answer_body = _strip_markdown(extract_answer_body(raw_text))
         confidence = parse_confidence(raw_text)
-        raw_citations = parse_sources_from_llm(raw_text)
-        citations = enrich_citations(raw_citations, result.chunks)
-
-        if not citations:
-            citations = citations_from_chunks(result.chunks)
-
-        inline_citations = parse_inline_citations(raw_text)
-        if inline_citations:
-            inline_citations = enrich_inline_citations(
-                inline_citations, result.chunks, body=answer_body,
-            )
-        elif not inline_citations and citations:
-            inline_citations = inline_citations_from_sources(answer_body, citations)
+        citations = citations_from_chunks(result.chunks)
+        inline_citations, answer_body = build_citations_from_chunks(
+            answer_body, numbered_chunks,
+        )
 
         self._history.append(
             ConversationTurn(question=question, answer=answer_body)

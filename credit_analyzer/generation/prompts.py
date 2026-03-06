@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from credit_analyzer.config import QA_DEFINITION_MAX_CHARS
+from credit_analyzer.processing.chunker import Chunk
 from credit_analyzer.retrieval.hybrid_retriever import HybridChunk
 
 # ---------------------------------------------------------------------------
@@ -39,10 +40,11 @@ the document.
 5. Do not assume provisions exist if they are not in the context.
 
 INLINE CITATIONS:
-Place a bracketed number [1], [2], etc. immediately after each specific \
-factual claim (dollar amounts, ratios, percentages, dates, covenant tests). \
-Use sequential numbering starting from [1]. If the same source supports \
-multiple claims, reuse the same number. Do NOT let citations make your \
+Each context excerpt is labeled [Source 1], [Source 2], etc. When you make \
+a specific factual claim (dollar amounts, ratios, percentages, dates, \
+covenant tests), place the corresponding source number in brackets \
+immediately after the claim, e.g. [1], [2]. Reuse the same number when \
+the same source supports multiple claims. Do NOT let citations make your \
 response longer -- keep the same concise style.
 
 RESPONSE STYLE:
@@ -67,10 +69,6 @@ IMPORTANT: If the context does not contain sufficient information to \
 answer the question, confidence must be MEDIUM or LOW. You only see a \
 subset of the full agreement, so absence from the context does not mean \
 the provision does not exist elsewhere in the document.
-
-References:
-[1] Section X.XX (pp. XX-XX)
-[2] Section Y.YY (pp. YY-YY)
 """
 
 REFORMULATION_SYSTEM_PROMPT: str = """\
@@ -165,7 +163,7 @@ def build_context_prompt(
     question: str,
     preamble_text: str | None = None,
     preamble_page_numbers: Sequence[int] | None = None,
-) -> str:
+) -> tuple[str, list[HybridChunk]]:
     """Assemble the user prompt from retrieved context, definitions, history.
 
     Follows the Q&A Context Template from ``docs/PROMPTS.md``.
@@ -186,17 +184,44 @@ def build_context_prompt(
         preamble_page_numbers: Optional page numbers for the preamble text.
 
     Returns:
-        The assembled user prompt string.
+        A tuple of (prompt_string, numbered_chunks) where numbered_chunks
+        is the list of chunks in the order they were numbered [Source 1],
+        [Source 2], etc. in the prompt.
     """
     parts: list[str] = ["=== CONTEXT FROM CREDIT AGREEMENT ===\n"]
 
+    # Build the numbered source list. Preamble gets [Source 1] when present.
+    numbered: list[HybridChunk] = []
+    source_num = 1
+
     if preamble_text:
-        preamble_pages = _format_page_numbers(preamble_page_numbers or [])
+        preamble_page_list = list(preamble_page_numbers or [])
+        preamble_pages = _format_page_numbers(preamble_page_list)
         page_label = preamble_pages if preamble_pages else "n/a"
         parts.append(
-            f"--- Source: Preamble and Recitals (Pages {page_label}) ---\n"
+            f"[Source {source_num}] Preamble and Recitals "
+            f"(pp. {page_label})\n"
             f"{preamble_text}\n"
         )
+        numbered.append(HybridChunk(
+            chunk=Chunk(
+                chunk_id="__preamble__",
+                text=preamble_text,
+                section_id="Preamble",
+                section_title="Preamble and Recitals",
+                article_number=0,
+                article_title="",
+                section_type="preamble",
+                chunk_type="text",
+                page_numbers=preamble_page_list,
+                defined_terms_present=[],
+                chunk_index=0,
+                token_count=0,
+            ),
+            score=1.0,
+            source="preamble",
+        ))
+        source_num += 1
 
     # Sort chunks by document position so cross-references flow naturally.
     # Score information is preserved on each HybridChunk for debugging/UI.
@@ -209,10 +234,12 @@ def build_context_prompt(
         c = hc.chunk
         pages = _format_page_numbers(c.page_numbers)
         parts.append(
-            f"--- Source: {c.section_title} "
-            f"(Section {c.section_id}, Pages {pages}) ---\n"
+            f"[Source {source_num}] {c.section_title} "
+            f"(Section {c.section_id}, pp. {pages})\n"
             f"{c.text}\n"
         )
+        numbered.append(hc)
+        source_num += 1
 
     if definitions:
         # Skip definitions whose text already appears in a retrieved chunk
@@ -238,7 +265,7 @@ def build_context_prompt(
 
     parts.append(f"\n=== CURRENT QUESTION ===\n{question}")
 
-    return "\n".join(parts)
+    return "\n".join(parts), numbered
 
 
 def build_reformulation_prompt(
