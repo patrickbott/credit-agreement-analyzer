@@ -450,7 +450,73 @@ def _render_definitions_tab(active_document: ProcessedDocument | None) -> None:
             unsafe_allow_html=True,
         )
         return
-    st.caption(f"{len(active_document.definitions_index.definitions)} defined terms from {active_document.display_name}")
+
+    defs_index = active_document.definitions_index
+    total_terms = len(defs_index.definitions)
+
+    header_col, search_col = st.columns([0.6, 0.4])
+    with header_col:
+        st.markdown(
+            panel_card(
+                "Defined Terms",
+                f"{total_terms} terms parsed from the definitions section.",
+            ),
+            unsafe_allow_html=True,
+        )
+    with search_col:
+        search_query = st.text_input(
+            "Search definitions",
+            placeholder="e.g. EBITDA, Applicable Rate, Borrower...",
+            key="def-search",
+        )
+
+    filtered = filter_definitions(defs_index, search_query)
+
+    if search_query:
+        st.caption(f"{len(filtered)} of {total_terms} terms match \u2018{search_query}\u2019")
+
+    if not filtered:
+        st.info("No definitions match your search.")
+        return
+
+    # Pagination
+    _ITEMS_PER_PAGE = 20
+    page_key = "def_page"
+    st.session_state.setdefault(page_key, 0)
+    # Reset to page 0 when search changes
+    if search_query != st.session_state.get("def_last_query", ""):
+        st.session_state[page_key] = 0
+        st.session_state["def_last_query"] = search_query
+
+    current_page: int = st.session_state[page_key]
+    page_count = (len(filtered) + _ITEMS_PER_PAGE - 1) // _ITEMS_PER_PAGE
+    start = current_page * _ITEMS_PER_PAGE
+    page_items = filtered[start : start + _ITEMS_PER_PAGE]
+
+    for term, definition_text in page_items:
+        preview = definition_text[:300]
+        is_truncated = len(definition_text) > 300
+        st.markdown(
+            definition_card(term, preview + ("\u2026" if is_truncated else "")),
+            unsafe_allow_html=True,
+        )
+        if is_truncated:
+            with st.expander(f"Full definition of \u201c{term}\u201d"):
+                st.write(definition_text)
+
+    # Pagination controls
+    if page_count > 1:
+        nav_cols = st.columns([1, 2, 1])
+        with nav_cols[0]:
+            if current_page > 0 and st.button("\u2190 Previous", key="def-prev"):
+                st.session_state[page_key] = current_page - 1
+                st.rerun()
+        with nav_cols[1]:
+            st.caption(f"Page {current_page + 1} of {page_count}")
+        with nav_cols[2]:
+            if current_page < page_count - 1 and st.button("Next \u2192", key="def-next"):
+                st.session_state[page_key] = current_page + 1
+                st.rerun()
 
 
 # ---------------------------------------------------------------------------
