@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import re
 from html import escape
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from credit_analyzer.generation.response_parser import InlineCitation, SourceCitation
 
 
 def _safe(text: str) -> str:
@@ -1183,7 +1187,7 @@ def empty_state(title: str, description: str, icon: str = "document") -> str:
 _INLINE_MARKER_RE = re.compile(r"\[(\d+)\]")
 
 
-def render_citation_markers(body: str, citations: list) -> str:
+def render_citation_markers(body: str, citations: list[InlineCitation]) -> str:
     """Replace [N] markers with styled superscripts only (no footnotes).
 
     Use this inside ``format_report_body`` where footnotes are rendered
@@ -1203,7 +1207,7 @@ def render_citation_markers(body: str, citations: list) -> str:
     return "".join(parts)
 
 
-def render_citation_footnotes(citations: list) -> str:
+def render_citation_footnotes(citations: list[InlineCitation]) -> str:
     """Render footnotes block from a list of InlineCitation objects."""
     if not citations:
         return ""
@@ -1242,7 +1246,7 @@ def render_citation_footnotes(citations: list) -> str:
     return "".join(parts)
 
 
-def render_inline_citations(body: str, citations: list) -> str:
+def render_inline_citations(body: str, citations: list[InlineCitation]) -> str:
     """Replace [N] markers with styled superscripts and append a footnotes block.
 
     Args:
@@ -1263,7 +1267,7 @@ def render_inline_citations(body: str, citations: list) -> str:
     return body_html + footnotes_html
 
 
-def render_source_footnotes(sources: list) -> str:
+def render_source_footnotes(sources: list[SourceCitation]) -> str:
     """Render a list of SourceCitation objects as a footnotes HTML block.
 
     Used as a fallback when inline citations are not available but
@@ -1331,7 +1335,7 @@ _NUMBERED_RE = re.compile(r"^(\d+)\.\s+(.+)")
 _BULLET_RE = re.compile(r"^[-*]\s+(.+)")
 
 
-def format_report_body(body: str, inline_citations: list | None = None) -> str:
+def format_report_body(body: str, inline_citations: list[InlineCitation] | None = None) -> str:
     """Convert plain-text report section body to styled HTML.
 
     Recognises headings (standalone ALL-CAPS lines), field labels

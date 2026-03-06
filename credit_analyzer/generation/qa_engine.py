@@ -27,6 +27,7 @@ from credit_analyzer.generation.prompts import (
 )
 from credit_analyzer.generation.response_parser import (
     ConfidenceLevel,
+    InlineCitation,
     SourceCitation,
     build_citations_from_chunks,
     citations_from_chunks,
@@ -67,7 +68,7 @@ class QAResponse:
     confidence: ConfidenceLevel
     retrieved_chunks: list[HybridChunk]
     llm_response: LLMResponse
-    inline_citations: list = field(default_factory=list)
+    inline_citations: list[InlineCitation] = field(default_factory=lambda: list[InlineCitation]())
 
 
 # ---------------------------------------------------------------------------
