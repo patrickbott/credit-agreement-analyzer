@@ -9,6 +9,7 @@ from typing import Any, cast
 
 import pandas as pd  # pyright: ignore[reportMissingTypeStubs]
 import streamlit as st
+import streamlit.components.v1 as components
 
 from credit_analyzer.config import CLAUDE_MODEL, LLM_PROVIDER, OLLAMA_MODEL, validate_config
 from credit_analyzer.generation.pdf_export import report_to_pdf_bytes
@@ -24,12 +25,18 @@ from credit_analyzer.retrieval.embedder import Embedder
 from credit_analyzer.retrieval.reranker import Reranker
 from credit_analyzer.retrieval.vector_store import VectorStore
 from credit_analyzer.ui.demo_report import SUGGESTED_QUESTIONS
+from credit_analyzer.ui.clipboard import clipboard_js_snippet
+from credit_analyzer.ui.definitions_browser import filter_definitions
 from credit_analyzer.ui.theme import (
     APP_CSS,
     confidence_pill,
+    copy_button,
+    definition_card,
+    empty_state,
     format_report_body,
     hero_card,
     metric_card,
+    nav_item,
     panel_card,
     rail_card,
     render_citation_footnotes,
@@ -49,13 +56,14 @@ def _safe(text: str) -> str:
 
 
 st.set_page_config(
-    page_title="RBC Credit Agreement Analyzer",
+    page_title="Credit Agreement Analyzer | RBC",
     page_icon="R",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 st.markdown(APP_CSS, unsafe_allow_html=True)
+components.html(clipboard_js_snippet(), height=0)
 
 
 @st.cache_resource(show_spinner=False)
@@ -113,7 +121,8 @@ def main() -> None:
     st.markdown(
         hero_card(
             title="Credit Agreement Analyzer",
-            copy="Review agreements, ask cited questions, and generate a structured report.",
+            copy="Extract key terms, explore definitions, and generate structured reports from credit agreements.",
+            eyebrow="RBC Leveraged Finance",
         ),
         unsafe_allow_html=True,
     )
@@ -124,8 +133,8 @@ def main() -> None:
 
     _render_sidebar(documents, active_document, provider_status)
 
-    tab_documents, tab_chat, tab_report = st.tabs(
-        ["Documents", "Ask Questions", "Full Report"]
+    tab_documents, tab_chat, tab_definitions, tab_report = st.tabs(
+        ["Documents", "Ask Questions", "Definitions", "Full Report"]
     )
 
     with tab_documents:
@@ -133,6 +142,9 @@ def main() -> None:
 
     with tab_chat:
         _render_chat_tab(active_document, provider, provider_status)
+
+    with tab_definitions:
+        _render_definitions_tab(active_document)
 
     with tab_report:
         _render_report_tab(active_document, provider, provider_status)
@@ -231,7 +243,8 @@ def _render_sidebar(
                 st.session_state.provider_status = None
                 st.rerun()
 
-        st.markdown("### Documents")
+        st.markdown("---")
+        st.caption("DOCUMENTS")
         if documents:
             choices = list(documents.keys())
             labels = {doc_id: documents[doc_id].display_name for doc_id in choices}
@@ -425,6 +438,25 @@ def _render_document_summary(document: ProcessedDocument) -> None:
         if document.preamble_text:
             with st.expander("Preamble Preview", expanded=False):
                 st.write(document.preamble_text[:1800])
+
+
+# ---------------------------------------------------------------------------
+# Definitions tab
+# ---------------------------------------------------------------------------
+
+
+def _render_definitions_tab(active_document: ProcessedDocument | None) -> None:
+    if active_document is None:
+        st.markdown(
+            empty_state(
+                "No Document Loaded",
+                "Index a credit agreement to browse its defined terms.",
+                icon="search",
+            ),
+            unsafe_allow_html=True,
+        )
+        return
+    st.caption(f"{len(active_document.definitions_index.definitions)} defined terms from {active_document.display_name}")
 
 
 # ---------------------------------------------------------------------------
