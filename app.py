@@ -325,21 +325,13 @@ def _render_document_tab(active_document: ProcessedDocument | None) -> None:
     with summary_col:
         if active_document is None:
             st.markdown(
-                panel_card(
+                empty_state(
                     "Ready to Review",
-                    "Load an agreement to inspect structure, ask questions, and generate a report.",
+                    "Upload and index a credit agreement to inspect its structure, ask questions, and generate a report.",
+                    icon="document",
                 ),
                 unsafe_allow_html=True,
             )
-            empty_cols = st.columns(3)
-            empty_cards = (
-                ("Pages", "--", "Agreement length"),
-                ("Definitions", "--", "Defined terms"),
-                ("Chunks", "--", "Retrieval index"),
-            )
-            for col, card in zip(empty_cols, empty_cards, strict=True):
-                with col:
-                    st.markdown(metric_card(*card), unsafe_allow_html=True)
             return
 
         _render_document_summary(active_document)
@@ -382,14 +374,16 @@ def _render_document_summary(document: ProcessedDocument) -> None:
 
     metric_cols = st.columns(4)
     cards = (
-        ("Pages", str(stats.total_pages), f"Method: {stats.extraction_method}"),
-        ("Sections", str(stats.section_count), "Detected sections"),
-        ("Definitions", str(stats.definition_count), "Parsed terms"),
-        ("Chunks", str(stats.chunk_count), f"Tables: {stats.table_count}"),
+        ("Pages", str(stats.total_pages), f"Method: {stats.extraction_method}", ""),
+        ("Sections", str(stats.section_count), "Detected sections", ""),
+        ("Definitions", str(stats.definition_count), "Parsed terms", "#C8A000"),
+        ("Chunks", str(stats.chunk_count), f"Tables: {stats.table_count}", ""),
     )
     for col, card in zip(metric_cols, cards, strict=True):
         with col:
             st.markdown(metric_card(*card), unsafe_allow_html=True)
+
+    st.divider()
 
     left_col, right_col = st.columns([1.1, 0.9], gap="large")
 
@@ -470,7 +464,14 @@ def _render_chat_tab(
     provider_status: dict[str, Any],
 ) -> None:
     if active_document is None:
-        st.info("Index a document first.")
+        st.markdown(
+            empty_state(
+                "No Document Loaded",
+                "Index a credit agreement to start asking questions.",
+                icon="search",
+            ),
+            unsafe_allow_html=True,
+        )
         return
 
     if provider is None or not provider_status["ready"]:
@@ -487,16 +488,17 @@ def _render_chat_tab(
 
     st.caption("Suggested questions")
 
-    suggested_cols = st.columns(3)
-    next_question: str | None = None
-    for index, suggestion in enumerate(SUGGESTED_QUESTIONS):
-        with suggested_cols[index % len(suggested_cols)]:
-            if suggestion.prompt is not None and st.button(
-                suggestion.label,
-                key=f"suggested-{index}",
-                width="stretch",
-            ):
-                next_question = suggestion.prompt
+    with st.container(key="suggested-actions"):
+        suggested_cols = st.columns(3)
+        next_question: str | None = None
+        for index, suggestion in enumerate(SUGGESTED_QUESTIONS):
+            with suggested_cols[index % len(suggested_cols)]:
+                if suggestion.prompt is not None and st.button(
+                    suggestion.label,
+                    key=f"suggested-{index}",
+                    width="stretch",
+                ):
+                    next_question = suggestion.prompt
 
     for message in st.session_state.chat_messages[active_document.document_id]:
         _render_chat_message(message)
@@ -566,23 +568,36 @@ def _run_pending_chat_question(
             if final_response is not None:
                 # Replace streaming preview with final parsed answer
                 response_placeholder.empty()
+                answer_id = f"answer-{hash(final_response.answer) & 0xFFFFFFFF:08x}"
                 if final_response.inline_citations:
                     cited_html = render_inline_citations(
                         final_response.answer, final_response.inline_citations
                     )
                     response_placeholder.markdown(
-                        f'<div class="section-answer">{cited_html}</div>',
+                        f'<div style="position:relative;">'
+                        f'<div id="{answer_id}" class="section-answer">{cited_html}</div>'
+                        f'{copy_button(answer_id)}'
+                        f'</div>',
                         unsafe_allow_html=True,
                     )
                 elif final_response.sources:
                     answer_html = _safe(final_response.answer)
                     footnotes_html = render_source_footnotes(final_response.sources)
                     response_placeholder.markdown(
-                        f'<div class="section-answer">{answer_html}{footnotes_html}</div>',
+                        f'<div style="position:relative;">'
+                        f'<div id="{answer_id}" class="section-answer">{answer_html}{footnotes_html}</div>'
+                        f'{copy_button(answer_id)}'
+                        f'</div>',
                         unsafe_allow_html=True,
                     )
                 else:
-                    response_placeholder.write(final_response.answer)
+                    response_placeholder.markdown(
+                        f'<div style="position:relative;">'
+                        f'<div id="{answer_id}">{_safe(final_response.answer)}</div>'
+                        f'{copy_button(answer_id)}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
                 st.markdown(confidence_pill(final_response.confidence), unsafe_allow_html=True)
 
         if final_response is not None:
@@ -607,13 +622,17 @@ def _render_chat_message(message: dict[str, Any]) -> None:
         return
 
     response: QAResponse = message["response"]
+    answer_id = f"answer-{hash(response.answer) & 0xFFFFFFFF:08x}"
     with st.chat_message("assistant"):
         if response.inline_citations:
             cited_html = render_inline_citations(
                 response.answer, response.inline_citations
             )
             st.markdown(
-                f'<div class="section-answer">{cited_html}</div>',
+                f'<div style="position:relative;">'
+                f'<div id="{answer_id}" class="section-answer">{cited_html}</div>'
+                f'{copy_button(answer_id)}'
+                f'</div>',
                 unsafe_allow_html=True,
             )
         elif response.sources:
@@ -621,11 +640,20 @@ def _render_chat_message(message: dict[str, Any]) -> None:
             answer_html = _safe(response.answer)
             footnotes_html = render_source_footnotes(response.sources)
             st.markdown(
-                f'<div class="section-answer">{answer_html}{footnotes_html}</div>',
+                f'<div style="position:relative;">'
+                f'<div id="{answer_id}" class="section-answer">{answer_html}{footnotes_html}</div>'
+                f'{copy_button(answer_id)}'
+                f'</div>',
                 unsafe_allow_html=True,
             )
         else:
-            st.write(response.answer)
+            st.markdown(
+                f'<div style="position:relative;">'
+                f'<div id="{answer_id}">{_safe(response.answer)}</div>'
+                f'{copy_button(answer_id)}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         st.markdown(confidence_pill(response.confidence), unsafe_allow_html=True)
         if response.retrieved_chunks:
             n_chunks = len(response.retrieved_chunks)
