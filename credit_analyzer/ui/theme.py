@@ -18,43 +18,62 @@ def _safe(text: str) -> str:
     return escape(text).replace("$", "&#36;")
 
 
+# ---------------------------------------------------------------------------
+# Color constants
+# ---------------------------------------------------------------------------
+
+NAVY_DEEP = "#001A3E"
 RBC_BLUE = "#0051A5"
-RBC_BLUE_DEEP = "#003B7A"
-RBC_GOLD = "#FFCC00"
-INK = "#122033"
-MUTED = "#5B6B82"
+RBC_BLUE_DEEP = "#001A3E"  # backward compat alias
+RBC_BLUE_LIGHT = "#E8F0FE"
+RBC_GOLD = "#C8A000"
+GOLD_BRIGHT = "#D4AF37"
+INK = "#0F1A2E"
+MUTED = "#64748B"
 SURFACE = "#FFFFFF"
-SURFACE_ALT = "#F4F7FB"
-BORDER = "#D5DFEC"
+SURFACE_ALT = "#F8FAFC"
+BG = "#F1F5F9"
+BORDER = "#E2E8F0"
+
+# ---------------------------------------------------------------------------
+# APP_CSS — full design system
+# ---------------------------------------------------------------------------
 
 APP_CSS = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
 :root {{
+  --navy-deep: {NAVY_DEEP};
   --rbc-blue: {RBC_BLUE};
   --rbc-blue-deep: {RBC_BLUE_DEEP};
+  --rbc-blue-light: {RBC_BLUE_LIGHT};
   --rbc-gold: {RBC_GOLD};
+  --gold-bright: {GOLD_BRIGHT};
   --ink: {INK};
   --muted: {MUTED};
   --surface: {SURFACE};
   --surface-alt: {SURFACE_ALT};
+  --bg: {BG};
   --border: {BORDER};
-  --gold-wash: rgba(255, 204, 0, 0.16);
-  --success-bg: #E9F6EE;
-  --success-fg: #17633C;
-  --warning-bg: #FFF4D6;
-  --warning-fg: #8A5A00;
-  --danger-bg: #FDEBEC;
-  --danger-fg: #8F2430;
 }}
+
+/* ---- Base typography ---- */
 
 html, body, [class*="css"] {{
-  font-family: 'IBM Plex Sans', sans-serif;
+  font-family: 'Source Sans 3', 'Source Sans Pro', system-ui, sans-serif;
+  color: var(--ink);
 }}
 
+h1, h2, h3 {{
+  font-family: 'DM Sans', 'Source Sans 3', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}}
+
+/* ---- App shell ---- */
+
 .stApp {{
-  background: #F7F9FC;
+  background: var(--bg);
   color: var(--ink);
 }}
 
@@ -62,50 +81,64 @@ html, body, [class*="css"] {{
   background: transparent;
 }}
 
+/* ---- Sidebar ---- */
+
 [data-testid="stSidebar"] {{
-  background: rgba(0, 59, 122, 0.98);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, {NAVY_DEEP} 0%, #00254D 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}}
+
+[data-testid="stSidebar"]::before {{
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,26,62,0) 60%, rgba(0,81,165,0.08) 100%);
+  pointer-events: none;
 }}
 
 [data-testid="stSidebar"] * {{
-  color: #F8FAFD;
-}}
-
-.block-container {{
-  max-width: 1280px;
-  padding-top: 1.25rem;
-  padding-bottom: 2.5rem;
+  color: #F0F4FA;
 }}
 
 [data-testid="stSidebar"] .block-container {{
   padding-top: 1rem;
 }}
 
-h1, h2, h3 {{
-  letter-spacing: -0.02em;
+/* ---- Layout ---- */
+
+.block-container {{
+  max-width: 1320px;
+  padding-top: 1.25rem;
+  padding-bottom: 2.5rem;
 }}
+
+/* ---- Buttons ---- */
 
 div[data-testid="stButton"] > button,
 div[data-testid="stDownloadButton"] > button {{
-  border-radius: 14px;
-  border: 1px solid rgba(255, 204, 0, 0.6);
+  border-radius: 10px;
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--ink);
+  font-family: 'Source Sans 3', system-ui, sans-serif;
   font-weight: 600;
   min-height: 2.65rem;
   padding: 0.55rem 1rem;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
 }}
 
 div[data-testid="stButton"] > button[kind="primary"] {{
   background: var(--rbc-blue);
   color: white;
-  border-color: rgba(255, 204, 0, 0.72);
+  border-color: {GOLD_BRIGHT};
 }}
 
-div[data-testid="stButton"] > button:hover {{
-  border-color: rgba(255, 204, 0, 0.9);
+div[data-testid="stButton"] > button:hover,
+div[data-testid="stDownloadButton"] > button:hover {{
+  border-color: {GOLD_BRIGHT};
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 26, 62, 0.12);
 }}
 
 .st-key-suggested-actions div[data-testid="stButton"] > button {{
@@ -122,141 +155,203 @@ div[data-testid="stButton"] > button:hover {{
   line-height: 1.3;
 }}
 
+/* Sidebar buttons */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button,
 [data-testid="stSidebar"] div[data-testid="stDownloadButton"] > button {{
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 204, 0, 0.72);
-  color: #F8FAFD !important;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(200, 160, 0, 0.5);
+  color: #F0F4FA !important;
   box-shadow: none;
 }}
 
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
 [data-testid="stSidebar"] div[data-testid="stDownloadButton"] > button:hover {{
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 204, 0, 0.96);
+  background: rgba(255, 255, 255, 0.13);
+  border-color: {GOLD_BRIGHT};
 }}
+
+/* ---- Inputs ---- */
 
 [data-testid="stFileUploader"] section,
 [data-testid="stTextInputRootElement"],
 [data-testid="stChatInput"],
 [data-baseweb="select"] > div {{
-  border-radius: 16px;
+  border-radius: 10px;
   border-color: var(--border);
+  transition: all 0.2s ease;
+}}
+
+[data-testid="stFileUploader"] section:focus-within,
+[data-testid="stTextInputRootElement"]:focus-within,
+[data-testid="stChatInput"]:focus-within {{
+  border-color: var(--rbc-blue);
+  box-shadow: 0 0 0 3px rgba(0, 81, 165, 0.12);
 }}
 
 [data-testid="stFileUploader"] section,
 [data-testid="stTextInputRootElement"],
 [data-testid="stChatInput"] {{
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.95);
 }}
 
 [data-testid="stSidebar"] [data-baseweb="select"] > div {{
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 204, 0, 0.72);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(200, 160, 0, 0.5);
 }}
 
 [data-testid="stSidebar"] [data-baseweb="select"] * {{
-  color: #F8FAFD !important;
-  fill: #F8FAFD !important;
+  color: #F0F4FA !important;
+  fill: #F0F4FA !important;
 }}
 
+/* ---- Tabs ---- */
+
 .stTabs [data-baseweb="tab-list"] {{
-  gap: 0.45rem;
+  gap: 0.25rem;
   margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
 }}
 
 .stTabs [data-baseweb="tab"] {{
   height: auto;
-  padding: 0.5rem 0.95rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(0, 81, 165, 0.1);
+  padding: 0.6rem 1.1rem;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 500;
+  color: var(--muted);
+  transition: all 0.2s ease;
+}}
+
+.stTabs [data-baseweb="tab"]:hover {{
+  color: var(--ink);
 }}
 
 .stTabs [aria-selected="true"] {{
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(0, 81, 165, 0.22);
-  color: var(--rbc-blue-deep);
-  box-shadow: inset 0 -2px 0 var(--rbc-gold);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom: 2px solid {RBC_GOLD};
 }}
 
+/* ---- Hero card ---- */
+
 .hero-card {{
-  background: rgba(0, 81, 165, 0.98);
+  background: linear-gradient(135deg, {NAVY_DEEP} 0%, {RBC_BLUE} 100%);
   color: white;
-  border-radius: 22px;
-  padding: 1.15rem 1.35rem;
-  border: 1px solid rgba(255, 204, 0, 0.4);
-  box-shadow: 0 18px 40px rgba(0, 46, 94, 0.14);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 26, 62, 0.18);
+  position: relative;
+  overflow: hidden;
+}}
+
+.hero-card::after {{
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(200, 160, 0, 0.06) 0%, transparent 70%);
+  pointer-events: none;
 }}
 
 .hero-eyebrow {{
   display: inline-block;
-  padding: 0.26rem 0.62rem;
+  padding: 0.22rem 0.6rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #F7FBFF;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Source Sans 3', system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  border: 1px solid rgba(255, 204, 0, 0.26);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+}}
+
+.hero-icon {{
+  display: inline-block;
+  margin-right: 0.5rem;
+  vertical-align: middle;
 }}
 
 .hero-title {{
-  margin: 0.8rem 0 0.28rem 0;
-  font-size: 1.85rem;
-  line-height: 1.08;
+  margin: 0.75rem 0 0.25rem 0;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 1.8rem;
   font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 }}
 
 .hero-copy {{
   margin: 0;
   max-width: 44rem;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 0.96rem;
-  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.95rem;
+  line-height: 1.5;
 }}
 
-.metric-card,
-.panel-card,
-.section-card {{
-  background: rgba(255, 255, 255, 0.93);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
-}}
+/* ---- Metric cards ---- */
 
 .metric-card {{
-  padding: 0.95rem 1rem;
-  min-height: 124px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--rbc-blue);
+  border-radius: 12px;
+  padding: 0.95rem 1.1rem;
+  min-height: 120px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}}
+
+.metric-card:hover {{
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }}
 
 .metric-label {{
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }}
 
 .metric-value {{
   color: var(--ink);
-  font-size: 1.8rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 1.75rem;
   font-weight: 700;
-  margin-top: 0.38rem;
+  margin-top: 0.35rem;
+  letter-spacing: -0.01em;
 }}
 
 .metric-caption {{
   color: var(--muted);
-  font-size: 0.9rem;
-  margin-top: 0.45rem;
-  line-height: 1.32;
+  font-size: 0.88rem;
+  margin-top: 0.4rem;
+  line-height: 1.35;
 }}
 
+/* ---- Panel cards ---- */
+
 .panel-card {{
-  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }}
 
 .panel-title {{
-  margin: 0 0 0.45rem 0;
+  margin: 0 0 0.4rem 0;
+  font-family: 'DM Sans', system-ui, sans-serif;
   color: var(--ink);
   font-size: 1rem;
   font-weight: 700;
@@ -265,20 +360,28 @@ div[data-testid="stButton"] > button:hover {{
 .panel-copy {{
   color: var(--muted);
   margin: 0;
-  line-height: 1.45;
+  line-height: 1.5;
+  font-size: 0.92rem;
 }}
 
 .panel-copy:empty {{
   display: none;
 }}
 
+/* ---- Section card (Q&A) ---- */
+
 .section-card {{
-  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
   margin-bottom: 0.9rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }}
 
 .section-title {{
   margin: 0;
+  font-family: 'DM Sans', system-ui, sans-serif;
   color: var(--ink);
   font-size: 1rem;
   font-weight: 700;
@@ -292,32 +395,36 @@ div[data-testid="stButton"] > button:hover {{
 
 .section-answer {{
   color: var(--ink);
-  line-height: 1.5;
+  line-height: 1.55;
 }}
+
+/* ---- Confidence pills ---- */
 
 .pill {{
   display: inline-block;
   border-radius: 999px;
-  padding: 0.28rem 0.7rem;
-  font-size: 0.78rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.03em;
 }}
 
 .pill-high {{
-  background: var(--success-bg);
-  color: var(--success-fg);
+  background: #ECFDF5;
+  color: #059669;
 }}
 
 .pill-medium {{
-  background: var(--warning-bg);
-  color: var(--warning-fg);
+  background: #FFFBEB;
+  color: #D97706;
 }}
 
 .pill-low {{
-  background: var(--danger-bg);
-  color: var(--danger-fg);
+  background: #FEF2F2;
+  color: #DC2626;
 }}
+
+/* ---- Meta row / chips ---- */
 
 .meta-row {{
   display: flex;
@@ -330,50 +437,53 @@ div[data-testid="stButton"] > button:hover {{
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 0.3rem 0.66rem;
-  background: rgba(0, 81, 165, 0.07);
-  color: var(--rbc-blue-deep);
-  font-size: 0.77rem;
+  padding: 0.28rem 0.62rem;
+  background: var(--rbc-blue-light);
+  color: var(--rbc-blue);
+  font-size: 0.76rem;
   font-weight: 600;
 }}
 
+/* ---- Rail cards (sidebar) ---- */
+
 .rail-card {{
-  padding: 0.9rem 0.95rem;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 204, 0, 0.42);
-  margin-bottom: 0.8rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(200, 160, 0, 0.3);
+  margin-bottom: 0.75rem;
+  transition: all 0.2s ease;
 }}
 
 .rail-card.is-ready {{
-  box-shadow: inset 3px 0 0 rgba(255, 204, 0, 0.9);
+  border-left: 3px solid {RBC_GOLD};
 }}
 
 .rail-card.is-warning {{
-  box-shadow: inset 3px 0 0 rgba(255, 229, 153, 0.9);
+  border-left: 3px solid rgba(212, 175, 55, 0.5);
 }}
 
 .rail-label {{
-  font-size: 0.74rem;
+  font-size: 0.72rem;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.8;
+  opacity: 0.75;
 }}
 
 .rail-value {{
-  margin-top: 0.3rem;
+  margin-top: 0.25rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
   font-size: 1rem;
   font-weight: 700;
 }}
 
 .rail-meta {{
-  margin-top: 0.25rem;
-  font-size: 0.86rem;
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
   line-height: 1.35;
-  opacity: 0.92;
+  opacity: 0.88;
 }}
-
-/* source-card CSS removed – sources now rendered as footnotes */
 
 .subtle-note {{
   color: var(--muted);
@@ -381,35 +491,37 @@ div[data-testid="stButton"] > button:hover {{
   margin-top: 0.4rem;
 }}
 
-/* ---- Report tab ---- */
+/* ---- Report header ---- */
 
 .report-header {{
-  background: linear-gradient(135deg, rgba(0, 59, 122, 0.97), rgba(0, 81, 165, 0.94));
+  background: linear-gradient(135deg, {NAVY_DEEP} 0%, {RBC_BLUE} 100%);
   color: white;
-  border-radius: 18px;
-  padding: 1.2rem 1.4rem;
-  border: 1px solid rgba(255, 204, 0, 0.35);
-  box-shadow: 0 14px 30px rgba(0, 46, 94, 0.12);
+  border-radius: 14px;
+  padding: 1.25rem 1.4rem;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  box-shadow: 0 8px 28px rgba(0, 26, 62, 0.15);
   margin-bottom: 1rem;
 }}
 
 .report-header-borrower {{
-  font-size: 1.5rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 1.45rem;
   font-weight: 700;
   margin: 0 0 0.2rem 0;
   line-height: 1.15;
+  letter-spacing: -0.01em;
 }}
 
 .report-header-meta {{
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.87rem;
   margin: 0;
 }}
 
 .report-stats-row {{
   display: flex;
-  gap: 0.7rem;
-  margin-top: 0.9rem;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
   flex-wrap: wrap;
 }}
 
@@ -417,37 +529,45 @@ div[data-testid="stButton"] > button:hover {{
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 999px;
-  padding: 0.32rem 0.72rem;
-  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(255, 204, 0, 0.25);
+  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(212, 175, 55, 0.2);
 }}
 
 .report-stat-gold {{
-  background: rgba(255, 204, 0, 0.18);
-  border-color: rgba(255, 204, 0, 0.5);
-  color: #FFFBE6;
+  background: rgba(200, 160, 0, 0.15);
+  border-color: rgba(212, 175, 55, 0.45);
+  color: #FFF8E0;
 }}
 
+/* ---- Report sections ---- */
+
 .report-section {{
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-left: 3px solid var(--rbc-blue);
+  border-radius: 12px;
   padding: 0;
   margin-bottom: 0.75rem;
   overflow: hidden;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}}
+
+.report-section:hover {{
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 }}
 
 .report-section-head {{
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.85rem 1.1rem;
-  border-bottom: 1px solid rgba(213, 223, 236, 0.6);
+  padding: 0.8rem 1.1rem;
+  border-bottom: 1px solid var(--border);
   cursor: default;
 }}
 
@@ -455,19 +575,21 @@ div[data-testid="stButton"] > button:hover {{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.7rem;
-  height: 1.7rem;
+  width: 1.65rem;
+  height: 1.65rem;
   border-radius: 8px;
   background: var(--rbc-blue);
   color: white;
-  font-size: 0.78rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.76rem;
   font-weight: 700;
   flex-shrink: 0;
 }}
 
 .report-section-title {{
-  margin: 0 0 0 0.65rem;
-  font-size: 0.95rem;
+  margin: 0 0 0 0.6rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.94rem;
   font-weight: 700;
   color: var(--ink);
   flex-grow: 1;
@@ -488,10 +610,11 @@ div[data-testid="stButton"] > button:hover {{
 
 .report-section-body {{
   padding: 0.9rem 1.1rem 1rem 1.1rem;
+  position: relative;
 }}
 
 .report-section-body pre {{
-  font-family: 'IBM Plex Sans', sans-serif;
+  font-family: 'Source Sans 3', system-ui, sans-serif;
   font-size: 0.9rem;
   line-height: 1.55;
   color: var(--ink);
@@ -507,16 +630,14 @@ div[data-testid="stButton"] > button:hover {{
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  padding: 0.6rem 1.1rem;
-  border-top: 1px solid rgba(213, 223, 236, 0.5);
-  background: rgba(244, 247, 251, 0.5);
+  padding: 0.55rem 1.1rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface-alt);
 }}
-
-/* report-source-chip removed – sources now rendered as footnotes */
 
 .report-error-body {{
   padding: 0.9rem 1.1rem;
-  color: var(--danger-fg);
+  color: #DC2626;
   font-size: 0.9rem;
   font-style: italic;
 }}
@@ -524,20 +645,22 @@ div[data-testid="stButton"] > button:hover {{
 /* ---- Formatted report body ---- */
 
 .report-body {{
+  font-family: 'Source Sans 3', system-ui, sans-serif;
   font-size: 0.9rem;
   line-height: 1.6;
   color: var(--ink);
 }}
 
 .report-body .rb-heading {{
+  font-family: 'DM Sans', system-ui, sans-serif;
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--rbc-blue);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin: 0.7rem 0 0.2rem 0;
+  margin: 0.75rem 0 0.25rem 0;
   padding-bottom: 0.2rem;
-  border-bottom: 1px solid rgba(0, 81, 165, 0.1);
+  border-bottom: 1px solid rgba(0, 81, 165, 0.08);
 }}
 
 .report-body .rb-heading:first-child {{
@@ -545,13 +668,13 @@ div[data-testid="stButton"] > button:hover {{
 }}
 
 .report-body .rb-field {{
-  margin: 0.18rem 0;
-  line-height: 1.45;
+  margin: 0.2rem 0;
+  line-height: 1.5;
 }}
 
 .report-body .rb-field-label {{
   font-weight: 700;
-  color: var(--rbc-blue-deep);
+  color: var(--navy-deep);
 }}
 
 .report-body .rb-field-value {{
@@ -565,7 +688,7 @@ div[data-testid="stButton"] > button:hover {{
 
 .report-body .rb-para {{
   margin: 0.15rem 0;
-  line-height: 1.45;
+  line-height: 1.5;
 }}
 
 .report-body ul.rb-list {{
@@ -576,7 +699,7 @@ div[data-testid="stButton"] > button:hover {{
 
 .report-body ul.rb-list li {{
   margin: 0.1rem 0;
-  line-height: 1.4;
+  line-height: 1.45;
 }}
 
 .report-body ol.rb-list {{
@@ -586,7 +709,7 @@ div[data-testid="stButton"] > button:hover {{
 
 .report-body ol.rb-list li {{
   margin: 0.1rem 0;
-  line-height: 1.4;
+  line-height: 1.45;
 }}
 
 .report-body .rb-sub-list {{
@@ -601,11 +724,8 @@ div[data-testid="stButton"] > button:hover {{
   font-size: 0.87rem;
 }}
 
-/* Ensure tooltips are not clipped by Streamlit overflow */
-.report-section,
-/* overflow overrides removed – no longer needed without hover tooltips */
+/* ---- Inline citation markers ---- */
 
-/* Inline citation markers (superscript) */
 .cite-marker {{
   display: inline;
   color: var(--rbc-blue);
@@ -616,7 +736,8 @@ div[data-testid="stButton"] > button:hover {{
   padding: 0 1px;
 }}
 
-/* Footnotes block */
+/* ---- Footnotes block ---- */
+
 .cite-footnotes {{
   margin-top: 0.5rem;
   padding-top: 0.4rem;
@@ -624,7 +745,8 @@ div[data-testid="stButton"] > button:hover {{
 }}
 
 .cite-footnotes-title {{
-  font-size: 0.78rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.76rem;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
@@ -641,7 +763,7 @@ div[data-testid="stButton"] > button:hover {{
 }}
 
 .cite-fn + .cite-fn {{
-  border-top: 1px solid rgba(213, 223, 236, 0.4);
+  border-top: 1px solid rgba(226, 232, 240, 0.5);
 }}
 
 .cite-fn-num {{
@@ -674,8 +796,248 @@ div[data-testid="stButton"] > button:hover {{
   line-height: 1.4;
 }}
 
+/* ---- Chat assistant messages ---- */
+
+[data-testid="stChatMessage"][data-testid-type="assistant"] {{
+  border-left: 3px solid var(--rbc-blue);
+  border-radius: 0;
+  padding-left: 1rem;
+}}
+
+/* ---- Copy button ---- */
+
+.copy-btn {{
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}}
+
+*:hover > .copy-btn {{
+  opacity: 0.7;
+}}
+
+.copy-btn:hover {{
+  opacity: 1 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}}
+
+.copy-btn.copied {{
+  opacity: 1 !important;
+  border-color: #059669;
+  color: #059669;
+}}
+
+/* ---- Quick nav (report TOC) ---- */
+
+.quick-nav {{
+  position: sticky;
+  top: 3.5rem;
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+  padding: 0.75rem 0;
+}}
+
+.quick-nav-title {{
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  padding: 0 0.6rem;
+  margin-bottom: 0.5rem;
+}}
+
+.quick-nav-item {{
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}}
+
+.quick-nav-item:hover {{
+  background: var(--rbc-blue-light);
+  color: var(--rbc-blue);
+}}
+
+.quick-nav-item.active {{
+  background: var(--rbc-blue-light);
+  color: var(--rbc-blue);
+  font-weight: 600;
+}}
+
+.quick-nav-item .nav-num {{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 5px;
+  background: var(--border);
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}}
+
+.quick-nav-item:hover .nav-num,
+.quick-nav-item.active .nav-num {{
+  background: var(--rbc-blue);
+  color: white;
+}}
+
+/* ---- Definition cards ---- */
+
+.def-card {{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  transition: all 0.2s ease;
+}}
+
+.def-card:hover {{
+  border-color: var(--rbc-blue);
+  box-shadow: 0 2px 8px rgba(0, 81, 165, 0.08);
+}}
+
+.def-card .def-term {{
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--rbc-blue);
+  margin-bottom: 0.2rem;
+}}
+
+.def-card .def-text {{
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ink);
+}}
+
+/* ---- Definition search ---- */
+
+.def-search {{
+  border-radius: 10px !important;
+  border: 1px solid var(--border) !important;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}}
+
+.def-search:focus {{
+  border-color: var(--rbc-blue) !important;
+  box-shadow: 0 0 0 3px rgba(0, 81, 165, 0.1);
+}}
+
+/* ---- Empty state ---- */
+
+.empty-state {{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  text-align: center;
+}}
+
+.empty-state .empty-icon {{
+  margin-bottom: 1rem;
+  opacity: 0.4;
+}}
+
+.empty-state .empty-title {{
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.35rem;
+}}
+
+.empty-state .empty-desc {{
+  font-size: 0.9rem;
+  color: var(--muted);
+  max-width: 28rem;
+  line-height: 1.5;
+}}
+
 </style>
 """
+
+# ---------------------------------------------------------------------------
+# SVG Icons (inline, no external assets)
+# ---------------------------------------------------------------------------
+
+_SHIELD_ICON_SVG = (
+    '<svg class="hero-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" '
+    'xmlns="http://www.w3.org/2000/svg">'
+    '<path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" '
+    f'stroke="{GOLD_BRIGHT}" stroke-width="1.5" fill="none"/>'
+    '<path d="M12 6l-4 2.5v3c0 3.33 2.3 6.44 4 7.2 1.7-.76 4-3.87 4-7.2v-3L12 6z" '
+    f'fill="{GOLD_BRIGHT}" fill-opacity="0.2" stroke="{GOLD_BRIGHT}" stroke-width="1"/>'
+    "</svg>"
+)
+
+_CLIPBOARD_ICON_SVG = (
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" '
+    'xmlns="http://www.w3.org/2000/svg">'
+    '<rect x="9" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="2"/>'
+    '<path d="M9 4H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V6a2 2 0 00-2-2h-2" '
+    'stroke="currentColor" stroke-width="2"/>'
+    "</svg>"
+)
+
+_EMPTY_ICONS = {
+    "document": (
+        '<svg class="empty-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" '
+        'xmlns="http://www.w3.org/2000/svg">'
+        f'<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" '
+        f'stroke="{MUTED}" stroke-width="1.5"/>'
+        f'<polyline points="14,2 14,8 20,8" stroke="{MUTED}" stroke-width="1.5"/>'
+        f'<line x1="8" y1="13" x2="16" y2="13" stroke="{MUTED}" stroke-width="1.5"/>'
+        f'<line x1="8" y1="17" x2="13" y2="17" stroke="{MUTED}" stroke-width="1.5"/>'
+        "</svg>"
+    ),
+    "search": (
+        '<svg class="empty-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" '
+        'xmlns="http://www.w3.org/2000/svg">'
+        f'<circle cx="11" cy="11" r="7" stroke="{MUTED}" stroke-width="1.5"/>'
+        f'<line x1="16.5" y1="16.5" x2="21" y2="21" stroke="{MUTED}" stroke-width="1.5"/>'
+        "</svg>"
+    ),
+    "report": (
+        '<svg class="empty-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" '
+        'xmlns="http://www.w3.org/2000/svg">'
+        f'<path d="M4 4h16v16H4z" stroke="{MUTED}" stroke-width="1.5" rx="2"/>'
+        f'<line x1="8" y1="8" x2="16" y2="8" stroke="{MUTED}" stroke-width="1.5"/>'
+        f'<line x1="8" y1="12" x2="16" y2="12" stroke="{MUTED}" stroke-width="1.5"/>'
+        f'<line x1="8" y1="16" x2="12" y2="16" stroke="{MUTED}" stroke-width="1.5"/>'
+        "</svg>"
+    ),
+}
+
+# ---------------------------------------------------------------------------
+# HTML helper functions
+# ---------------------------------------------------------------------------
 
 
 def hero_card(title: str, copy: str, eyebrow: str | None = None) -> str:
@@ -686,16 +1048,24 @@ def hero_card(title: str, copy: str, eyebrow: str | None = None) -> str:
     return (
         '<section class="hero-card">'
         f"{eyebrow_markup}"
-        f'<h1 class="hero-title">{_safe(title)}</h1>'
+        f'<h1 class="hero-title">{_SHIELD_ICON_SVG}{_safe(title)}</h1>'
         f'<p class="hero-copy">{_safe(copy)}</p>'
         "</section>"
     )
 
 
-def metric_card(label: str, value: str, caption: str) -> str:
-    """Render a compact metric card."""
+def metric_card(label: str, value: str, caption: str, accent: str = "") -> str:
+    """Render a compact metric card.
+
+    Args:
+        label: Metric name (uppercase label).
+        value: Primary metric value.
+        caption: Descriptive caption beneath the value.
+        accent: Optional CSS color for the left border (default: RBC_BLUE).
+    """
+    style_attr = f' style="border-left-color: {accent};"' if accent else ""
     return (
-        '<section class="metric-card">'
+        f'<section class="metric-card"{style_attr}>'
         f'<div class="metric-label">{_safe(label)}</div>'
         f'<div class="metric-value">{_safe(value)}</div>'
         f'<div class="metric-caption">{_safe(caption)}</div>'
@@ -735,6 +1105,78 @@ def confidence_pill(confidence: str) -> str:
         tone = "low"
     return f'<span class="pill pill-{tone}">{_safe(confidence.upper())}</span>'
 
+
+# ---------------------------------------------------------------------------
+# NEW helper functions
+# ---------------------------------------------------------------------------
+
+
+def copy_button(target_id: str) -> str:
+    """Return HTML for a copy button with inline SVG clipboard icon.
+
+    Args:
+        target_id: DOM id of the element whose text to copy.
+    """
+    return (
+        f'<button class="copy-btn" data-copy-target="{_safe(target_id)}" '
+        f'title="Copy to clipboard">'
+        f"{_CLIPBOARD_ICON_SVG}"
+        "</button>"
+    )
+
+
+def nav_item(section_number: int, title: str, anchor: str) -> str:
+    """Quick-nav link for report TOC sidebar.
+
+    Args:
+        section_number: The section number (1-10).
+        title: Section title text.
+        anchor: The HTML anchor id to link to.
+    """
+    return (
+        f'<a class="quick-nav-item" href="#{_safe(anchor)}">'
+        f'<span class="nav-num">{section_number}</span>'
+        f"<span>{_safe(title)}</span>"
+        "</a>"
+    )
+
+
+def definition_card(term: str, definition_text: str) -> str:
+    """Definition browser entry card.
+
+    Args:
+        term: The defined term.
+        definition_text: The definition body text.
+    """
+    return (
+        '<div class="def-card">'
+        f'<div class="def-term">{_safe(term)}</div>'
+        f'<div class="def-text">{_safe(definition_text)}</div>'
+        "</div>"
+    )
+
+
+def empty_state(title: str, description: str, icon: str = "document") -> str:
+    """Centered empty state placeholder with SVG icon.
+
+    Args:
+        title: Heading for the empty state.
+        description: Explanatory text beneath the heading.
+        icon: One of "document", "search", "report".
+    """
+    icon_svg = _EMPTY_ICONS.get(icon, _EMPTY_ICONS["document"])
+    return (
+        '<div class="empty-state">'
+        f"{icon_svg}"
+        f'<div class="empty-title">{_safe(title)}</div>'
+        f'<div class="empty-desc">{_safe(description)}</div>'
+        "</div>"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Citation / source rendering (logic preserved exactly)
+# ---------------------------------------------------------------------------
 
 # Matches [1], [2], etc. in body text
 _INLINE_MARKER_RE = re.compile(r"\[(\d+)\]")
