@@ -770,7 +770,7 @@ def _render_report_tab(
     with header_col:
         st.caption(
             f"{active_document.display_name} | "
-            "9-section structured report"
+            "10-section structured report"
         )
     with action_col:
         generate = st.button(
@@ -788,7 +788,7 @@ def _render_report_tab(
         st.markdown(
             empty_state(
                 "No Report Generated",
-                "Click Generate Report to create a structured 9-section analysis.",
+                "Click Generate Report to create a structured 10-section analysis.",
                 icon="report",
             ),
             unsafe_allow_html=True,

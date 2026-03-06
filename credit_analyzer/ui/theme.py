@@ -798,7 +798,7 @@ div[data-testid="stDownloadButton"] > button:hover {{
 
 /* ---- Chat assistant messages ---- */
 
-[data-testid="stChatMessage"][data-testid-type="assistant"] {{
+[data-testid="stChatMessage"]:nth-child(even) {{
   border-left: 3px solid var(--rbc-blue);
   border-radius: 0;
   padding-left: 1rem;
@@ -1134,7 +1134,8 @@ def nav_item(section_number: int, title: str, anchor: str) -> str:
         anchor: The HTML anchor id to link to.
     """
     return (
-        f'<a class="quick-nav-item" href="#{_safe(anchor)}">'
+        f'<a class="quick-nav-item" href="javascript:void(0)"'
+        f' onclick="parent.document.getElementById(\'{_safe(anchor)}\')?.scrollIntoView({{behavior:\'smooth\',block:\'start\'}})">'
         f'<span class="nav-num">{section_number}</span>'
         f"<span>{_safe(title)}</span>"
         "</a>"

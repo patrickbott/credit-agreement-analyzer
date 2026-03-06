@@ -15,6 +15,8 @@ def clipboard_js_snippet() -> str:
     <script>
     (function() {
         const root = parent.document;
+        if (root._copyListenerAttached) return;
+        root._copyListenerAttached = true;
         root.addEventListener('click', function(e) {
             const btn = e.target.closest('.copy-btn');
             if (!btn) return;
