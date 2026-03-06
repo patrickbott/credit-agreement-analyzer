@@ -752,7 +752,14 @@ def _render_report_tab(
     provider_status: dict[str, Any],
 ) -> None:
     if active_document is None:
-        st.info("Index a document first.")
+        st.markdown(
+            empty_state(
+                "No Document Loaded",
+                "Index a credit agreement to generate a structured report.",
+                icon="report",
+            ),
+            unsafe_allow_html=True,
+        )
         return
 
     if provider is None or not provider_status["ready"]:
@@ -778,7 +785,14 @@ def _render_report_tab(
     )
 
     if report is None:
-        st.caption("No report generated yet. Click Generate Report to start.")
+        st.markdown(
+            empty_state(
+                "No Report Generated",
+                "Click Generate Report to create a structured 9-section analysis.",
+                icon="report",
+            ),
+            unsafe_allow_html=True,
+        )
         return
 
     _render_report(report)
@@ -871,20 +885,37 @@ def _render_report(report: GeneratedReport) -> None:
         mime="application/pdf",
     )
 
-    # Render each section
-    for section in report.sections:
-        _render_report_section(section)
+    # Quick-nav + report content in two columns
+    nav_col, content_col = st.columns([0.22, 0.78], gap="medium")
+
+    with nav_col:
+        nav_html = '<div class="quick-nav">'
+        nav_html += '<div class="quick-nav-title">SECTIONS</div>'
+        for section in report.sections:
+            nav_html += nav_item(
+                section.section_number,
+                section.title,
+                f"report-section-{section.section_number}",
+            )
+        nav_html += '</div>'
+        st.markdown(nav_html, unsafe_allow_html=True)
+
+    with content_col:
+        for section in report.sections:
+            _render_report_section(section)
 
 
 def _render_report_section(section: GeneratedSection) -> None:
     """Render a single report section with card layout."""
     conf_pill = confidence_pill(section.confidence)
     num_html = f'<span class="report-section-num">{section.section_number}</span>'
+    anchor_id = f"report-section-{section.section_number}"
+    body_id = f"section-body-{section.section_number}"
 
     if section.status == "error":
         st.markdown(
             (
-                '<div class="report-section">'
+                f'<div id="{anchor_id}" class="report-section">'
                 '<div class="report-section-head">'
                 f'<div style="display:flex;align-items:center;">{num_html}'
                 f'<span class="report-section-title">{_safe(section.title)}</span></div>'
@@ -908,7 +939,7 @@ def _render_report_section(section: GeneratedSection) -> None:
 
     st.markdown(
         (
-            '<div class="report-section">'
+            f'<div id="{anchor_id}" class="report-section">'
             '<div class="report-section-head">'
             f'<div style="display:flex;align-items:center;">{num_html}'
             f'<span class="report-section-title">{_safe(section.title)}</span></div>'
@@ -916,10 +947,11 @@ def _render_report_section(section: GeneratedSection) -> None:
             f'<span class="badge-chunks">{section.chunk_count} chunks | {section.duration_seconds:.1f}s</span>'
             f"{conf_pill}"
             "</div></div>"
-            '<div class="report-section-body">'
-            f'<div class="report-body">'
+            '<div class="report-section-body" style="position:relative;">'
+            f'<div id="{body_id}" class="report-body">'
             f'{format_report_body(section.body, inline_citations=inline_cites)}'
             f'</div>'
+            f'{copy_button(body_id)}'
             "</div>"
             f"{footnotes_html}"
             "</div>"
