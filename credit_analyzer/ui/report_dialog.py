@@ -1,4 +1,4 @@
-"""Report generation and display dialog using @st.dialog."""
+"""Report display dialog using @st.dialog."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from credit_analyzer.ui.theme import (
     render_source_footnotes,
     report_nav_dot,
     report_scroll_script,
-    skeleton_lines,
+    scroll_to_top_script,
 )
 
 if TYPE_CHECKING:
@@ -53,10 +53,8 @@ _REFRESH_ICON_SVG = (
 @st.dialog("Credit Agreement Report", width="large")
 def show_report_dialog(
     document: ProcessedDocument,
-    provider: LLMProvider,
-    generator: ReportGenerator,
 ) -> None:
-    """Render the report dialog -- generates if needed, displays if cached."""
+    """Render the report dialog for a previously generated report."""
     doc_id = document.document_id
     defs_index = document.definitions_index
     reports: dict[str, GeneratedReport] = st.session_state.get(
@@ -64,36 +62,33 @@ def show_report_dialog(
     )
     report: GeneratedReport | None = reports.get(doc_id)
 
+    if report is None:
+        st.warning("No report found. Please generate a report first.")
+        return
+
     # Handle single-section regeneration
     regen_key = f"_regen_section_{doc_id}"
     regen_section_num: int | None = st.session_state.pop(regen_key, None)
-    if regen_section_num is not None and report is not None:
-        _regenerate_section(
-            report, regen_section_num, document, provider, generator
-        )
+    if regen_section_num is not None:
+        _regenerate_section(report, regen_section_num, document)
 
-    if report is not None:
-        _render_report(
-            report,
-            defs_index=defs_index,
-            document=document,
-            generator=generator,
-        )
-        return
-
-    # Generate the report with progress
-    _generate_and_render(document, provider, generator)
+    _render_report(
+        report,
+        defs_index=defs_index,
+        document=document,
+    )
 
 
 def _regenerate_section(
     report: GeneratedReport,
     section_number: int,
     document: ProcessedDocument,
-    provider: LLMProvider,
-    generator: ReportGenerator,
 ) -> None:
     """Regenerate a single section in-place."""
     from credit_analyzer.generation.report_template import ALL_REPORT_SECTIONS
+    from credit_analyzer.generation.report_template import get_extraction_system_prompt
+    from credit_analyzer.llm.factory import get_provider
+    from credit_analyzer.config import LLM_PROVIDER
 
     template = None
     for t in ALL_REPORT_SECTIONS:
@@ -103,10 +98,16 @@ def _regenerate_section(
     if template is None:
         return
 
-    from credit_analyzer.generation.report_template import get_extraction_system_prompt
-
-    system_prompt: str = get_extraction_system_prompt()
     try:
+        provider = get_provider(LLM_PROVIDER)
+        from credit_analyzer.generation.report_generator import ReportGenerator
+        generator = ReportGenerator(document.retriever, provider)
+        if document.preamble_text is not None:
+            generator.set_preamble(
+                document.preamble_text,
+                page_numbers=document.preamble_page_numbers,
+            )
+        system_prompt: str = get_extraction_system_prompt()
         new_section = generator.generate_section(
             template, document.document_id, system_prompt
         )
@@ -121,66 +122,10 @@ def _regenerate_section(
             break
 
 
-def _generate_and_render(
-    document: ProcessedDocument,
-    provider: LLMProvider,
-    generator: ReportGenerator,
-) -> None:
-    """Generate report with progressive section rendering inside the dialog."""
-    from typing import Any
-
-    from credit_analyzer.generation.report_template import ALL_REPORT_SECTIONS
-
-    status_container = st.empty()
-    progress_bar = st.progress(0)
-
-    # Pre-create placeholder containers for each section
-    section_placeholders: dict[int, Any] = {}
-    for template in ALL_REPORT_SECTIONS:
-        section_placeholders[template.section_number] = st.empty()
-        # Show skeleton initially
-        section_placeholders[template.section_number].markdown(
-            skeleton_lines(3), unsafe_allow_html=True
-        )
-
-    def on_progress(label: str, progress: float) -> None:
-        status_container.info(label)
-        progress_bar.progress(min(max(progress, 0.0), 1.0))
-
-    def on_section(section: GeneratedSection) -> None:
-        """Render a section as soon as it completes — no .empty() to avoid layout jump."""
-        placeholder = section_placeholders.get(section.section_number)
-        if placeholder is not None:
-            html = _build_section_html(section)
-            placeholder.markdown(html, unsafe_allow_html=True)
-
-    try:
-        report = generator.generate(
-            document.document_id,
-            progress_callback=on_progress,
-            section_callback=on_section,
-        )
-    except Exception as exc:
-        status_container.empty()
-        progress_bar.empty()
-        st.error(f"Report generation failed: {exc}")
-        return
-
-    st.session_state.setdefault("generated_reports", {})[
-        document.document_id
-    ] = report
-    status_container.empty()
-    progress_bar.empty()
-
-    # Show completion message instead of st.rerun() which closes the dialog
-    st.success("Report complete! Close and reopen to see the full view with navigation and PDF download.")
-
-
 def _render_report(
     report: GeneratedReport,
     defs_index: DefinitionsIndex | None = None,
     document: ProcessedDocument | None = None,
-    generator: ReportGenerator | None = None,
 ) -> None:
     """Render a completed report inside the dialog."""
     complete_count = sum(1 for s in report.sections if s.status == "complete")
@@ -223,6 +168,9 @@ def _render_report(
         nav_html += "</div>"
         st.markdown(nav_html, unsafe_allow_html=True)
         components.html(report_scroll_script(), height=0)
+        components.html(
+            scroll_to_top_script('[data-testid="stDialog"]'), height=0
+        )
 
     with content_col:
         for section in report.sections:
@@ -302,17 +250,17 @@ def _render_section(
     document: ProcessedDocument | None = None,
 ) -> None:
     """Render a single report section card with optional refresh button."""
-    # Refresh button (Streamlit button above the HTML section)
+    # Streamlit button sits above the rendered HTML section.
     if document is not None:
         doc_id = document.document_id
         regen_key = f"_regen_section_{doc_id}"
         if st.button(
-            "↻",
+            "Refresh",
             key=f"refresh-section-{section.section_number}",
             help=f"Regenerate: {section.title}",
         ):
             st.session_state[regen_key] = section.section_number
-            st.rerun()
+            st.rerun(scope="fragment")
 
     st.markdown(
         _build_section_html(section, defs_index=defs_index),

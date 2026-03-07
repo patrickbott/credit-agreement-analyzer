@@ -46,6 +46,47 @@ BORDER = "#E2E8F0"
 
 CHAT_BG = "#F0F0F0"
 
+# URL-encoded SVG data URIs for sidebar button icons (Feather-style, 16px).
+_IC = (
+    "%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' "
+    "viewBox='0 0 24 24' fill='none' stroke='%231A1A1A' stroke-width='2' "
+    "stroke-linecap='round' stroke-linejoin='round'%3E"
+)
+_ICON_NEW_CHAT = (
+    f"data:image/svg+xml,{_IC}"
+    "%3Cpath d='M12 20h9'/%3E"
+    "%3Cpath d='M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z'/%3E"
+    "%3C/svg%3E"
+)
+_ICON_DEFS = (
+    f"data:image/svg+xml,{_IC}"
+    "%3Cpath d='M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z'/%3E"
+    "%3Cpath d='M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z'/%3E"
+    "%3C/svg%3E"
+)
+_ICON_REPORT = (
+    f"data:image/svg+xml,{_IC}"
+    "%3Cpath d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/%3E"
+    "%3Cpolyline points='14 2 14 8 20 8'/%3E"
+    "%3Cline x1='16' y1='13' x2='8' y2='13'/%3E"
+    "%3Cline x1='16' y1='17' x2='8' y2='17'/%3E"
+    "%3Cpolyline points='10 9 9 9 8 9'/%3E"
+    "%3C/svg%3E"
+)
+_ICON_GUIDE = (
+    f"data:image/svg+xml,{_IC}"
+    "%3Ccircle cx='12' cy='12' r='10'/%3E"
+    "%3Cpolygon points='16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76'/%3E"
+    "%3C/svg%3E"
+)
+_ICON_REMOVE = (
+    f"data:image/svg+xml,{_IC}"
+    "%3Cpolyline points='3 6 5 6 21 6'/%3E"
+    "%3Cpath d='M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4"
+    "a2 2 0 012-2h4a2 2 0 012 2v2'/%3E"
+    "%3C/svg%3E"
+)
+
 APP_CSS = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
@@ -64,6 +105,7 @@ APP_CSS = f"""
   --bg: {BG};
   --border: {BORDER};
   --chat-bg: {CHAT_BG};
+  --header-height: 0rem;
 }}
 
 /* ---- Base typography ---- */
@@ -87,6 +129,15 @@ h1, h2, h3 {{
 
 [data-testid="stHeader"] {{
   background: {CHAT_BG};
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+}}
+
+/* Keep the sidebar reopen button visible even when header is collapsed */
+[data-testid="stSidebarCollapsedControl"] {{
+  display: flex !important;
+  visibility: visible !important;
 }}
 
 /* ---- Sidebar (light gray) ---- */
@@ -94,6 +145,7 @@ h1, h2, h3 {{
 [data-testid="stSidebar"] {{
   background: #E5E5E5;
   border-right: 1px solid rgba(0, 0, 0, 0.08);
+  top: 0 !important;
 }}
 
 [data-testid="stSidebar"] * {{
@@ -101,32 +153,62 @@ h1, h2, h3 {{
 }}
 
 [data-testid="stSidebar"] .block-container {{
-  padding-top: 0.5rem;
+  padding-top: 0.8rem !important;
   background: transparent;
 }}
 
 /* Tighten sidebar spacing to prevent scroll */
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div {{
-  gap: 0 !important;
+  gap: 0.15rem !important;
 }}
 
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div > div {{
-  margin-bottom: 0 !important;
+  margin-bottom: 0.08rem !important;
 }}
 
 [data-testid="stSidebar"] hr {{
-  margin: 0.35rem 0 !important;
+  margin: 0.5rem 0 !important;
 }}
 
 [data-testid="stSidebar"] .stCaption,
 [data-testid="stSidebar"] [data-testid="stCaption"] {{
-  margin-bottom: 0.15rem !important;
+  margin-bottom: 0.25rem !important;
   font-size: 0.68rem !important;
 }}
 
 /* Minimal sidebar scroll — auto only if needed */
-[data-testid="stSidebarContent"] {{
+section[data-testid="stSidebar"] > div[data-testid="stSidebarContent"] {{
   overflow-x: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}}
+
+section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {{
+  min-height: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+}}
+
+/* Remove all top spacing from sidebar user content */
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {{
+  padding-top: 0.8rem !important;
+  margin-top: 0 !important;
+}}
+
+/* Collapse empty nav element that reserves space at top of sidebar */
+[data-testid="stSidebarNav"] {{
+  display: none !important;
+}}
+
+/* Float the close button out of flow so it doesn't push content down */
+section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {{
+  position: absolute !important;
+  top: 0.5rem !important;
+  right: 0.5rem !important;
+  z-index: 100;
+  height: auto !important;
 }}
 
 /* Sidebar text alignment */
@@ -144,14 +226,15 @@ h1, h2, h3 {{
   background: transparent;
 }}
 
-/* Main content — light gray */
+/* Main content — light gray, start at viewport top like sidebar */
 [data-testid="stMain"] {{
   background: {CHAT_BG};
+  top: 0 !important;
 }}
 
 [data-testid="stMain"] > .block-container {{
   background: transparent;
-  padding-top: 2.5rem;
+  padding-top: 1.5rem;
 }}
 
 /* Bottom bar / chat input area */
@@ -164,6 +247,7 @@ h1, h2, h3 {{
   max-width: 820px;
   margin: 0 auto;
   padding-bottom: 0.75rem;
+  position: relative;
 }}
 
 /* Chat input bar — like ChatGPT / Claude */
@@ -210,6 +294,117 @@ h1, h2, h3 {{
   border-right: 2.5px solid white !important;
   transform: rotate(-45deg) !important;
   margin-top: 3px !important;
+}}
+
+/* ---- Stop-generating button — styled as gold send-button replacement ---- */
+
+/* Hide stop button in its original DOM position (JS moves it into the chat input) */
+.st-key-stop-chat-generation {{
+  display: none !important;
+}}
+
+/* When relocated inside the chat input container, show it */
+[data-testid="stChatInput"] .st-key-stop-chat-generation {{
+  display: block !important;
+  position: absolute !important;
+  right: 0.45rem !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 10 !important;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}}
+
+[data-testid="stChatInput"] {{
+  position: relative !important;
+}}
+
+.st-key-stop-chat-generation button {{
+  background: {RBC_GOLD} !important;
+  color: {INK} !important;
+  border: none !important;
+  border-radius: 8px !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12) !important;
+  transition: background 0.15s ease !important;
+  cursor: pointer !important;
+}}
+
+.st-key-stop-chat-generation button:hover {{
+  background: #E6BC00 !important;
+  transform: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+}}
+
+.st-key-stop-chat-generation button p {{
+  font-size: 14px !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}}
+
+/* Hide the chat input's own send button when input is disabled (stop button replaces it) */
+[data-testid="stChatInput"]:has(textarea[disabled]) button[kind="primary"] {{
+  visibility: hidden !important;
+}}
+
+/* ---- Edit-prompt button — subtle inline action ---- */
+
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [class*="st-key-edit-prompt"] {{
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}}
+
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]):hover [class*="st-key-edit-prompt"] {{
+  opacity: 1;
+}}
+
+[class*="st-key-edit-prompt"] button {{
+  background: transparent !important;
+  border: none !important;
+  color: {MUTED} !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  padding: 0.15rem 0.5rem !important;
+  min-height: unset !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+}}
+
+[class*="st-key-edit-prompt"] button:hover {{
+  color: {NAVY_DEEP} !important;
+  background: rgba(0, 61, 165, 0.06) !important;
+  border-radius: 6px !important;
+  transform: none !important;
+  box-shadow: none !important;
+}}
+
+[class*="st-key-edit-prompt"] button p {{
+  font-size: 0.78rem !important;
+  color: inherit !important;
+}}
+
+/* ---- Prompt editor panel ---- */
+
+[class*="st-key-save-edit"] button[kind="primary"] {{
+  font-size: 0.82rem !important;
+  min-height: 2.2rem !important;
+  padding: 0.35rem 1rem !important;
+}}
+
+[class*="st-key-cancel-edit"] button {{
+  font-size: 0.82rem !important;
+  min-height: 2.2rem !important;
+  padding: 0.35rem 1rem !important;
 }}
 
 /* ---- Buttons ---- */
@@ -297,6 +492,54 @@ div[data-testid="stDownloadButton"] > button:hover {{
 
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:active {{
   background: rgba(0, 0, 0, 0.12);
+}}
+
+/* Sidebar action button icons — inline SVG via CSS */
+.st-key-new-chat button p::before,
+.st-key-open-defs button p::before,
+.st-key-gen-report button p::before,
+.st-key-open-guide button p::before,
+.st-key-remove-doc button p::before {{
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.7;
+}}
+
+/* New Chat — pen-on-square icon */
+.st-key-new-chat button p::before {{
+  background-image: url("{_ICON_NEW_CHAT}");
+}}
+
+/* Definitions — book-open icon */
+.st-key-open-defs button p::before {{
+  background-image: url("{_ICON_DEFS}");
+}}
+
+/* Generate Report — file-text icon */
+.st-key-gen-report button p::before {{
+  background-image: url("{_ICON_REPORT}");
+}}
+
+/* Guide — compass icon */
+.st-key-open-guide button p::before {{
+  background-image: url("{_ICON_GUIDE}");
+}}
+
+/* Remove Document — trash icon */
+.st-key-remove-doc button p::before {{
+  background-image: url("{_ICON_REMOVE}");
+}}
+
+/* Disabled sidebar buttons — fade icons too */
+[data-testid="stSidebar"] div[data-testid="stButton"] > button:disabled p::before {{
+  opacity: 0.35;
 }}
 
 /* Index PDF button — navy, white text, no outline */
@@ -566,6 +809,41 @@ div[data-testid="stDownloadButton"] > button:hover {{
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.7;
+}}
+
+/* ---- Document card (sidebar, loaded state) ---- */
+
+.doc-card {{
+  background: white;
+  border: 1px solid var(--border);
+  border-left: 3px solid {RBC_GOLD};
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  margin-bottom: 0.25rem;
+}}
+
+.doc-card-name {{
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--ink);
+  line-height: 1.3;
+  word-break: break-word;
+}}
+
+.doc-card-stats {{
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+  line-height: 1.4;
+}}
+
+.doc-card-source {{
+  font-size: 0.65rem;
+  color: #9CA3AF;
+  margin-top: 0.3rem;
+  word-break: break-all;
+  line-height: 1.3;
 }}
 
 /* ---- Skeleton loaders ---- */
@@ -1019,7 +1297,7 @@ div[data-testid="stDownloadButton"] > button:hover {{
   color: var(--ink);
 }}
 
-.report-body .rb-heading {{
+.rb-heading {{
   font-family: 'DM Sans', system-ui, sans-serif;
   font-size: 0.82rem;
   font-weight: 700;
@@ -1031,7 +1309,7 @@ div[data-testid="stDownloadButton"] > button:hover {{
   border-bottom: 1px solid rgba(0, 81, 165, 0.08);
 }}
 
-.report-body .rb-heading:first-child {{
+.rb-heading:first-child {{
   margin-top: 0;
 }}
 
@@ -1148,6 +1426,25 @@ div[data-testid="stDownloadButton"] > button:hover {{
 
 .section-answer table.rb-table tr:nth-child(even) td {{
   background: rgba(248, 250, 252, 0.5);
+}}
+
+/* Lists and paragraphs in chat answers */
+.section-answer .rb-para {{
+  margin: 0.35rem 0;
+}}
+.section-answer ul.rb-list {{
+  margin: 0.3rem 0 0.3rem 1.2rem;
+  padding: 0;
+}}
+.section-answer ul.rb-list li {{
+  margin-bottom: 0.2rem;
+}}
+.section-answer ol.rb-list {{
+  margin: 0.3rem 0 0.3rem 1.2rem;
+  padding: 0;
+}}
+.section-answer ol.rb-list li {{
+  margin-bottom: 0.2rem;
 }}
 
 /* ---- Inline citation markers ---- */
@@ -1406,7 +1703,7 @@ div[data-testid="stDownloadButton"] > button:hover {{
 .def-hl {{
   color: var(--rbc-blue);
   border-bottom: 1px dotted var(--rbc-blue);
-  cursor: help;
+  cursor: pointer;
   position: relative;
   display: inline;
 }}
@@ -1416,20 +1713,37 @@ div[data-testid="stDownloadButton"] > button:hover {{
   border-bottom-style: solid;
 }}
 
-/* Tooltip: hidden by default, shown via JS-managed classes */
+/* Remove default focus outline */
+.def-hl:focus {{
+  outline: none;
+}}
+
+/* Show tooltip preview on hover (non-interactive) */
+.def-hl:hover > .def-tip {{
+  display: block;
+  pointer-events: none;
+}}
+
+/* Pin tooltip on click via focus (interactive, scrollable) */
+.def-hl:focus > .def-tip {{
+  display: block !important;
+  pointer-events: auto !important;
+}}
+
+/* Tooltip: hidden by default */
 .def-hl .def-tip {{
-  display: none !important;
+  display: none;
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
-  width: 340px;
-  max-width: 85vw;
-  padding: 0.65rem 0.85rem;
+  width: 300px;
+  max-width: 80vw;
+  padding: 0.6rem 0.8rem;
   background: #F0F0F0;
   color: #1A1A1A;
   border: 2px solid var(--rbc-blue);
   border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   font-size: 0.82rem;
   line-height: 1.45;
   z-index: 9999;
@@ -1438,44 +1752,10 @@ div[data-testid="stDownloadButton"] > button:hover {{
   font-weight: normal;
 }}
 
-/* Hover preview (JS adds .def-hl-hover) — clamped text, no interaction */
-.def-hl-hover > .def-tip {{
-  display: block !important;
-  pointer-events: none;
-}}
-
-/* Pinned/active state (JS adds .def-hl-active) — full text, interactive */
+/* Pinned via click — stays open, interactive, scrollable */
 .def-hl-active > .def-tip {{
   display: block !important;
-  pointer-events: auto;
-}}
-
-.def-hl-active > .def-tip .def-tip-text {{
-  max-height: none;
-  -webkit-line-clamp: unset;
-  overflow: visible;
-}}
-
-.def-hl-active > .def-tip .def-tip-expand {{
-  display: none !important;
-}}
-
-.def-tip-close {{
-  position: absolute;
-  top: 0.35rem;
-  right: 0.45rem;
-  cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-  color: var(--muted);
-  background: none;
-  border: none;
-  padding: 0.1rem 0.3rem;
-  border-radius: 4px;
-}}
-.def-tip-close:hover {{
-  color: var(--rbc-blue);
-  background: rgba(0,0,0,0.06);
+  pointer-events: auto !important;
 }}
 
 .def-tip-term {{
@@ -1484,7 +1764,7 @@ div[data-testid="stDownloadButton"] > button:hover {{
   font-weight: 700;
   font-size: 0.85rem;
   color: var(--rbc-blue);
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
   padding-right: 1.2rem;
 }}
 
@@ -1492,28 +1772,54 @@ div[data-testid="stDownloadButton"] > button:hover {{
   display: block;
   font-size: 0.75rem;
   color: var(--muted);
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.3rem;
 }}
 
 .def-tip-text {{
+  display: block;
   color: #1A1A1A;
   font-size: 0.8rem;
   line-height: 1.4;
-  max-height: 4.2em;
-  overflow: hidden;
-  display: -webkit-box !important;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  max-height: 150px;
+  overflow-y: auto;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  padding-right: 0.25rem;
 }}
 
-.def-tip-expand {{
-  display: block;
-  font-size: 0.72rem;
-  color: var(--rbc-blue);
-  margin-top: 0.3rem;
-  opacity: 0.8;
+/* Scrollbar styling for tooltip */
+.def-tip-text::-webkit-scrollbar {{
+  width: 4px;
+}}
+.def-tip-text::-webkit-scrollbar-thumb {{
+  background: rgba(0, 61, 165, 0.3);
+  border-radius: 2px;
+}}
+
+/* Close button inside tooltip */
+.def-tip-close {{
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  transition: all 0.15s ease;
+  z-index: 1;
+}}
+
+.def-tip-close:hover {{
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.08);
 }}
 
 /* Suppress any nested definition highlights inside tooltips */
@@ -1527,15 +1833,31 @@ div[data-testid="stDownloadButton"] > button:hover {{
   display: none !important;
 }}
 
-
-/* Arrow on tooltip */
-.def-tip::after {{
+/* Arrow pointing down (tooltip above term) */
+.def-tip::before {{
   content: '';
   position: absolute;
   top: 100%;
   left: 1rem;
   border: 6px solid transparent;
   border-top-color: {RBC_BLUE};
+}}
+
+/* Invisible bridge between term and tooltip to prevent hover gap */
+.def-tip::after {{
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 8px;
+}}
+
+/* Ensure tooltip containers don't clip */
+.section-answer,
+.report-section-body,
+[data-testid="stChatMessage"] {{
+  overflow: visible !important;
 }}
 
 /* ---- Definition search ---- */
@@ -1582,6 +1904,153 @@ div[data-testid="stDownloadButton"] > button:hover {{
   color: var(--muted);
   max-width: 28rem;
   line-height: 1.5;
+}}
+
+/* ---- Guide: quick-start cards + dialog sections ---- */
+
+.quick-start-card {{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.1rem 1rem 1rem;
+  text-align: center;
+  height: 100%;
+}}
+
+.quick-start-number {{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--rbc-blue);
+  color: #fff;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}}
+
+.quick-start-title {{
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--ink);
+  margin-bottom: 0.3rem;
+}}
+
+.quick-start-desc {{
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}}
+
+.guide-section {{
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}}
+
+.guide-section:last-child {{
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}}
+
+.guide-section-title {{
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--rbc-blue);
+  margin-bottom: 0.5rem;
+}}
+
+.guide-section-body {{
+  font-family: 'Source Sans 3', system-ui, sans-serif;
+  font-size: 0.88rem;
+  color: var(--ink);
+  line-height: 1.55;
+}}
+
+.guide-section-body p {{
+  margin: 0 0 0.5rem 0;
+}}
+
+.guide-section-body ul, .guide-section-body ol {{
+  margin: 0.25rem 0 0.5rem 1.25rem;
+  padding: 0;
+}}
+
+.guide-section-body li {{
+  margin-bottom: 0.25rem;
+}}
+
+.guide-section-body table {{
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5rem 0;
+}}
+
+.guide-section-body th {{
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}}
+
+/* Guide dialog navigation */
+[class*="st-key-guide-nav-"] div[data-testid="stButton"] > button {{
+  justify-content: flex-start;
+  text-align: left;
+  min-height: 2.05rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  box-shadow: none;
+}}
+
+[class*="st-key-guide-nav-"] div[data-testid="stButton"] > button:hover {{
+  transform: none;
+  box-shadow: none;
+}}
+
+.st-key-guide-prev div[data-testid="stButton"] > button,
+.st-key-guide-next div[data-testid="stButton"] > button {{
+  min-height: 2.2rem;
+  border-radius: 999px;
+  padding: 0.2rem;
+  font-weight: 700;
+}}
+
+/* ---- Scroll-to-top button ---- */
+
+.scroll-top-btn {{
+  position: fixed;
+  bottom: 5.5rem;
+  right: 1.5rem;
+  z-index: 999;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: {RBC_BLUE};
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}}
+
+.scroll-top-btn.visible {{
+  opacity: 1;
+  pointer-events: auto;
+}}
+
+.scroll-top-btn:hover {{
+  background: {NAVY_DEEP};
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }}
 
 </style>
@@ -1765,6 +2234,55 @@ def report_scroll_script() -> str:
     """
 
 
+def scroll_to_top_script(container_selector: str = 'section.main') -> str:
+    """Return an HTML/JS snippet that adds a floating scroll-to-top button.
+
+    The button appears when the user scrolls down past 400px and smoothly
+    scrolls the given container back to the top when clicked.
+
+    Args:
+        container_selector: CSS selector for the scrollable container.
+            Use ``'section.main'`` for the main chat area, or
+            ``'[data-testid="stDialog"]'`` for ``@st.dialog`` windows.
+    """
+    sel_js = container_selector.replace("\\", "\\\\").replace("'", "\\'")
+    return f"""<script>
+(function() {{
+  var root = parent.document;
+  var sel = '{sel_js}';
+  var existing = root.querySelector(".scroll-top-btn[data-sel='" + sel + "']");
+  if (existing) return;
+  var container = root.querySelector(sel);
+  if (!container) return;
+  var scrollEl = container;
+  if (sel.indexOf("stDialog") !== -1) {{
+    var inner = container.querySelector('[data-testid="stDialogBody"]');
+    if (inner) scrollEl = inner;
+  }}
+  var btn = root.createElement("button");
+  btn.className = "scroll-top-btn";
+  btn.setAttribute("data-sel", sel);
+  btn.setAttribute("title", "Scroll to top");
+  btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none">'
+    + '<path d="M18 15l-6-6-6 6" stroke="white" stroke-width="2.5" '
+    + 'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  container.appendChild(btn);
+  btn.addEventListener("click", function() {{
+    scrollEl.scrollTo({{top: 0, behavior: "smooth"}});
+  }});
+  function onScroll() {{
+    if (scrollEl.scrollTop > 400) {{
+      btn.classList.add("visible");
+    }} else {{
+      btn.classList.remove("visible");
+    }}
+  }}
+  scrollEl.addEventListener("scroll", onScroll);
+  onScroll();
+}})();
+</script>"""
+
+
 def definition_card(term: str, definition_text: str) -> str:
     """Definition browser entry card.
 
@@ -1820,6 +2338,27 @@ def chat_welcome(has_document: bool = False) -> str:
         '<div class="chat-welcome-desc">'
         'Use the sidebar to upload and index a PDF, then ask questions here.'
         '</div>'
+        '</div>'
+    )
+
+
+def guide_step_card(number: str, title: str, description: str) -> str:
+    """Render a numbered quick-start card for the welcome area."""
+    return (
+        '<div class="quick-start-card">'
+        f'<div class="quick-start-number">{_safe(number)}</div>'
+        f'<div class="quick-start-title">{_safe(title)}</div>'
+        f'<div class="quick-start-desc">{description}</div>'
+        '</div>'
+    )
+
+
+def guide_section_block(title: str, body_html: str) -> str:
+    """Render a section block for the full guide dialog."""
+    return (
+        '<div class="guide-section">'
+        f'<div class="guide-section-title">{_safe(title)}</div>'
+        f'<div class="guide-section-body">{body_html}</div>'
         '</div>'
     )
 
@@ -1902,6 +2441,28 @@ def compact_stats_grid(
         f'{_stat(sections, "Sections")}'
         f'{_stat(chunks, "Chunks")}'
         f'{_stat(definitions, "Definitions")}'
+        '</div>'
+    )
+
+
+def document_card(
+    filename: str,
+    pages: int,
+    sections: int,
+    chunks: int,
+    definitions: int,
+    source_path: str,
+) -> str:
+    """Render a compact document summary card for the sidebar."""
+    stats_line = (
+        f"{pages} pages &middot; {sections} sections &middot; "
+        f"{chunks} chunks &middot; {definitions} definitions"
+    )
+    return (
+        '<div class="doc-card">'
+        f'<div class="doc-card-name">{_safe(filename)}</div>'
+        f'<div class="doc-card-stats">{stats_line}</div>'
+        f'<div class="doc-card-source">{_safe(source_path)}</div>'
         '</div>'
     )
 
@@ -2059,6 +2620,8 @@ def _render_body_with_tables_and_citations(
             flush_table()
         if not stripped:
             parts.append("<br/>")
+        elif _HEADING_RE.match(stripped) and len(stripped) > 3:
+            parts.append(f'<div class="rb-heading">{_safe(stripped)}</div>')
         else:
             parts.append(render_citation_markers(stripped, citations))
 
@@ -2117,7 +2680,7 @@ def render_source_footnotes(sources: list[SourceCitation]) -> str:
 # Matches standalone headings: all-caps words on their own line, no colon
 # e.g. "BORROWER INFORMATION", "PRICING TERMS", "GENERAL PROHIBITION"
 _HEADING_RE = re.compile(
-    r"^([A-Z][A-Z0-9 /&,\-()]+)$"
+    r"^(?:\d+\.\s+)?([A-Z][A-Z0-9 /&,\-()]+?)(?:\s*\[[\d,\s]+\])?$"
 )
 
 # Matches field labels at line start: "LABEL:" or "LABEL: value"
@@ -2158,6 +2721,11 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
     Returns:
         HTML string to render inside a report-body div.
     """
+    # Strip markdown backticks the LLM sometimes emits despite instructions.
+    # Remove fenced code blocks (```...```) first, then inline backticks.
+    body = re.sub(r"```[^\n]*\n?", "", body)
+    body = body.replace("`", "")
+
     lines = body.split("\n")
     # Each item in bullet_buffer is (html_text, list[sub_bullet_html])
     bullet_buffer: list[tuple[str, list[str]]] = []
@@ -2316,13 +2884,21 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
 
 
 def format_chat_answer(body: str) -> str:
-    """Format a Q&A answer body with table support.
+    """Format a Q&A answer body with tables, bullets, numbered lists, and headings.
 
     Detects pipe-delimited markdown tables and renders them as HTML.
-    Non-table lines are HTML-escaped.
+    Bullet lines (- item) become ``<ul>`` lists. Numbered lines (1. item)
+    become ``<ol>`` lists. ALL-CAPS lines become styled headings.
+    Other lines are wrapped in ``<div>`` for proper paragraph spacing.
     """
+    # Strip markdown backticks the LLM sometimes emits despite instructions.
+    body = re.sub(r"```[^\n]*\n?", "", body)
+    body = body.replace("`", "")
+
     lines = body.split("\n")
     table_buffer: list[str] = []
+    bullet_buffer: list[str] = []
+    numbered_buffer: list[str] = []
     parts: list[str] = []
 
     def flush_table() -> None:
@@ -2353,18 +2929,63 @@ def format_chat_answer(body: str) -> str:
         parts.append("</table>")
         table_buffer.clear()
 
+    def flush_bullets() -> None:
+        if bullet_buffer:
+            parts.append('<ul class="rb-list">')
+            for text in bullet_buffer:
+                parts.append(f"<li>{_safe(text)}</li>")
+            parts.append("</ul>")
+            bullet_buffer.clear()
+
+    def flush_numbered() -> None:
+        if numbered_buffer:
+            parts.append('<ol class="rb-list">')
+            for text in numbered_buffer:
+                parts.append(f"<li>{_safe(text)}</li>")
+            parts.append("</ol>")
+            numbered_buffer.clear()
+
     for line in lines:
         stripped = line.strip()
+
+        if not stripped:
+            flush_bullets()
+            flush_numbered()
+            flush_table()
+            continue
+
         if _TABLE_ROW_RE.match(stripped) or _TABLE_SEP_RE.match(stripped):
+            flush_bullets()
+            flush_numbered()
             table_buffer.append(stripped)
             continue
         if table_buffer:
             flush_table()
-        if not stripped:
-            parts.append("<br/>")
-        else:
-            parts.append(_safe(stripped))
 
+        # Bullet item
+        bullet_match = _BULLET_RE.match(stripped)
+        if bullet_match:
+            flush_numbered()
+            bullet_buffer.append(bullet_match.group(1))
+            continue
+
+        # Numbered item — but NOT all-caps numbered headings like "1. OVERVIEW"
+        num_match = _NUMBERED_RE.match(stripped)
+        if num_match and not _HEADING_RE.match(stripped):
+            flush_bullets()
+            numbered_buffer.append(num_match.group(2))
+            continue
+
+        flush_bullets()
+        flush_numbered()
+
+        if _HEADING_RE.match(stripped) and len(stripped) > 3:
+            parts.append(f'<div class="rb-heading">{_safe(stripped)}</div>')
+        else:
+            parts.append(f'<div class="rb-para">{_safe(stripped)}</div>')
+
+    flush_bullets()
+    flush_numbered()
     flush_table()
     return "\n".join(parts)
 
@@ -2372,17 +2993,16 @@ def format_chat_answer(body: str) -> str:
 def highlight_defined_terms(
     html: str,
     defs_index: DefinitionsIndex,
-    max_preview: int = 200,
 ) -> str:
     """Wrap defined terms in HTML with tooltip popups.
 
     Scans text content (outside HTML tags) for defined terms and wraps
-    them with tooltip spans showing the term name, page, and preview.
+    them with tooltip spans showing the term name, page, and scrollable
+    definition preview.
 
     Args:
         html: HTML string to process.
         defs_index: The definitions index with terms and entries.
-        max_preview: Max characters for definition preview.
 
     Returns:
         HTML with defined terms wrapped in tooltip spans.
@@ -2403,20 +3023,20 @@ def highlight_defined_terms(
             continue
 
         page_str = f"Page {entry.page_number}" if entry.page_number else "Page n/a"
-        is_long = len(entry.text) > max_preview
 
         # Build tooltip HTML — plain text only, no links to other definitions
-        # to prevent cascading popup windows
-        expand_hint = '<span class="def-tip-expand">Click to expand</span>' if is_long else ""
-        # Strip any HTML tags from definition text so tooltip is always plain
+        # to prevent cascading popup windows.
+        # Strip HTML tags and collapse newlines so markdown-it doesn't create
+        # paragraph breaks inside the <span>, which would break DOM nesting
+        # and cause subsequent response content to be swallowed by the tooltip.
         plain_def_text = re.sub(r"<[^>]+>", "", _safe(entry.text))
+        plain_def_text = re.sub(r"\s*\n\s*", " ", plain_def_text)
         tip_html = (
             f'<span class="def-tip">'
-            f'<span class="def-tip-close" data-def-close>&times;</span>'
+            f'<span class="def-tip-close" tabindex="0">&times;</span>'
             f'<span class="def-tip-term">{escape(term)}</span>'
             f'<span class="def-tip-meta">{escape(page_str)}</span>'
             f'<span class="def-tip-text">{plain_def_text}</span>'
-            f"{expand_hint}"
             f"</span>"
         )
 
@@ -2467,7 +3087,7 @@ def highlight_defined_terms(
                     if match:
                         pos = match.start()
                         replacement = (
-                            f'<span class="def-hl">'
+                            f'<span class="def-hl" tabindex="0">'
                             f"{escape(match.group(0))}{tip_html}</span>"
                         )
                         segment = segment[:pos] + replacement + segment[match.end():]
@@ -2477,3 +3097,23 @@ def highlight_defined_terms(
         html = "".join(new_segments)
 
     return html
+
+
+def stop_button_relocate_script() -> str:
+    """Return a JS snippet that moves the stop button inside the chat input container.
+
+    Streamlit renders the stop button as a sibling below the chat input in a
+    deeply nested DOM.  CSS alone can't reliably overlay it on the send button,
+    so this script physically relocates the element into ``[data-testid="stChatInput"]``
+    where CSS ``position: absolute`` works correctly.
+    """
+    return """<script>
+(function() {
+    var doc = parent.document;
+    var stopBtn = doc.querySelector('.st-key-stop-chat-generation');
+    var chatInput = doc.querySelector('[data-testid="stChatInput"]');
+    if (stopBtn && chatInput && !chatInput.contains(stopBtn)) {
+        chatInput.appendChild(stopBtn);
+    }
+})();
+</script>"""
