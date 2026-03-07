@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from credit_analyzer.generation.response_parser import InlineCitation, SourceCitation
+    from credit_analyzer.processing.definitions import DefinitionsIndex
 
 
 def _safe(text: str) -> str:
@@ -26,22 +27,24 @@ def _safe(text: str) -> str:
 # Color constants
 # ---------------------------------------------------------------------------
 
-NAVY_DEEP = "#001A3E"
-RBC_BLUE = "#0051A5"
-RBC_BLUE_DEEP = "#001A3E"  # backward compat alias
+NAVY_DEEP = "#003DA5"  # RBC Capital Markets blue
+RBC_BLUE = "#003DA5"
+RBC_BLUE_DEEP = "#003DA5"
 RBC_BLUE_LIGHT = "#E8F0FE"
-RBC_GOLD = "#C8A000"
-GOLD_BRIGHT = "#D4AF37"
+RBC_GOLD = "#FFD100"  # RBC yellow from logo
+GOLD_BRIGHT = "#FFD100"
 INK = "#0F1A2E"
 MUTED = "#64748B"
 SURFACE = "#FFFFFF"
 SURFACE_ALT = "#F8FAFC"
-BG = "#F1F5F9"
+BG = "#E8ECF1"
 BORDER = "#E2E8F0"
 
 # ---------------------------------------------------------------------------
 # APP_CSS — full design system
 # ---------------------------------------------------------------------------
+
+CHAT_BG = "#F0F0F0"
 
 APP_CSS = f"""
 <style>
@@ -60,6 +63,7 @@ APP_CSS = f"""
   --surface-alt: {SURFACE_ALT};
   --bg: {BG};
   --border: {BORDER};
+  --chat-bg: {CHAT_BG};
 }}
 
 /* ---- Base typography ---- */
@@ -74,46 +78,138 @@ h1, h2, h3 {{
   letter-spacing: -0.02em;
 }}
 
-/* ---- App shell ---- */
+/* ---- App shell — light gray main, dark sidebar ---- */
 
 .stApp {{
-  background: var(--bg);
+  background: {CHAT_BG};
   color: var(--ink);
 }}
 
 [data-testid="stHeader"] {{
-  background: transparent;
+  background: {CHAT_BG};
 }}
 
-/* ---- Sidebar ---- */
+/* ---- Sidebar (light gray) ---- */
 
 [data-testid="stSidebar"] {{
-  background: linear-gradient(180deg, {NAVY_DEEP} 0%, #00254D 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
-}}
-
-[data-testid="stSidebar"]::before {{
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0,26,62,0) 60%, rgba(0,81,165,0.08) 100%);
-  pointer-events: none;
+  background: #E5E5E5;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
 }}
 
 [data-testid="stSidebar"] * {{
-  color: #F0F4FA;
+  color: #1A1A1A;
 }}
 
 [data-testid="stSidebar"] .block-container {{
-  padding-top: 1rem;
+  padding-top: 0.5rem;
+  background: transparent;
+}}
+
+/* Tighten sidebar spacing to prevent scroll */
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div {{
+  gap: 0 !important;
+}}
+
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div > div {{
+  margin-bottom: 0 !important;
+}}
+
+[data-testid="stSidebar"] hr {{
+  margin: 0.35rem 0 !important;
+}}
+
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] [data-testid="stCaption"] {{
+  margin-bottom: 0.15rem !important;
+  font-size: 0.68rem !important;
+}}
+
+/* Minimal sidebar scroll — auto only if needed */
+[data-testid="stSidebarContent"] {{
+  overflow-x: hidden !important;
+}}
+
+/* Sidebar text alignment */
+[data-testid="stSidebar"] [data-testid="stMarkdown"],
+[data-testid="stSidebar"] .stMarkdown {{
+  text-align: left;
 }}
 
 /* ---- Layout ---- */
 
 .block-container {{
-  max-width: 1320px;
-  padding-top: 1.25rem;
+  max-width: 820px;
+  padding-top: 0;
   padding-bottom: 2.5rem;
+  background: transparent;
+}}
+
+/* Main content — light gray */
+[data-testid="stMain"] {{
+  background: {CHAT_BG};
+}}
+
+[data-testid="stMain"] > .block-container {{
+  background: transparent;
+  padding-top: 2.5rem;
+}}
+
+/* Bottom bar / chat input area */
+[data-testid="stBottom"] {{
+  background: {CHAT_BG};
+  border-top: none;
+}}
+
+[data-testid="stBottom"] > div {{
+  max-width: 820px;
+  margin: 0 auto;
+  padding-bottom: 0.75rem;
+}}
+
+/* Chat input bar — like ChatGPT / Claude */
+[data-testid="stChatInput"] {{
+  background: {SURFACE} !important;
+  border: 1px solid {BORDER} !important;
+  border-radius: 24px !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+}}
+
+[data-testid="stChatInput"] textarea {{
+  color: #1A1A1A !important;
+}}
+
+[data-testid="stChatInput"]:focus-within {{
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}}
+
+/* Send button — navy box with white up-arrow */
+[data-testid="stChatInput"] button[kind="primary"],
+[data-testid="stChatInput"] button {{
+  background: {NAVY_DEEP} !important;
+  color: white !important;
+  border-radius: 8px !important;
+  border: none !important;
+  position: relative !important;
+  overflow: hidden !important;
+}}
+
+/* Hide the original SVG icon completely */
+[data-testid="stChatInput"] button svg {{
+  display: none !important;
+}}
+
+/* Render a CSS up-arrow instead */
+[data-testid="stChatInput"] button::after {{
+  content: '' !important;
+  display: block !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-top: 2.5px solid white !important;
+  border-right: 2.5px solid white !important;
+  transform: rotate(-45deg) !important;
+  margin-top: 3px !important;
 }}
 
 /* ---- Buttons ---- */
@@ -135,170 +231,417 @@ div[data-testid="stDownloadButton"] > button {{
 div[data-testid="stButton"] > button[kind="primary"] {{
   background: var(--rbc-blue);
   color: white;
-  border-color: {GOLD_BRIGHT};
+  border-color: var(--rbc-blue);
 }}
 
 div[data-testid="stButton"] > button:hover,
 div[data-testid="stDownloadButton"] > button:hover {{
-  border-color: {GOLD_BRIGHT};
+  border-color: var(--rbc-blue);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 26, 62, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 61, 165, 0.12);
 }}
 
+/* Suggestion cards — centered grid */
 .st-key-suggested-actions div[data-testid="stButton"] > button {{
-  min-height: 5.25rem;
+  min-height: 4rem;
   height: 100%;
   align-items: center;
   justify-content: center;
   text-align: center;
   white-space: normal;
+  border: 1px solid {BORDER};
+  border-radius: 12px;
+  background: {SURFACE};
 }}
 
 .st-key-suggested-actions div[data-testid="stButton"] > button p {{
   white-space: normal;
   line-height: 1.3;
+  color: var(--ink);
 }}
 
-/* Sidebar buttons */
+/* Sidebar buttons — text-only, hover shows rounded highlight */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button,
 [data-testid="stSidebar"] div[data-testid="stDownloadButton"] > button {{
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(200, 160, 0, 0.5);
-  color: #F0F4FA !important;
+  background: transparent;
+  border: none;
+  color: #1A1A1A !important;
   box-shadow: none;
+  text-align: left;
+  justify-content: flex-start;
+  font-weight: 500;
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  min-height: 2rem;
+  transition: background 0.15s ease;
+}}
+
+/* Force left alignment on ALL inner elements of sidebar buttons */
+[data-testid="stSidebar"] div[data-testid="stButton"] > button * {{
+  text-align: left !important;
+  justify-content: flex-start !important;
+}}
+
+[data-testid="stSidebar"] div[data-testid="stDownloadButton"] > button * {{
+  text-align: left !important;
+  justify-content: flex-start !important;
 }}
 
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
 [data-testid="stSidebar"] div[data-testid="stDownloadButton"] > button:hover {{
-  background: rgba(255, 255, 255, 0.13);
-  border-color: {GOLD_BRIGHT};
+  background: rgba(0, 0, 0, 0.08);
+  border: none;
+  transform: none;
+  box-shadow: none;
+}}
+
+[data-testid="stSidebar"] div[data-testid="stButton"] > button:active {{
+  background: rgba(0, 0, 0, 0.12);
+}}
+
+/* Index PDF button — navy, white text, no outline */
+[data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"] {{
+  background: var(--navy-deep) !important;
+  color: white !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  font-weight: 600;
+}}
+
+[data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"] p {{
+  text-align: center !important;
+  color: white !important;
+}}
+
+[data-testid="stSidebar"] div[data-testid="stButton"] > button[kind="primary"]:hover {{
+  background: #002952 !important;
+  box-shadow: none !important;
+}}
+
+/* File uploader in sidebar — compact */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section {{
+  background: white !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  padding: 0.5rem !important;
+}}
+
+[data-testid="stSidebar"] [data-testid="stFileUploader"] button {{
+  background: white;
+  color: #1A1A1A !important;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 0.2rem 0.5rem !important;
+  min-height: 1.8rem !important;
+  font-size: 0.8rem !important;
+}}
+
+[data-testid="stSidebar"] [data-testid="stFileUploader"] button:hover {{
+  background: rgba(0, 0, 0, 0.04);
+  border-color: var(--rbc-blue);
+}}
+
+[data-testid="stSidebar"] [data-testid="stFileUploader"] small {{
+  color: #6B7280 !important;
+  font-size: 0.68rem !important;
 }}
 
 /* ---- Inputs ---- */
 
 [data-testid="stFileUploader"] section,
-[data-testid="stTextInputRootElement"],
-[data-testid="stChatInput"],
-[data-baseweb="select"] > div {{
+[data-testid="stTextInputRootElement"] {{
   border-radius: 10px;
   border-color: var(--border);
+  background: {SURFACE};
   transition: all 0.2s ease;
 }}
 
 [data-testid="stFileUploader"] section:focus-within,
-[data-testid="stTextInputRootElement"]:focus-within,
-[data-testid="stChatInput"]:focus-within {{
+[data-testid="stTextInputRootElement"]:focus-within {{
   border-color: var(--rbc-blue);
   box-shadow: 0 0 0 3px rgba(0, 81, 165, 0.12);
 }}
 
-[data-testid="stFileUploader"] section,
-[data-testid="stTextInputRootElement"],
-[data-testid="stChatInput"] {{
-  background: rgba(255, 255, 255, 0.95);
+[data-testid="stChatInput"] textarea::placeholder {{
+  color: #9CA3AF !important;
+  opacity: 1 !important;
 }}
 
 [data-testid="stSidebar"] [data-baseweb="select"] > div {{
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(200, 160, 0, 0.5);
+  background: white;
+  border-color: rgba(0, 0, 0, 0.12);
 }}
 
 [data-testid="stSidebar"] [data-baseweb="select"] * {{
-  color: #F0F4FA !important;
-  fill: #F0F4FA !important;
+  color: #1A1A1A !important;
+  fill: #1A1A1A !important;
 }}
 
-/* ---- Tabs ---- */
+/* ---- Chat area ---- */
 
-.stTabs [data-baseweb="tab-list"] {{
-  gap: 0.25rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid var(--border);
+.chat-welcome {{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 45vh;
+  text-align: center;
+  padding: 2rem;
 }}
 
-.stTabs [data-baseweb="tab"] {{
-  height: auto;
-  padding: 0.6rem 1.1rem;
-  border-radius: 0;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+.chat-welcome-title {{
   font-family: 'DM Sans', system-ui, sans-serif;
-  font-weight: 500;
-  color: var(--muted);
-  transition: all 0.2s ease;
-}}
-
-.stTabs [data-baseweb="tab"]:hover {{
-  color: var(--ink);
-}}
-
-.stTabs [aria-selected="true"] {{
-  background: transparent;
-  color: var(--ink);
-  font-weight: 600;
-  border-bottom: 2px solid {RBC_GOLD};
-}}
-
-/* ---- Hero card ---- */
-
-.hero-card {{
-  background: linear-gradient(135deg, {NAVY_DEEP} 0%, {RBC_BLUE} 100%);
-  color: white;
-  border-radius: 16px;
-  padding: 1.25rem 1.5rem;
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  box-shadow: 0 8px 32px rgba(0, 26, 62, 0.18);
-  position: relative;
-  overflow: hidden;
-}}
-
-.hero-card::after {{
-  content: '';
-  position: absolute;
-  top: -40%;
-  right: -10%;
-  width: 280px;
-  height: 280px;
-  background: radial-gradient(circle, rgba(200, 160, 0, 0.06) 0%, transparent 70%);
-  pointer-events: none;
-}}
-
-.hero-eyebrow {{
-  display: inline-block;
-  padding: 0.22rem 0.6rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.9);
-  font-family: 'Source Sans 3', system-ui, sans-serif;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  border: 1px solid rgba(212, 175, 55, 0.25);
-}}
-
-.hero-icon {{
-  display: inline-block;
-  margin-right: 0.5rem;
-  vertical-align: middle;
-}}
-
-.hero-title {{
-  margin: 0.75rem 0 0.25rem 0;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 1.8rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  color: {INK};
+  margin-bottom: 0.5rem;
 }}
 
-.hero-copy {{
-  margin: 0;
-  max-width: 44rem;
-  color: rgba(255, 255, 255, 0.85);
+.chat-welcome-desc {{
   font-size: 0.95rem;
+  color: {MUTED};
+  max-width: 24rem;
   line-height: 1.5;
+}}
+
+.suggestions-grid {{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.65rem;
+  max-width: 800px;
+  margin: 0 auto 2rem auto;
+  padding: 0 1rem;
+}}
+
+.suggestion-card {{
+  background: {SURFACE};
+  border: 1px solid {BORDER};
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: {INK};
+  line-height: 1.35;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}}
+
+.suggestion-card:hover {{
+  border-color: {RBC_BLUE};
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,81,165,0.1);
+}}
+
+/* Suggestion buttons on the light background */
+.st-key-suggested-actions div[data-testid="stButton"] > button {{
+  background: {SURFACE};
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}}
+
+/* Context strip below assistant messages */
+.context-strip {{
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  font-size: 0.78rem;
+  color: {MUTED};
+  cursor: pointer;
+  transition: all 0.15s ease;
+}}
+
+.context-strip:hover {{
+  color: {RBC_BLUE};
+}}
+
+.context-strip .ctx-dot {{
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}}
+
+.ctx-dot-high {{ background: #059669; }}
+.ctx-dot-medium {{ background: #D97706; }}
+.ctx-dot-low {{ background: #DC2626; }}
+
+.msg-timestamp {{
+  font-size: 0.72rem;
+  color: {MUTED};
+  opacity: 0.6;
+  margin-top: 0.25rem;
+}}
+
+/* Streaming status line */
+.stream-status {{
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0;
+  font-size: 0.82rem;
+  color: {RBC_BLUE};
+  font-weight: 500;
+}}
+
+.stream-status .pulse-dot {{
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: {RBC_BLUE};
+  animation: pulse 1.5s ease-in-out infinite;
+}}
+
+@keyframes pulse {{
+  0%, 100% {{ opacity: 0.4; transform: scale(0.9); }}
+  50% {{ opacity: 1; transform: scale(1.1); }}
+}}
+
+/* ---- Indexing step pipeline ---- */
+
+.step-pipeline {{
+  padding: 0.5rem 0;
+}}
+
+.step-item {{
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}}
+
+.step-item .step-icon {{
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+}}
+
+.step-complete .step-icon {{ color: #059669; }}
+.step-active .step-icon {{ color: {RBC_BLUE}; }}
+.step-active .step-icon .pulse-dot {{
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: {RBC_BLUE};
+  animation: pulse 1.5s ease-in-out infinite;
+}}
+.step-pending {{ opacity: 0.45; }}
+
+.step-label {{ flex: 1; }}
+.step-count {{
+  color: {MUTED};
+  font-size: 0.78rem;
+  font-weight: 500;
+}}
+
+.stats-grid-compact {{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem 0;
+}}
+
+.stat-item-compact {{
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}}
+
+.stat-item-compact .stat-value {{
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+}}
+
+.stat-item-compact .stat-label {{
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}}
+
+/* ---- Skeleton loaders ---- */
+
+.skeleton-line {{
+  height: 0.85rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, {BORDER} 25%, {SURFACE_ALT} 50%, {BORDER} 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  margin-bottom: 0.5rem;
+}}
+
+.skeleton-line:last-child {{ width: 60%; }}
+
+@keyframes shimmer {{
+  0% {{ background-position: 200% 0; }}
+  100% {{ background-position: -200% 0; }}
+}}
+
+/* ---- Definitions modal ---- */
+
+.def-modal-search {{
+  margin-bottom: 0.75rem;
+}}
+
+.def-modal-count {{
+  font-size: 0.8rem;
+  color: {MUTED};
+  padding: 0.25rem 0 0.5rem 0;
+}}
+
+.def-modal-list {{
+  max-height: 55vh;
+  overflow-y: auto;
+}}
+
+/* ---- Report dialog ---- */
+
+.report-dialog-header {{
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid {BORDER};
+  margin-bottom: 0.75rem;
+}}
+
+.report-dialog-borrower {{
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: {INK};
+  margin: 0;
+}}
+
+.report-dialog-meta {{
+  font-size: 0.85rem;
+  color: {MUTED};
+  margin: 0.15rem 0 0 0;
+}}
+
+.report-nav-dot {{
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}}
+.report-nav-dot-complete {{ background: #059669; }}
+.report-nav-dot-generating {{ background: {RBC_BLUE}; animation: pulse 1.5s ease-in-out infinite; }}
+.report-nav-dot-pending {{ background: {BORDER}; }}
+
+.section-skeleton {{
+  background: {SURFACE};
+  border: 1px solid {BORDER};
+  border-left: 3px solid {BORDER};
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.75rem;
 }}
 
 /* ---- Metric cards ---- */
@@ -451,11 +794,11 @@ div[data-testid="stDownloadButton"] > button:hover {{
 /* ---- Rail cards (sidebar) ---- */
 
 .rail-card {{
-  padding: 0.85rem 0.95rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(200, 160, 0, 0.3);
-  margin-bottom: 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  margin-bottom: 0.25rem;
   transition: all 0.2s ease;
 }}
 
@@ -464,7 +807,7 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 .rail-card.is-warning {{
-  border-left: 3px solid rgba(212, 175, 55, 0.5);
+  border-left: 3px solid #D97706;
 }}
 
 .rail-label {{
@@ -476,16 +819,16 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 .rail-value {{
-  margin-top: 0.25rem;
+  margin-top: 0.1rem;
   font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 1rem;
+  font-size: 0.88rem;
   font-weight: 700;
 }}
 
 .rail-meta {{
-  margin-top: 0.2rem;
-  font-size: 0.85rem;
-  line-height: 1.35;
+  margin-top: 0.1rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
   opacity: 0.88;
 }}
 
@@ -502,8 +845,8 @@ div[data-testid="stDownloadButton"] > button:hover {{
   color: white;
   border-radius: 14px;
   padding: 1.25rem 1.4rem;
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  box-shadow: 0 8px 28px rgba(0, 26, 62, 0.15);
+  border: 1px solid rgba(255, 209, 0, 0.3);
+  box-shadow: 0 8px 28px rgba(0, 61, 165, 0.15);
   margin-bottom: 1rem;
 }}
 
@@ -539,12 +882,12 @@ div[data-testid="stDownloadButton"] > button:hover {{
   font-size: 0.78rem;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(212, 175, 55, 0.2);
+  border: 1px solid rgba(255, 209, 0, 0.2);
 }}
 
 .report-stat-gold {{
-  background: rgba(200, 160, 0, 0.15);
-  border-color: rgba(212, 175, 55, 0.45);
+  background: rgba(255, 209, 0, 0.15);
+  border-color: rgba(255, 209, 0, 0.45);
   color: #FFF8E0;
 }}
 
@@ -557,7 +900,7 @@ div[data-testid="stDownloadButton"] > button:hover {{
   border-radius: 12px;
   padding: 0;
   margin-bottom: 0.75rem;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   transition: all 0.2s ease;
 }}
@@ -612,9 +955,30 @@ div[data-testid="stDownloadButton"] > button:hover {{
   font-weight: 500;
 }}
 
+/* Section refresh button — small circular arrow */
+.section-refresh-icon {{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  margin-right: 0.3rem;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}}
+
+.section-refresh-icon:hover {{
+  color: var(--rbc-blue);
+  background: var(--rbc-blue-light);
+}}
+
 .report-section-body {{
   padding: 0.9rem 1.1rem 1rem 1.1rem;
   position: relative;
+  overflow: visible;
 }}
 
 .report-section-body pre {{
@@ -728,6 +1092,64 @@ div[data-testid="stDownloadButton"] > button:hover {{
   font-size: 0.87rem;
 }}
 
+/* Tables */
+.report-body table.rb-table {{
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.88rem;
+}}
+
+.report-body table.rb-table th {{
+  background: var(--surface-alt);
+  font-weight: 700;
+  text-align: left;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--navy-deep);
+}}
+
+.report-body table.rb-table td {{
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--border);
+  line-height: 1.45;
+  vertical-align: top;
+}}
+
+.report-body table.rb-table tr:nth-child(even) td {{
+  background: rgba(248, 250, 252, 0.5);
+}}
+
+/* Tables in chat answers */
+.section-answer table.rb-table {{
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.88rem;
+}}
+
+.section-answer table.rb-table th {{
+  background: var(--surface-alt);
+  font-weight: 700;
+  text-align: left;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--navy-deep);
+}}
+
+.section-answer table.rb-table td {{
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--border);
+  line-height: 1.45;
+  vertical-align: top;
+}}
+
+.section-answer table.rb-table tr:nth-child(even) td {{
+  background: rgba(248, 250, 252, 0.5);
+}}
+
 /* ---- Inline citation markers ---- */
 
 .cite-marker {{
@@ -744,8 +1166,10 @@ div[data-testid="stDownloadButton"] > button:hover {{
 
 .cite-footnotes {{
   margin-top: 0.5rem;
-  padding-top: 0.4rem;
+  padding: 0.55rem 1.1rem;
   border-top: 1px solid var(--border);
+  background: var(--surface-alt);
+  border-radius: 0 0 12px 12px;
 }}
 
 .cite-footnotes-title {{
@@ -800,12 +1224,51 @@ div[data-testid="stDownloadButton"] > button:hover {{
   line-height: 1.4;
 }}
 
-/* ---- Chat assistant messages ---- */
+/* ---- Chat messages (ChatGPT / Claude style) ---- */
 
-[data-testid="stChatMessage"]:nth-child(even) {{
-  border-left: 3px solid var(--rbc-blue);
+[data-testid="stChatMessage"] {{
+  background: transparent;
   border-radius: 0;
-  padding-left: 1rem;
+  padding: 1.25rem 0;
+  margin-bottom: 0;
+  box-shadow: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  max-width: 820px;
+}}
+
+/* User message — light yellow background box */
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {{
+  background: rgba(255, 209, 0, 0.08) !important;
+  border-radius: 12px !important;
+  padding: 1rem 1.25rem !important;
+  margin-bottom: 0.5rem !important;
+  border: 1px solid rgba(255, 209, 0, 0.18) !important;
+  border-bottom: 1px solid rgba(255, 209, 0, 0.18) !important;
+}}
+
+/* Chat avatar colors — gold for user, navy for assistant */
+[data-testid="stChatMessageAvatarUser"] {{
+  background: {GOLD_BRIGHT} !important;
+  border-radius: 50%;
+}}
+
+[data-testid="stChatMessageAvatarAssistant"] {{
+  background: {NAVY_DEEP} !important;
+  border-radius: 50%;
+}}
+
+/* White outline icons on avatars */
+[data-testid="stChatMessageAvatarUser"] svg,
+[data-testid="stChatMessageAvatarAssistant"] svg {{
+  color: white !important;
+  fill: white !important;
+  stroke: white !important;
+}}
+
+[data-testid="stChatMessageAvatarUser"] svg path,
+[data-testid="stChatMessageAvatarAssistant"] svg path {{
+  fill: white !important;
+  stroke: white !important;
 }}
 
 /* ---- Copy button ---- */
@@ -938,6 +1401,143 @@ div[data-testid="stDownloadButton"] > button:hover {{
   color: var(--ink);
 }}
 
+/* ---- Definition term highlights ---- */
+
+.def-hl {{
+  color: var(--rbc-blue);
+  border-bottom: 1px dotted var(--rbc-blue);
+  cursor: help;
+  position: relative;
+  display: inline;
+}}
+
+.def-hl:hover {{
+  color: #0060C0;
+  border-bottom-style: solid;
+}}
+
+/* Tooltip: hidden by default, shown via JS-managed classes */
+.def-hl .def-tip {{
+  display: none !important;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  width: 340px;
+  max-width: 85vw;
+  padding: 0.65rem 0.85rem;
+  background: #F0F0F0;
+  color: #1A1A1A;
+  border: 2px solid var(--rbc-blue);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  z-index: 9999;
+  pointer-events: none;
+  text-align: left;
+  font-weight: normal;
+}}
+
+/* Hover preview (JS adds .def-hl-hover) — clamped text, no interaction */
+.def-hl-hover > .def-tip {{
+  display: block !important;
+  pointer-events: none;
+}}
+
+/* Pinned/active state (JS adds .def-hl-active) — full text, interactive */
+.def-hl-active > .def-tip {{
+  display: block !important;
+  pointer-events: auto;
+}}
+
+.def-hl-active > .def-tip .def-tip-text {{
+  max-height: none;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}}
+
+.def-hl-active > .def-tip .def-tip-expand {{
+  display: none !important;
+}}
+
+.def-tip-close {{
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}}
+.def-tip-close:hover {{
+  color: var(--rbc-blue);
+  background: rgba(0,0,0,0.06);
+}}
+
+.def-tip-term {{
+  display: block;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--rbc-blue);
+  margin-bottom: 0.25rem;
+  padding-right: 1.2rem;
+}}
+
+.def-tip-meta {{
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}}
+
+.def-tip-text {{
+  color: #1A1A1A;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  max-height: 4.2em;
+  overflow: hidden;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}}
+
+.def-tip-expand {{
+  display: block;
+  font-size: 0.72rem;
+  color: var(--rbc-blue);
+  margin-top: 0.3rem;
+  opacity: 0.8;
+}}
+
+/* Suppress any nested definition highlights inside tooltips */
+.def-tip .def-hl {{
+  color: inherit !important;
+  border-bottom: none !important;
+  cursor: default !important;
+}}
+
+.def-tip .def-hl .def-tip {{
+  display: none !important;
+}}
+
+
+/* Arrow on tooltip */
+.def-tip::after {{
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 1rem;
+  border: 6px solid transparent;
+  border-top-color: {RBC_BLUE};
+}}
+
 /* ---- Definition search ---- */
 
 .def-search {{
@@ -991,14 +1591,20 @@ div[data-testid="stDownloadButton"] > button:hover {{
 # SVG Icons (inline, no external assets)
 # ---------------------------------------------------------------------------
 
-_SHIELD_ICON_SVG = (
-    '<svg class="hero-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" '
+_SEARCH_ICON_SVG = (
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" '
     'xmlns="http://www.w3.org/2000/svg">'
-    '<path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z" '
-    f'stroke="{GOLD_BRIGHT}" stroke-width="1.5" fill="none"/>'
-    '<path d="M12 6l-4 2.5v3c0 3.33 2.3 6.44 4 7.2 1.7-.76 4-3.87 4-7.2v-3L12 6z" '
-    f'fill="{GOLD_BRIGHT}" fill-opacity="0.2" stroke="{GOLD_BRIGHT}" stroke-width="1"/>'
-    "</svg>"
+    '<circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>'
+    '<line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2"/>'
+    '</svg>'
+)
+
+_CHECK_ICON_SVG = (
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" '
+    'xmlns="http://www.w3.org/2000/svg">'
+    '<polyline points="20,6 9,17 4,12" stroke="currentColor" stroke-width="2.5" '
+    'stroke-linecap="round" stroke-linejoin="round"/>'
+    '</svg>'
 )
 
 _CLIPBOARD_ICON_SVG = (
@@ -1043,19 +1649,6 @@ _EMPTY_ICONS = {
 # HTML helper functions
 # ---------------------------------------------------------------------------
 
-
-def hero_card(title: str, copy: str, eyebrow: str | None = None) -> str:
-    """Render the app hero block."""
-    eyebrow_markup = (
-        f'<div class="hero-eyebrow">{_safe(eyebrow)}</div>' if eyebrow else ""
-    )
-    return (
-        '<section class="hero-card">'
-        f"{eyebrow_markup}"
-        f'<h1 class="hero-title">{_SHIELD_ICON_SVG}{_safe(title)}</h1>'
-        f'<p class="hero-copy">{_safe(copy)}</p>'
-        "</section>"
-    )
 
 
 def metric_card(label: str, value: str, caption: str, accent: str = "") -> str:
@@ -1138,15 +1731,38 @@ def nav_item(section_number: int, title: str, anchor: str) -> str:
         anchor: The HTML anchor id to link to.
     """
     safe_anchor = _safe(anchor)
-    scroll_js = f"parent.document.getElementById('{safe_anchor}')"
-    scroll_js += "?.scrollIntoView({behavior:'smooth',block:'start'})"
     return (
-        f'<a class="quick-nav-item" href="javascript:void(0)"'
-        f' onclick="{scroll_js}">'
+        f'<a class="quick-nav-item" data-scroll-target="{safe_anchor}">'
         f'<span class="nav-num">{section_number}</span>'
         f"<span>{_safe(title)}</span>"
         "</a>"
     )
+
+
+def report_scroll_script() -> str:
+    """Return an HTML/JS snippet that enables scroll-to-section nav links.
+
+    Inject once per report dialog via ``st.components.v1.html(snippet, height=0)``.
+    """
+    return """
+    <script>
+    (function() {
+        var root = parent.document;
+        if (root._reportNavAttached) return;
+        root._reportNavAttached = true;
+        root.addEventListener('click', function(e) {
+            var link = e.target.closest('[data-scroll-target]');
+            if (!link) return;
+            e.preventDefault();
+            var targetId = link.getAttribute('data-scroll-target');
+            var el = root.getElementById(targetId);
+            if (el) {
+                el.scrollIntoView({behavior: 'smooth', block: 'start'});
+            }
+        });
+    })();
+    </script>
+    """
 
 
 def definition_card(term: str, definition_text: str) -> str:
@@ -1180,6 +1796,134 @@ def empty_state(title: str, description: str, icon: str = "document") -> str:
         f'<div class="empty-desc">{_safe(description)}</div>'
         "</div>"
     )
+
+
+# ---------------------------------------------------------------------------
+# Chat, pipeline, and skeleton helpers
+# ---------------------------------------------------------------------------
+
+
+def chat_welcome(has_document: bool = False) -> str:
+    """Render centered welcome state for empty chat."""
+    if has_document:
+        return (
+            '<div class="chat-welcome">'
+            '<div class="chat-welcome-title">Ask a question about this agreement</div>'
+            '<div class="chat-welcome-desc">'
+            'Type a question below or choose from the suggestions.'
+            '</div>'
+            '</div>'
+        )
+    return (
+        '<div class="chat-welcome">'
+        '<div class="chat-welcome-title">Upload a credit agreement to get started</div>'
+        '<div class="chat-welcome-desc">'
+        'Use the sidebar to upload and index a PDF, then ask questions here.'
+        '</div>'
+        '</div>'
+    )
+
+
+def context_strip(
+    confidence: str,
+    chunk_count: int,
+    sections_used: str,
+    duration_seconds: float,
+) -> str:
+    """Render the compact context indicator below an assistant message."""
+    return (
+        '<div class="context-strip">'
+        f'<span>{chunk_count} chunks</span>'
+        f'<span>&middot;</span>'
+        f'<span>{_safe(sections_used)}</span>'
+        f'<span>&middot;</span>'
+        f'<span>{duration_seconds:.1f}s</span>'
+        '</div>'
+    )
+
+
+def stream_status(label: str) -> str:
+    """Render the animated streaming status line."""
+    return (
+        '<div class="stream-status">'
+        '<span class="pulse-dot"></span>'
+        f'<span>{_safe(label)}</span>'
+        '</div>'
+    )
+
+
+def message_timestamp(time_str: str) -> str:
+    """Render a subtle timestamp below a chat message."""
+    return f'<div class="msg-timestamp">{_safe(time_str)}</div>'
+
+
+def indexing_step(label: str, status: str, count: str = "") -> str:
+    """Render one step in the indexing pipeline.
+
+    Args:
+        label: Step description (e.g. "Extracting text").
+        status: One of "complete", "active", "pending".
+        count: Optional result count (e.g. "42 pages").
+    """
+    if status == "complete":
+        icon_html = f'<span class="step-icon">{_CHECK_ICON_SVG}</span>'
+        cls = "step-complete"
+    elif status == "active":
+        icon_html = '<span class="step-icon"><span class="pulse-dot"></span></span>'
+        cls = "step-active"
+    else:
+        icon_html = '<span class="step-icon" style="color:var(--muted);">&#9675;</span>'
+        cls = "step-pending"
+
+    count_html = f'<span class="step-count">{_safe(count)}</span>' if count else ""
+    return (
+        f'<div class="step-item {cls}">'
+        f'{icon_html}'
+        f'<span class="step-label">{_safe(label)}</span>'
+        f'{count_html}'
+        '</div>'
+    )
+
+
+def compact_stats_grid(
+    pages: int, sections: int, chunks: int, definitions: int
+) -> str:
+    """Render a 2x2 compact stats grid for the sidebar."""
+    def _stat(value: int, label: str) -> str:
+        return (
+            '<div class="stat-item-compact">'
+            f'<div class="stat-value">{value}</div>'
+            f'<div class="stat-label">{label}</div>'
+            '</div>'
+        )
+    return (
+        '<div class="stats-grid-compact">'
+        f'{_stat(pages, "Pages")}'
+        f'{_stat(sections, "Sections")}'
+        f'{_stat(chunks, "Chunks")}'
+        f'{_stat(definitions, "Definitions")}'
+        '</div>'
+    )
+
+
+def skeleton_lines(count: int = 4) -> str:
+    """Render placeholder skeleton lines for loading states."""
+    lines = ''.join('<div class="skeleton-line"></div>' for _ in range(count))
+    return f'<div class="section-skeleton">{lines}</div>'
+
+
+def report_nav_dot(status: str) -> str:
+    """Small status dot for report quick-nav items.
+
+    Args:
+        status: One of "complete", "generating", "pending".
+    """
+    cls = (
+        f"report-nav-dot-{status}"
+        if status in ("complete", "generating", "pending")
+        else "report-nav-dot-pending"
+    )
+    return f'<span class="report-nav-dot {cls}"></span>'
 
 
 # ---------------------------------------------------------------------------
@@ -1263,11 +2007,63 @@ def render_inline_citations(body: str, citations: list[InlineCitation]) -> str:
         markers left as plain text.
     """
     if not citations:
-        return _safe(body)
+        return format_chat_answer(body)
 
-    body_html = render_citation_markers(body, citations)
+    body_html = _render_body_with_tables_and_citations(body, citations)
     footnotes_html = render_citation_footnotes(citations)
     return body_html + footnotes_html
+
+
+def _render_body_with_tables_and_citations(
+    body: str, citations: list[InlineCitation]
+) -> str:
+    """Render body text with both table detection and citation markers."""
+    lines = body.split("\n")
+    table_buffer: list[str] = []
+    parts: list[str] = []
+
+    def flush_table() -> None:
+        if not table_buffer:
+            return
+        rows: list[list[str]] = []
+        for row_line in table_buffer:
+            if _TABLE_SEP_RE.match(row_line):
+                continue
+            cells = [c.strip() for c in row_line.strip().strip("|").split("|")]
+            rows.append(cells)
+        if not rows:
+            table_buffer.clear()
+            return
+        parts.append('<table class="rb-table">')
+        parts.append("<thead><tr>")
+        for cell in rows[0]:
+            parts.append(f"<th>{_safe(cell)}</th>")
+        parts.append("</tr></thead>")
+        if len(rows) > 1:
+            parts.append("<tbody>")
+            for row in rows[1:]:
+                parts.append("<tr>")
+                for cell in row:
+                    parts.append(f"<td>{_safe(cell)}</td>")
+                parts.append("</tr>")
+            parts.append("</tbody>")
+        parts.append("</table>")
+        table_buffer.clear()
+
+    for line in lines:
+        stripped = line.strip()
+        if _TABLE_ROW_RE.match(stripped) or _TABLE_SEP_RE.match(stripped):
+            table_buffer.append(stripped)
+            continue
+        if table_buffer:
+            flush_table()
+        if not stripped:
+            parts.append("<br/>")
+        else:
+            parts.append(render_citation_markers(stripped, citations))
+
+    flush_table()
+    return "\n".join(parts)
 
 
 def render_source_footnotes(sources: list[SourceCitation]) -> str:
@@ -1337,6 +2133,17 @@ _NUMBERED_RE = re.compile(r"^(\d+)\.\s+(.+)")
 # Bullet: "- text" or "* text"
 _BULLET_RE = re.compile(r"^[-*]\s+(.+)")
 
+# Table row: contains at least 2 pipe separators (at least 3 cells).
+# Handles "| col1 | col2 |", "| col1 | col2", and "col1 | col2 | col3".
+_TABLE_ROW_RE = re.compile(
+    r"^\|[^|]+\|.+"           # starts with |  e.g. "| A | B |"
+    r"|"
+    r"^[^|\n]+\|[^|\n]+\|"   # no leading |   e.g. "A | B | C"
+)
+
+# Table separator row: "| --- | --- |" or "|---|---|" or "--- | --- | ---"
+_TABLE_SEP_RE = re.compile(r"^\|?[\s:]*-{2,}[\s:]*(\|[\s:]*-{2,}[\s:]*)+\|?\s*$")
+
 
 def format_report_body(body: str, inline_citations: list[InlineCitation] | None = None) -> str:
     """Convert plain-text report section body to styled HTML.
@@ -1355,7 +2162,38 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
     # Each item in bullet_buffer is (html_text, list[sub_bullet_html])
     bullet_buffer: list[tuple[str, list[str]]] = []
     numbered_buffer: list[str] = []
+    table_buffer: list[str] = []
     parts: list[str] = []
+
+    def flush_table() -> None:
+        if not table_buffer:
+            return
+        # Parse table rows, skip separator rows
+        rows: list[list[str]] = []
+        for row_line in table_buffer:
+            if _TABLE_SEP_RE.match(row_line):
+                continue
+            cells = [c.strip() for c in row_line.strip().strip("|").split("|")]
+            rows.append(cells)
+        if not rows:
+            table_buffer.clear()
+            return
+        parts.append('<table class="rb-table">')
+        # First row is header
+        parts.append("<thead><tr>")
+        for cell in rows[0]:
+            parts.append(f"<th>{style_value(cell)}</th>")
+        parts.append("</tr></thead>")
+        if len(rows) > 1:
+            parts.append("<tbody>")
+            for row in rows[1:]:
+                parts.append("<tr>")
+                for cell in row:
+                    parts.append(f"<td>{style_value(cell)}</td>")
+                parts.append("</tr>")
+            parts.append("</tbody>")
+        parts.append("</table>")
+        table_buffer.clear()
 
     def flush_bullets() -> None:
         if bullet_buffer:
@@ -1396,7 +2234,19 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
         if not stripped:
             flush_bullets()
             flush_numbered()
+            flush_table()
             continue
+
+        # Table row detection
+        if _TABLE_ROW_RE.match(stripped) or _TABLE_SEP_RE.match(stripped):
+            flush_bullets()
+            flush_numbered()
+            table_buffer.append(stripped)
+            continue
+
+        # If we had table rows buffered but this line isn't a table row, flush
+        if table_buffer:
+            flush_table()
 
         # Check for sub-bullets (indented bullets under a main bullet)
         is_indented = line.startswith("    ") or line.startswith("\t")
@@ -1460,5 +2310,170 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
     # Final flush
     flush_bullets()
     flush_numbered()
+    flush_table()
 
     return "\n".join(parts)
+
+
+def format_chat_answer(body: str) -> str:
+    """Format a Q&A answer body with table support.
+
+    Detects pipe-delimited markdown tables and renders them as HTML.
+    Non-table lines are HTML-escaped.
+    """
+    lines = body.split("\n")
+    table_buffer: list[str] = []
+    parts: list[str] = []
+
+    def flush_table() -> None:
+        if not table_buffer:
+            return
+        rows: list[list[str]] = []
+        for row_line in table_buffer:
+            if _TABLE_SEP_RE.match(row_line):
+                continue
+            cells = [c.strip() for c in row_line.strip().strip("|").split("|")]
+            rows.append(cells)
+        if not rows:
+            table_buffer.clear()
+            return
+        parts.append('<table class="rb-table">')
+        parts.append("<thead><tr>")
+        for cell in rows[0]:
+            parts.append(f"<th>{_safe(cell)}</th>")
+        parts.append("</tr></thead>")
+        if len(rows) > 1:
+            parts.append("<tbody>")
+            for row in rows[1:]:
+                parts.append("<tr>")
+                for cell in row:
+                    parts.append(f"<td>{_safe(cell)}</td>")
+                parts.append("</tr>")
+            parts.append("</tbody>")
+        parts.append("</table>")
+        table_buffer.clear()
+
+    for line in lines:
+        stripped = line.strip()
+        if _TABLE_ROW_RE.match(stripped) or _TABLE_SEP_RE.match(stripped):
+            table_buffer.append(stripped)
+            continue
+        if table_buffer:
+            flush_table()
+        if not stripped:
+            parts.append("<br/>")
+        else:
+            parts.append(_safe(stripped))
+
+    flush_table()
+    return "\n".join(parts)
+
+
+def highlight_defined_terms(
+    html: str,
+    defs_index: DefinitionsIndex,
+    max_preview: int = 200,
+) -> str:
+    """Wrap defined terms in HTML with tooltip popups.
+
+    Scans text content (outside HTML tags) for defined terms and wraps
+    them with tooltip spans showing the term name, page, and preview.
+
+    Args:
+        html: HTML string to process.
+        defs_index: The definitions index with terms and entries.
+        max_preview: Max characters for definition preview.
+
+    Returns:
+        HTML with defined terms wrapped in tooltip spans.
+    """
+    if not defs_index.definitions:
+        return html
+
+    # Find terms present in the plain text (strip tags for search)
+    plain_text = re.sub(r"<[^>]+>", " ", html)
+    terms = defs_index.find_terms_in_text(plain_text)
+    if not terms:
+        return html
+
+    # Process longest terms first (already sorted by find_terms_in_text)
+    for term in terms:
+        entry = defs_index.definitions.get(term)
+        if entry is None:
+            continue
+
+        page_str = f"Page {entry.page_number}" if entry.page_number else "Page n/a"
+        is_long = len(entry.text) > max_preview
+
+        # Build tooltip HTML — plain text only, no links to other definitions
+        # to prevent cascading popup windows
+        expand_hint = '<span class="def-tip-expand">Click to expand</span>' if is_long else ""
+        # Strip any HTML tags from definition text so tooltip is always plain
+        plain_def_text = re.sub(r"<[^>]+>", "", _safe(entry.text))
+        tip_html = (
+            f'<span class="def-tip">'
+            f'<span class="def-tip-close" data-def-close>&times;</span>'
+            f'<span class="def-tip-term">{escape(term)}</span>'
+            f'<span class="def-tip-meta">{escape(page_str)}</span>'
+            f'<span class="def-tip-text">{plain_def_text}</span>'
+            f"{expand_hint}"
+            f"</span>"
+        )
+
+        # Replace term in text content only (not inside HTML tags)
+        # Split HTML into tags and text segments, only replace in text segments
+        escaped_term = re.escape(term)
+        term_pattern = re.compile(r"\b" + escaped_term + r"\b")
+
+        # Build a context-aware pattern that rejects matches inside longer
+        # capitalized phrases (e.g. "Communications" inside "Ribbon Communications Operating")
+        term_words = term.split()
+        is_single_common_word = len(term_words) == 1 and term[0].isupper()
+
+        segments = re.split(r"(<[^>]*>)", html)
+        new_segments: list[str] = []
+        replaced = False
+        # Track nesting: when inside a def-hl span, count span depth so
+        # we know when we've exited the def-hl wrapper completely.
+        in_def_hl = False
+        def_hl_span_depth = 0
+        for segment in segments:
+            if segment.startswith("<"):
+                if 'class="def-hl"' in segment:
+                    in_def_hl = True
+                    def_hl_span_depth = 1
+                elif in_def_hl:
+                    if segment.startswith("<span"):
+                        def_hl_span_depth += 1
+                    elif segment == "</span>":
+                        def_hl_span_depth -= 1
+                        if def_hl_span_depth == 0:
+                            in_def_hl = False
+                new_segments.append(segment)
+            else:
+                # Text segment -- only replace if outside def-hl spans
+                if not replaced and not in_def_hl:
+                    match = term_pattern.search(segment)
+                    if match and is_single_common_word:
+                        start, end = match.start(), match.end()
+                        before = segment[:start].rstrip()
+                        after = segment[end:].lstrip()
+                        prev_cap = bool(re.search(r"[A-Z][a-z]+\s*$", before))
+                        next_cap = bool(re.match(r"\s*[A-Z][a-z]", after))
+                        if prev_cap and next_cap:
+                            new_segments.append(segment)
+                            continue
+
+                    if match:
+                        pos = match.start()
+                        replacement = (
+                            f'<span class="def-hl">'
+                            f"{escape(match.group(0))}{tip_html}</span>"
+                        )
+                        segment = segment[:pos] + replacement + segment[match.end():]
+                        replaced = True
+                new_segments.append(segment)
+
+        html = "".join(new_segments)
+
+    return html
