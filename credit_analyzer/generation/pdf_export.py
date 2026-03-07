@@ -33,12 +33,6 @@ _SUCCESS: tuple[int, int, int] = (23, 99, 60)
 _WARNING: tuple[int, int, int] = (138, 90, 0)
 _DANGER: tuple[int, int, int] = (143, 36, 48)
 
-_CONFIDENCE_COLOURS: dict[str, tuple[int, int, int]] = {
-    "HIGH": _SUCCESS,
-    "MEDIUM": _WARNING,
-    "LOW": _DANGER,
-}
-
 # Page geometry (Letter)
 _PAGE_W = 215.9
 _MARGIN_L = 18.0
@@ -60,10 +54,6 @@ _FIELD_LABEL_RE = re.compile(r"^([A-Z][A-Z0-9 /\-&().,]+?:)", re.MULTILINE)
 # Matches standalone section headings: all-caps lines with no colon
 # e.g. "BORROWER INFORMATION", "PRICING TERMS", "INVESTMENTS"
 _SECTION_HEADING_RE = re.compile(r"^[A-Z][A-Z0-9 /&,\-()]{3,}$")
-
-
-def _confidence_colour(level: str) -> tuple[int, int, int]:
-    return _CONFIDENCE_COLOURS.get(level.upper(), _DANGER)
 
 
 # ---------------------------------------------------------------------------
@@ -138,8 +128,8 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
         self.line(x1=_MARGIN_L, y1=y, x2=_PAGE_W - _MARGIN_R, y2=y)  # pyright: ignore[reportUnknownMemberType]
         self.ln(3)  # pyright: ignore[reportUnknownMemberType]
 
-    def render_section_heading(self, number: int, title: str, confidence: str) -> None:
-        """Render a section heading with number, title, and confidence badge."""
+    def render_section_heading(self, number: int, title: str) -> None:
+        """Render a section heading with number and title."""
         # Ensure enough space for heading + some body
         if float(self.get_y()) > 240:  # pyright: ignore[reportUnknownMemberType]
             self.add_page()  # pyright: ignore[reportUnknownMemberType]
@@ -151,93 +141,131 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
         self.set_font(_FONT_FAMILY, "B", 11)  # pyright: ignore[reportUnknownMemberType]
         self.set_text_color(*_RBC_BLUE)  # pyright: ignore[reportUnknownMemberType]
         heading_text = f"Section {number}  |  {title}"
-        self.cell(w=_CONTENT_W - 25, h=7, text=heading_text, align="L")  # pyright: ignore[reportUnknownMemberType]
-
-        # Confidence badge
-        colour = _confidence_colour(confidence)
-        self.set_font(_FONT_FAMILY, "B", 7.5)  # pyright: ignore[reportUnknownMemberType]
-        self.set_text_color(*colour)  # pyright: ignore[reportUnknownMemberType]
-        self.cell(w=25, h=7, text=confidence.upper(), align="R")  # pyright: ignore[reportUnknownMemberType]
+        self.cell(w=_CONTENT_W, h=7, text=heading_text, align="L")  # pyright: ignore[reportUnknownMemberType]
         self.ln(9)  # pyright: ignore[reportUnknownMemberType]
 
     def _reset_x(self) -> None:
         """Reset cursor x to left margin to prevent drift."""
         self.set_x(_MARGIN_L)  # pyright: ignore[reportUnknownMemberType]
 
+    def render_table(self, table_lines: list[str]) -> None:
+        """Render a pipe-delimited markdown table."""
+        rows: list[list[str]] = []
+        for row_line in table_lines:
+            # Skip separator rows like |---|---|
+            if re.match(r"^\|[\s:]*-{2,}", row_line):
+                continue
+            cells = [c.strip() for c in row_line.strip().strip("|").split("|")]
+            rows.append(cells)
+        if not rows:
+            return
+        num_cols = max(len(r) for r in rows)
+        col_w = _CONTENT_W / num_cols if num_cols else _CONTENT_W
+        self.ln(2)  # pyright: ignore[reportUnknownMemberType]
+        # Header row
+        self.set_font(_FONT_FAMILY, "B", 8)  # pyright: ignore[reportUnknownMemberType]
+        self.set_fill_color(*_SURFACE)  # pyright: ignore[reportUnknownMemberType]
+        self.set_text_color(*_RBC_BLUE)  # pyright: ignore[reportUnknownMemberType]
+        self._reset_x()
+        for cell in rows[0]:
+            self.cell(w=col_w, h=5.5, text=cell, border=1, fill=True)  # pyright: ignore[reportUnknownMemberType]
+        self.ln()  # pyright: ignore[reportUnknownMemberType]
+        # Data rows
+        self.set_font(_FONT_FAMILY, "", 8)  # pyright: ignore[reportUnknownMemberType]
+        self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+        for row in rows[1:]:
+            self._reset_x()
+            for i, cell in enumerate(row):
+                self.cell(w=col_w, h=5, text=cell if i < num_cols else "", border=1)  # pyright: ignore[reportUnknownMemberType]
+            self.ln()  # pyright: ignore[reportUnknownMemberType]
+        self.ln(2)  # pyright: ignore[reportUnknownMemberType]
+
     def render_body_text(self, text: str) -> None:
         """Render section body with headings, field labels, and lists."""
-        for line in text.split("\n"):
+        lines = text.split("\n")
+        table_buf: list[str] = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
             stripped = line.strip()
-            if not stripped:
-                self.ln(2.5)  # pyright: ignore[reportUnknownMemberType]
+            # Detect table rows
+            if re.match(r"^\|.+\|", stripped):
+                table_buf.append(stripped)
+                i += 1
                 continue
+            if table_buf:
+                self.render_table(table_buf)
+                table_buf.clear()
+            self._render_body_line(line, stripped)
+            i += 1
+        if table_buf:
+            self.render_table(table_buf)
 
-            # Always reset x to left margin before rendering each line.
-            # Without this, cell() calls accumulate x-offset and bullets
-            # or numbered items drift to the right edge of the page.
+    def _render_body_line(self, line: str, stripped: str) -> None:
+        """Render a single body line."""
+        if not stripped:
+            self.ln(2.5)  # pyright: ignore[reportUnknownMemberType]
+            return
+
+        self._reset_x()
+        is_indented = line.startswith("    ") or line.startswith("\t")
+
+        # Standalone section heading (all-caps, no colon)
+        if _SECTION_HEADING_RE.match(stripped):
+            self.ln(3)  # pyright: ignore[reportUnknownMemberType]
             self._reset_x()
+            self.set_font(_FONT_FAMILY, "B", 8.5)  # pyright: ignore[reportUnknownMemberType]
+            self.set_text_color(*_RBC_BLUE)  # pyright: ignore[reportUnknownMemberType]
+            self.multi_cell(w=_CONTENT_W, h=5.5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
+            self._reset_x()
+            y = float(self.get_y())  # pyright: ignore[reportUnknownMemberType]
+            self.set_draw_color(*_BORDER)  # pyright: ignore[reportUnknownMemberType]
+            self.set_line_width(0.2)  # pyright: ignore[reportUnknownMemberType]
+            self.line(x1=_MARGIN_L, y1=y, x2=_MARGIN_L + _CONTENT_W * 0.5, y2=y)  # pyright: ignore[reportUnknownMemberType]
+            self.ln(2)  # pyright: ignore[reportUnknownMemberType]
+            return
 
-            # Detect indentation level for sub-bullets
-            is_indented = line.startswith("    ") or line.startswith("\t")
-
-            # Standalone section heading (all-caps, no colon)
-            if _SECTION_HEADING_RE.match(stripped):
-                self.ln(3)  # pyright: ignore[reportUnknownMemberType]
+        # Field label: value
+        match = _FIELD_LABEL_RE.match(stripped)
+        if match:
+            label = match.group(1)
+            rest = stripped[len(label):].strip()
+            self.set_font(_FONT_FAMILY, "B", 9)  # pyright: ignore[reportUnknownMemberType]
+            self.set_text_color(*_RBC_BLUE)  # pyright: ignore[reportUnknownMemberType]
+            self.multi_cell(w=_CONTENT_W, h=5, text=label)  # pyright: ignore[reportUnknownMemberType]
+            if rest:
                 self._reset_x()
-                self.set_font(_FONT_FAMILY, "B", 8.5)  # pyright: ignore[reportUnknownMemberType]
-                self.set_text_color(*_RBC_BLUE)  # pyright: ignore[reportUnknownMemberType]
-                self.multi_cell(w=_CONTENT_W, h=5.5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
-                # Thin underline
-                self._reset_x()
-                y = float(self.get_y())  # pyright: ignore[reportUnknownMemberType]
-                self.set_draw_color(*_BORDER)  # pyright: ignore[reportUnknownMemberType]
-                self.set_line_width(0.2)  # pyright: ignore[reportUnknownMemberType]
-                self.line(x1=_MARGIN_L, y1=y, x2=_MARGIN_L + _CONTENT_W * 0.5, y2=y)  # pyright: ignore[reportUnknownMemberType]
-                self.ln(2)  # pyright: ignore[reportUnknownMemberType]
-                continue
+                self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
+                if rest.upper().startswith("NOT FOUND"):
+                    self.set_text_color(*_MUTED)  # pyright: ignore[reportUnknownMemberType]
+                    self.set_font(_FONT_FAMILY, "I", 9)  # pyright: ignore[reportUnknownMemberType]
+                else:
+                    self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+                self.multi_cell(w=_CONTENT_W, h=5, text=rest)  # pyright: ignore[reportUnknownMemberType]
+            return
 
-            # Field label: value (render label bold, then value as flowing text)
-            match = _FIELD_LABEL_RE.match(stripped)
-            if match:
-                label = match.group(1)
-                rest = stripped[len(label):].strip()
-                self.set_font(_FONT_FAMILY, "B", 9)  # pyright: ignore[reportUnknownMemberType]
-                self.set_text_color(*_RBC_BLUE)  # pyright: ignore[reportUnknownMemberType]
-                self.multi_cell(w=_CONTENT_W, h=5, text=label)  # pyright: ignore[reportUnknownMemberType]
-                if rest:
-                    self._reset_x()
-                    self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
-                    # Grey out NOT FOUND values
-                    if rest.upper().startswith("NOT FOUND"):
-                        self.set_text_color(*_MUTED)  # pyright: ignore[reportUnknownMemberType]
-                        self.set_font(_FONT_FAMILY, "I", 9)  # pyright: ignore[reportUnknownMemberType]
-                    else:
-                        self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
-                    self.multi_cell(w=_CONTENT_W, h=5, text=rest)  # pyright: ignore[reportUnknownMemberType]
-                continue
-
-            # Bullet point (top-level or indented)
-            if stripped.startswith("- ") or stripped.startswith("* "):
-                indent = 8.0 if is_indented else 4.0
-                self.set_font(_FONT_FAMILY, "", 8.5)  # pyright: ignore[reportUnknownMemberType]
-                self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
-                self.set_x(_MARGIN_L + indent)  # pyright: ignore[reportUnknownMemberType]
-                bullet_text = f"\u2022  {stripped[2:]}"
-                self.multi_cell(w=_CONTENT_W - indent, h=5, text=bullet_text)  # pyright: ignore[reportUnknownMemberType]
-                continue
-
-            # Numbered item
-            if re.match(r"^\d+\.\s", stripped):
-                self.set_font(_FONT_FAMILY, "", 8.5)  # pyright: ignore[reportUnknownMemberType]
-                self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
-                self.set_x(_MARGIN_L + 4.0)  # pyright: ignore[reportUnknownMemberType]
-                self.multi_cell(w=_CONTENT_W - 4.0, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
-                continue
-
-            # Regular paragraph
-            self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
+        # Bullet point
+        if stripped.startswith("- ") or stripped.startswith("* "):
+            indent = 8.0 if is_indented else 4.0
+            self.set_font(_FONT_FAMILY, "", 8.5)  # pyright: ignore[reportUnknownMemberType]
             self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
-            self.multi_cell(w=_CONTENT_W, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
+            self.set_x(_MARGIN_L + indent)  # pyright: ignore[reportUnknownMemberType]
+            bullet_text = f"\u2022  {stripped[2:]}"
+            self.multi_cell(w=_CONTENT_W - indent, h=5, text=bullet_text)  # pyright: ignore[reportUnknownMemberType]
+            return
+
+        # Numbered item
+        if re.match(r"^\d+\.\s", stripped):
+            self.set_font(_FONT_FAMILY, "", 8.5)  # pyright: ignore[reportUnknownMemberType]
+            self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+            self.set_x(_MARGIN_L + 4.0)  # pyright: ignore[reportUnknownMemberType]
+            self.multi_cell(w=_CONTENT_W - 4.0, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
+            return
+
+        # Regular paragraph
+        self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
+        self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+        self.multi_cell(w=_CONTENT_W, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
 
     def render_inline_references(self, citations: list[InlineCitation]) -> None:
         """Render a numbered reference list below the section body."""
@@ -258,11 +286,6 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
                 ref_text += f" | {cite.section_title}"
             if pages:
                 ref_text += f" (pp. {pages})"
-            if cite.snippet:
-                short = cite.snippet[:150].replace("\n", " ")
-                if len(cite.snippet) > 150:
-                    short += "..."
-                ref_text += f" -- {short}"
             self._reset_x()
             self.multi_cell(w=_CONTENT_W, h=4, text=ref_text)  # pyright: ignore[reportUnknownMemberType]
 
@@ -328,8 +351,8 @@ def report_to_pdf_bytes(report: GeneratedReport) -> bytes:
     pdf.ln(6)  # pyright: ignore[reportUnknownMemberType]
     pdf.set_font(_FONT_FAMILY, "", 8.5)  # pyright: ignore[reportUnknownMemberType]
     for section in report.sections:
-        conf = section.confidence.upper() if section.status == "complete" else "ERROR"
-        toc_line = f"  {section.section_number}.  {section.title}   [{conf}]"
+        status_label = "" if section.status == "complete" else "  [ERROR]"
+        toc_line = f"  {section.section_number}.  {section.title}{status_label}"
         pdf.cell(w=_CONTENT_W, h=5, text=toc_line)  # pyright: ignore[reportUnknownMemberType]
         pdf.ln(5)  # pyright: ignore[reportUnknownMemberType]
     pdf.ln(4)  # pyright: ignore[reportUnknownMemberType]
@@ -339,7 +362,6 @@ def report_to_pdf_bytes(report: GeneratedReport) -> bytes:
         pdf.render_section_heading(
             section.section_number,
             section.title,
-            section.confidence,
         )
 
         if section.status == "error":
