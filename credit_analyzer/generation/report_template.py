@@ -1,6 +1,6 @@
 """Report section definitions, retrieval strategies, and extraction prompts.
 
-Encodes the structure from ``docs/REPORT_TEMPLATE.md`` as typed Python
+Encodes the report structure as typed Python
 objects.  Each ``ReportSectionTemplate`` defines:
 - retrieval queries (multiple per section for comprehensive coverage),
 - section_type filters for targeted retrieval,

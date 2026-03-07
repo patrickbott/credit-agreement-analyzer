@@ -15,7 +15,7 @@ from credit_analyzer.processing.chunker import Chunk
 from credit_analyzer.retrieval.hybrid_retriever import HybridChunk
 
 # ---------------------------------------------------------------------------
-# System prompts (mirrors docs/PROMPTS.md)
+# System prompts
 # ---------------------------------------------------------------------------
 
 QA_SYSTEM_PROMPT: str = """\
@@ -157,7 +157,7 @@ def build_context_prompt(
 ) -> tuple[str, list[HybridChunk]]:
     """Assemble the user prompt from retrieved context, definitions, history.
 
-    Follows the Q&A Context Template from ``docs/PROMPTS.md``.
+    Follows the in-code Q&A context template shape.
 
     When ``preamble_text`` is provided, it is always injected first as
     it contains headline terms (borrower, facility sizes, date) that

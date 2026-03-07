@@ -380,6 +380,10 @@ class QAEngine:
             inline_citations=inline_citations,
         )
 
+    def add_history_turn(self, question: str, answer: str) -> None:
+        """Append a historical turn to the conversation memory."""
+        self._history.append(ConversationTurn(question=question, answer=answer))
+
     def clear_history(self) -> None:
         """Clear conversation history to start a fresh Q&A session."""
         self._history.clear()
