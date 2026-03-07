@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from credit_analyzer.processing.definitions import DefinitionsIndex, DefinitionsParser
+from credit_analyzer.processing.definitions import DefinitionEntry, DefinitionsIndex, DefinitionsParser
 from credit_analyzer.processing.section_detector import DocumentSection
 
 
@@ -36,7 +36,7 @@ def test_parse_basic_definitions_straight_quotes() -> None:
 
     assert "Available Amount" in index.definitions
     assert "Borrower" in index.definitions
-    assert "sum of X and Y" in index.definitions["Available Amount"]
+    assert "sum of X and Y" in index.definitions["Available Amount"].text
 
 
 def test_parse_smart_quotes() -> None:
@@ -108,20 +108,20 @@ def test_parse_definition_boundary() -> None:
     index = parser.parse(section)
 
     # Term A's text should NOT contain Term B's definition
-    assert "second thing" not in index.definitions["Term A"]
-    assert "first thing" in index.definitions["Term A"]
+    assert "second thing" not in index.definitions["Term A"].text
+    assert "first thing" in index.definitions["Term A"].text
 
 
 # --- DefinitionsIndex tests ---
 
 
 def test_lookup_found() -> None:
-    index = DefinitionsIndex(definitions={"EBITDA": "earnings before..."})
+    index = DefinitionsIndex(definitions={"EBITDA": DefinitionEntry(text="earnings before...")})
     assert index.lookup("EBITDA") == "earnings before..."
 
 
 def test_lookup_not_found() -> None:
-    index = DefinitionsIndex(definitions={"EBITDA": "earnings before..."})
+    index = DefinitionsIndex(definitions={"EBITDA": DefinitionEntry(text="earnings before...")})
     assert index.lookup("Missing Term") is None
 
 
@@ -129,9 +129,9 @@ def test_find_terms_in_text() -> None:
     """find_terms_in_text returns matching terms sorted longest first."""
     index = DefinitionsIndex(
         definitions={
-            "Consolidated Net Income": "...",
-            "Net Income": "...",
-            "Borrower": "...",
+            "Consolidated Net Income": DefinitionEntry(text="..."),
+            "Net Income": DefinitionEntry(text="..."),
+            "Borrower": DefinitionEntry(text="..."),
         }
     )
     text = "The Borrower shall calculate Consolidated Net Income as follows."
@@ -146,7 +146,7 @@ def test_find_terms_in_text() -> None:
 
 def test_find_terms_no_partial_match() -> None:
     """Whole-word matching: 'Loan' should not match inside 'Loans' boundary issues."""
-    index = DefinitionsIndex(definitions={"Loan": "a single loan"})
+    index = DefinitionsIndex(definitions={"Loan": DefinitionEntry(text="a single loan")})
     # "Loan" as a whole word should match
     assert index.find_terms_in_text("The Loan is due.") == ["Loan"]
     # "Loans" is a different word but \b still matches at the boundary
@@ -156,16 +156,16 @@ def test_find_terms_no_partial_match() -> None:
 
 
 def test_find_terms_empty_text() -> None:
-    index = DefinitionsIndex(definitions={"Borrower": "..."})
+    index = DefinitionsIndex(definitions={"Borrower": DefinitionEntry(text="...")})
     assert index.find_terms_in_text("") == []
 
 
 def test_get_definitions_for_terms() -> None:
     index = DefinitionsIndex(
         definitions={
-            "EBITDA": "earnings...",
-            "Borrower": "the company",
-            "Agent": "the administrative agent",
+            "EBITDA": DefinitionEntry(text="earnings..."),
+            "Borrower": DefinitionEntry(text="the company"),
+            "Agent": DefinitionEntry(text="the administrative agent"),
         }
     )
     result = index.get_definitions_for_terms(["EBITDA", "Agent", "Missing"])
@@ -173,7 +173,7 @@ def test_get_definitions_for_terms() -> None:
 
 
 def test_get_definitions_for_terms_empty() -> None:
-    index = DefinitionsIndex(definitions={"EBITDA": "earnings..."})
+    index = DefinitionsIndex(definitions={"EBITDA": DefinitionEntry(text="earnings...")})
     assert index.get_definitions_for_terms([]) == {}
 
 
@@ -189,7 +189,7 @@ def test_parse_colon_style_straight_quotes() -> None:
 
     assert "ABR" in index.definitions
     assert "Benchmark" in index.definitions
-    assert "rate per annum" in index.definitions["ABR"]
+    assert "rate per annum" in index.definitions["ABR"].text
 
 
 def test_parse_colon_style_smart_quotes() -> None:
@@ -221,7 +221,7 @@ def test_clean_bamsec_noise() -> None:
     index = parser.parse(section)
 
     assert "Revolving Loans" in index.definitions
-    defn = index.definitions["Revolving Loans"]
+    defn = index.definitions["Revolving Loans"].text
     assert "BamSEC" not in defn
     assert "PDF page" not in defn
     assert "8-K" not in defn
@@ -240,4 +240,4 @@ def test_duplicate_terms_keeps_first() -> None:
     index = parser.parse(section)
 
     assert "Rate" in index.definitions
-    assert "initial rate" in index.definitions["Rate"]
+    assert "initial rate" in index.definitions["Rate"].text

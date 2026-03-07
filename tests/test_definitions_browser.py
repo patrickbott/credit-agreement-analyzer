@@ -1,5 +1,5 @@
 """Tests for definitions browser UI helpers."""
-from credit_analyzer.processing.definitions import DefinitionsIndex
+from credit_analyzer.processing.definitions import DefinitionEntry, DefinitionsIndex
 from credit_analyzer.ui.definitions_browser import (
     filter_definitions,
     paginate_definitions,
@@ -8,10 +8,10 @@ from credit_analyzer.ui.definitions_browser import (
 
 def _sample_index() -> DefinitionsIndex:
     return DefinitionsIndex(definitions={
-        "Consolidated EBITDA": "means, for any period, Consolidated Net Income plus...",
-        "Borrower": "means Holdings LLC, a Delaware limited liability company.",
-        "Applicable Rate": "means the applicable percentage per annum set forth below...",
-        "Net Income": "means the net income of the Borrower and its Subsidiaries...",
+        "Consolidated EBITDA": DefinitionEntry(text="means, for any period, Consolidated Net Income plus..."),
+        "Borrower": DefinitionEntry(text="means Holdings LLC, a Delaware limited liability company."),
+        "Applicable Rate": DefinitionEntry(text="means the applicable percentage per annum set forth below..."),
+        "Net Income": DefinitionEntry(text="means the net income of the Borrower and its Subsidiaries..."),
     })
 
 

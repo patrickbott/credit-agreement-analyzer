@@ -95,11 +95,19 @@ def build_processed_document(
         (section for section in sections if section.section_type == "definitions"),
         None,
     )
-    definitions_index = (
-        DefinitionsParser().parse(definitions_section)
-        if definitions_section is not None
-        else DefinitionsIndex(definitions={})
-    )
+    if definitions_section is not None:
+        # Gather page texts for the definitions section's page range
+        # so each term can be assigned its source page number.
+        page_texts = [
+            (page.page_number, page.text)
+            for page in extracted_document.pages
+            if definitions_section.page_start <= page.page_number <= definitions_section.page_end
+        ]
+        definitions_index = DefinitionsParser().parse(
+            definitions_section, page_texts=page_texts
+        )
+    else:
+        definitions_index = DefinitionsIndex(definitions={})
 
     _progress(progress_callback, "Chunking agreement text...", 0.18)
     chunks = Chunker().chunk_document(sections, definitions_index)

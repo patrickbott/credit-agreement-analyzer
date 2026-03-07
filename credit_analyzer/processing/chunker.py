@@ -231,7 +231,8 @@ class Chunker:
         small_terms: list[str] = []
         small_tokens = 0
 
-        for term, definition in definitions_index.definitions.items():
+        for term, entry in definitions_index.definitions.items():
+            definition = entry.text
             token_count = _count_tokens(definition, self._encoding)
 
             if token_count >= MIN_DEFINITION_CHUNK_TOKENS:
