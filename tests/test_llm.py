@@ -97,7 +97,7 @@ def test_ollama_complete(mock_client_cls: MagicMock) -> None:
     assert resp.text == "Facility: Revolving; Amount: $50M"
     assert resp.tokens_used == 42
     assert resp.model == "llama3:8b"
-    assert resp.duration_seconds == pytest.approx(2.5)
+    assert resp.duration_seconds == pytest.approx(2.5)  # type: ignore[reportUnknownMemberType]
 
     # Verify the call shape
     mock_client.chat.assert_called_once()

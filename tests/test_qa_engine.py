@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from credit_analyzer.generation.prompts import (
     ConversationTurn,
-    _format_page_numbers,
+    _format_page_numbers,  # type: ignore[reportPrivateUsage]
     build_context_prompt,
     truncate_definition,
 )
@@ -642,22 +642,22 @@ class TestStripMarkdown:
     """Tests for post-processing markdown removal."""
 
     def test_bold_stripped(self) -> None:
-        from credit_analyzer.generation.qa_engine import _strip_markdown
+        from credit_analyzer.generation.qa_engine import _strip_markdown  # type: ignore[reportPrivateUsage]
 
         assert _strip_markdown("This is **bold** text") == "This is bold text"
 
     def test_headers_stripped(self) -> None:
-        from credit_analyzer.generation.qa_engine import _strip_markdown
+        from credit_analyzer.generation.qa_engine import _strip_markdown  # type: ignore[reportPrivateUsage]
 
         assert _strip_markdown("## Section Title\nContent") == "Section Title\nContent"
 
     def test_backticks_stripped(self) -> None:
-        from credit_analyzer.generation.qa_engine import _strip_markdown
+        from credit_analyzer.generation.qa_engine import _strip_markdown  # type: ignore[reportPrivateUsage]
 
         assert _strip_markdown("Use `code` here") == "Use code here"
 
     def test_plain_text_unchanged(self) -> None:
-        from credit_analyzer.generation.qa_engine import _strip_markdown
+        from credit_analyzer.generation.qa_engine import _strip_markdown  # type: ignore[reportPrivateUsage]
 
         text = "Plain text with 1. numbered list"
         assert _strip_markdown(text) == text
