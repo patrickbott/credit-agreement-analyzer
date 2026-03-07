@@ -57,18 +57,9 @@ terms and cite the section/page so the reader can verify.
 provide supporting detail if needed.
 4. Use numbered lists for multi-part answers (e.g., baskets, step-downs, \
 conditions).
-
-At the end of your answer, provide:
-
-Confidence: HIGH | MEDIUM | LOW
-1. HIGH: Answer is directly stated in the provided context.
-2. MEDIUM: Requires some interpretation or context is partial.
-3. LOW: Context is limited; manual verification recommended.
-
-IMPORTANT: If the context does not contain sufficient information to \
-answer the question, confidence must be MEDIUM or LOW. You only see a \
-subset of the full agreement, so absence from the context does not mean \
-the provision does not exist elsewhere in the document.
+5. When the answer has a natural tabular structure (pricing grids, \
+step-downs, basket comparisons), present it as a compact table with \
+" | " column separators.
 """
 
 REFORMULATION_SYSTEM_PROMPT: str = """\

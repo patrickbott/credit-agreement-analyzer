@@ -46,6 +46,7 @@ from credit_analyzer.utils.text_cleaning import strip_markdown as _strip_markdow
 logger = logging.getLogger(__name__)
 
 ReportProgressCallback = Callable[[str, float], None]
+SectionCallback = Callable[["GeneratedSection"], None]
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +375,7 @@ class ReportGenerator:
         *,
         sections: Sequence[ReportSectionTemplate] = ALL_REPORT_SECTIONS,
         progress_callback: ReportProgressCallback | None = None,
+        section_callback: SectionCallback | None = None,
     ) -> GeneratedReport:
         """Generate a full report for a processed document.
 
@@ -382,6 +384,8 @@ class ReportGenerator:
             sections: Section templates to generate (defaults to all 10).
             progress_callback: Called with (label, progress_fraction) as
                 each section completes.
+            section_callback: Called with a completed ``GeneratedSection``
+                as soon as it finishes, enabling progressive rendering.
 
         Returns:
             A GeneratedReport with all sections.
@@ -406,7 +410,7 @@ class ReportGenerator:
                 0.0,
             )
             try:
-                generated = self._generate_section(
+                generated = self.generate_section(
                     first_section, document_id, system_prompt
                 )
             except Exception as exc:
@@ -426,6 +430,8 @@ class ReportGenerator:
                 )
 
             report.sections.append(generated)
+            if section_callback is not None:
+                section_callback(generated)
 
             if first_section.section_number == 1 and generated.status == "complete":
                 borrower = _extract_borrower_name(generated.body)
@@ -440,7 +446,7 @@ class ReportGenerator:
                 template: ReportSectionTemplate,
             ) -> GeneratedSection:
                 try:
-                    return self._generate_section(
+                    return self.generate_section(
                         template, document_id, system_prompt
                     )
                 except Exception as exc:
@@ -475,6 +481,8 @@ class ReportGenerator:
                         f"Completed: {section_result.title}",
                         completed_count / max(total, 1),
                     )
+                    if section_callback is not None:
+                        section_callback(section_result)
 
             # Append in original section order
             for t in remaining_sections:
@@ -486,7 +494,7 @@ class ReportGenerator:
         _notify(progress_callback, "Report complete.", 1.0)
         return report
 
-    def _generate_section(
+    def generate_section(
         self,
         template: ReportSectionTemplate,
         document_id: str,
@@ -575,7 +583,8 @@ def _extract_borrower_name(section_body: str) -> str | None:
         )
     if match:
         name = match.group(1).strip().rstrip(".")
-        # Strip trailing citation like "(Preamble, p. 9)"
+        # Strip trailing citation markers like [1] and (Preamble, p. 9)
+        name = re.sub(r"\s*\[\d+\]", "", name)
         name = re.sub(r"\s*\(.*$", "", name).strip().rstrip(",.")
         if name and name.upper() not in ("NOT FOUND", "NOT IDENTIFIED IN THE PROVIDED CONTEXT"):
             return name
