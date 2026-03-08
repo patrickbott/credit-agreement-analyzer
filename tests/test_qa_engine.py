@@ -5,6 +5,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from credit_analyzer.generation.prompts import (
+    CITE_SOURCES_ADDENDUM,
+    COMMENTARY_ADDENDUM,
     ConversationTurn,
     _format_page_numbers,  # type: ignore[reportPrivateUsage]
     build_context_prompt,
@@ -885,12 +887,6 @@ class TestPreambleInjection:
         assert len(result) == 1
         assert result[0].section_title == "Restricted Payments"
         assert result[0].page_numbers == [45]
-
-
-from credit_analyzer.generation.prompts import (
-    CITE_SOURCES_ADDENDUM,
-    COMMENTARY_ADDENDUM,
-)
 
 
 class TestPromptAddendums:
