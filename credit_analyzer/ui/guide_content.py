@@ -26,7 +26,7 @@ QUICK_START_STEPS: tuple[tuple[str, str, str], ...] = (
 GUIDE_SECTIONS: tuple[tuple[str, str], ...] = (
     (
         "Uploading a Document",
-        "<p>Click <strong>Agreement PDF</strong> in the sidebar and select a "
+        "<p>Use the file uploader in the sidebar to select a "
         "credit agreement in PDF format. Scanned documents are supported "
         "(the system uses OCR when needed).</p>"
         "<p>After selecting a file, click <strong>Index PDF</strong>. The app "
@@ -43,29 +43,42 @@ GUIDE_SECTIONS: tuple[tuple[str, str], ...] = (
         "keyword and semantic indexes</li>"
         "</ol>"
         "<p>Once indexing completes, the sidebar shows document stats "
-        "(pages, sections, chunks, and defined terms) and the chat is ready to use.</p>",
+        "(pages, sections, chunks, and defined terms) and the chat is ready to use. "
+        "To remove the current document and upload a different one, click "
+        "<strong>Remove Document</strong>.</p>",
     ),
     (
         "Asking Questions",
         "<p>Type any question about the agreement into the chat bar at the "
-        "bottom of the screen. The system searches the document for the most "
-        "relevant passages, then uses an AI model to compose an answer "
+        "bottom of the screen, or click one of the <strong>suggested questions</strong> "
+        "that appear when you first open a document. The system searches the document "
+        "for the most relevant passages, then uses an AI model to compose an answer "
         "grounded in the actual text.</p>"
+        "<p>Three toggle chips sit below the chat input to control answer behavior:</p>"
+        "<ul>"
+        "<li><strong>Extended Thinking</strong> &mdash; enables deeper, multi-step "
+        "reasoning for complex questions</li>"
+        "<li><strong>Show Sources</strong> &mdash; adds inline citation references "
+        "linking back to the source sections of the agreement</li>"
+        "<li><strong>Commentary</strong> &mdash; includes analytical commentary "
+        "alongside the factual answer</li>"
+        "</ul>"
         "<p>Each answer includes:</p>"
         "<ul>"
-        "<li><strong>Citations</strong> &mdash; inline references linking back "
-        "to the source sections of the agreement</li>"
         "<li><strong>Defined terms</strong> &mdash; highlighted words you can "
         "click to see their contractual definition</li>"
-        "<li><strong>Context strip</strong> &mdash; a summary bar showing how "
-        "many passages were used and which sections they came from</li>"
+        "<li><strong>Context strip</strong> &mdash; a summary bar showing "
+        "confidence, chunk count, sections used, and response time</li>"
         "<li><strong>Retrieved context</strong> &mdash; an expandable panel "
         "showing the raw passages the answer is based on</li>"
+        "<li><strong>Copy button</strong> &mdash; copies the answer text to your "
+        "clipboard</li>"
         "</ul>"
         "<p>The chat supports follow-up questions. Each new question is "
         "automatically interpreted in the context of the conversation so far, "
         "so you can ask &ldquo;What about exceptions to that?&rdquo; without "
-        "repeating the topic.</p>",
+        "repeating the topic. You can also edit and retry a previous question "
+        "to refine your results.</p>",
     ),
     (
         "Writing Effective Prompts",
@@ -104,19 +117,20 @@ GUIDE_SECTIONS: tuple[tuple[str, str], ...] = (
     ),
     (
         "Generating a Full Report",
-        "<p>Click <strong>Generate Report</strong> in the sidebar to produce a "
-        "structured 10-section analysis of the agreement. The report covers:</p>"
+        "<p>Click <strong>Generate Report</strong> in the sidebar to open the "
+        "section picker. You can select which of the 10 sections to include, "
+        "saving time and API calls when you only need specific areas:</p>"
         "<ol>"
         "<li>Transaction Overview</li>"
-        "<li>Credit Facilities</li>"
-        "<li>Pricing &amp; Economics</li>"
-        "<li>Conditions Precedent</li>"
-        "<li>Representations &amp; Warranties</li>"
-        "<li>Affirmative Covenants</li>"
-        "<li>Negative Covenants</li>"
+        "<li>Facility Summary and Pricing</li>"
+        "<li>Bank Group</li>"
         "<li>Financial Covenants</li>"
-        "<li>Events of Default</li>"
-        "<li>Miscellaneous Provisions</li>"
+        "<li>Negative Covenants &mdash; Debt Capacity</li>"
+        "<li>Negative Covenants &mdash; Liens</li>"
+        "<li>Negative Covenants &mdash; Restricted Payments</li>"
+        "<li>Negative Covenants &mdash; Investments and Asset Sales</li>"
+        "<li>Events of Default and Amendments</li>"
+        "<li>Other Notable Provisions</li>"
         "</ol>"
         "<p>Generation typically takes one to two minutes. You can watch each "
         "section appear in real time as it completes. Once finished:</p>"
@@ -125,7 +139,9 @@ GUIDE_SECTIONS: tuple[tuple[str, str], ...] = (
         "<li>Use the section navigation on the left to jump between sections</li>"
         "<li>Click the refresh icon on any section to regenerate just that part</li>"
         "<li>Use the copy button to copy a section to your clipboard</li>"
-        "</ul>",
+        "</ul>"
+        "<p>After a report is generated, the sidebar shows <strong>View Report</strong> "
+        "to reopen it and <strong>New Report</strong> to generate a fresh one.</p>",
     ),
     (
         "Browsing Definitions",

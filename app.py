@@ -46,6 +46,7 @@ from credit_analyzer.ui.theme import (
     render_source_footnotes,
     scroll_to_top_script,
     stream_status,
+    def_tooltip_click_script,
 )
 from credit_analyzer.ui.workflows import (
     ProcessedDocument,
@@ -122,6 +123,7 @@ def main() -> None:
 
     st.markdown(APP_CSS, unsafe_allow_html=True)
     st.html(clipboard_js_snippet(), unsafe_allow_javascript=True)
+    components.html(def_tooltip_click_script(), height=0)
 
     # DEBUG: outline sidebar children to find spacing culprit
     components.html("""<script>
@@ -772,30 +774,29 @@ def _render_main(
 
     _render_prompt_editor(active_document, provider)
 
-    # Chat option chips — rendered in keyed containers that JS
-    # relocates into stBottom so they sit near the chat input bar.
+    # Chat option chips — single container relocated by JS into stBottom.
+    # Each chip renders in a keyed wrapper (on/off) so CSS can style them.
+    # JS splits active chips above the input and inactive chips below it.
     deep = st.session_state.get("deep_analysis_enabled", False)
     cite = st.session_state.get("cite_sources_enabled", False)
     commentary = st.session_state.get("commentary_enabled", False)
 
-    any_chip_active = deep or cite or commentary
-    row_key = "chips-active" if any_chip_active else "chips-inactive"
-    with st.container(key=row_key):
+    with st.container(key="chips-bar"):
         chip_key = "chip-thinking-on" if deep else "chip-thinking-off"
         with st.container(key=chip_key):
-            if st.button("Extended Thinking", key="chip-extended-thinking"):
+            if st.button("Extended Thinking", key="btn-thinking"):
                 st.session_state["deep_analysis_enabled"] = not deep
                 st.rerun()
 
         chip_key2 = "chip-cite-on" if cite else "chip-cite-off"
         with st.container(key=chip_key2):
-            if st.button("Cite Sources", key="chip-cite-sources"):
+            if st.button("Cite Sources", key="btn-cite"):
                 st.session_state["cite_sources_enabled"] = not cite
                 st.rerun()
 
         chip_key3 = "chip-commentary-on" if commentary else "chip-commentary-off"
         with st.container(key=chip_key3):
-            if st.button("Commentary", key="chip-commentary"):
+            if st.button("Commentary", key="btn-commentary"):
                 st.session_state["commentary_enabled"] = not commentary
                 st.rerun()
 
