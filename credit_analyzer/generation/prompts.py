@@ -188,6 +188,21 @@ def truncate_definition(definition: str, max_chars: int = QA_DEFINITION_MAX_CHAR
 # ---------------------------------------------------------------------------
 
 
+def _reorder_lost_in_middle(chunks: list[HybridChunk]) -> list[HybridChunk]:
+    """Reorder chunks so highest-relevance appear at start and end.
+
+    LLMs attend more to content at the beginning and end of context and
+    less to the middle (Liu et al., 2023).  This places the best-scoring
+    chunks at both extremes and lower-scoring ones in the center.
+    """
+    if len(chunks) <= 2:
+        return chunks
+    ranked = sorted(chunks, key=lambda hc: hc.score, reverse=True)
+    start = ranked[0::2]  # 1st, 3rd, 5th … best at beginning
+    end = ranked[1::2]  # 2nd, 4th, 6th … reversed so best at end
+    return start + list(reversed(end))
+
+
 def build_context_prompt(
     chunks: Sequence[HybridChunk],
     definitions: dict[str, str],
@@ -255,12 +270,10 @@ def build_context_prompt(
         ))
         source_num += 1
 
-    # Sort chunks by document position so cross-references flow naturally.
-    # Score information is preserved on each HybridChunk for debugging/UI.
-    sorted_chunks = sorted(
-        chunks,
-        key=lambda hc: (hc.chunk.article_number, hc.chunk.section_id, hc.chunk.chunk_index),
-    )
+    # Reorder chunks to mitigate "lost in the middle" — LLMs attend more
+    # to context at the start and end than the middle.  Place the highest-
+    # relevance chunks at the beginning and end, lower-relevance in between.
+    sorted_chunks = _reorder_lost_in_middle(list(chunks))
 
     for hc in sorted_chunks:
         c = hc.chunk
