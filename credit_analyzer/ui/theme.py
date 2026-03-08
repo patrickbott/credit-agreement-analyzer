@@ -131,6 +131,20 @@ _CHIP_ICON_DISMISS = (
     "%3Cline x1='6' y1='6' x2='18' y2='18'/%3E"
     "%3C/svg%3E"
 )
+# Cite Sources — bookmark icon
+_CHIP_ICON_CITE = (
+    f"data:image/svg+xml,{_CIC}"
+    "%3Cpath d='M6 2h12a2 2 0 0 1 2 2v16l-8-4-8 4V4a2 2 0 0 1 2-2z'/%3E"
+    "%3C/svg%3E"
+)
+# Commentary — lightbulb icon
+_CHIP_ICON_COMMENTARY = (
+    f"data:image/svg+xml,{_CIC}"
+    "%3Cpath d='M9 18h6'/%3E"
+    "%3Cpath d='M10 22h4'/%3E"
+    "%3Cpath d='M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z'/%3E"
+    "%3C/svg%3E"
+)
 
 APP_CSS = f"""
 <style>
@@ -2298,6 +2312,188 @@ div[data-testid="stDownloadButton"] > button:hover {{
 
 /* ON — X dismiss icon, white */
 [data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button p::before {{
+  background-image: url("{_CHIP_ICON_DISMISS}");
+  opacity: 1;
+  filter: brightness(0) invert(1);
+}}
+
+/* ---- Cite Sources chip ---- */
+
+/* Chip button — shared base */
+[data-testid="stBottom"] .st-key-chip-cite-sources button {{
+  display: inline-flex !important;
+  align-items: center;
+  border-radius: 999px !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  padding: 0.25rem 0.75rem !important;
+  min-height: unset !important;
+  line-height: 1.4 !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease;
+  width: auto !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-cite-sources button p {{
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+}}
+
+/* OFF state — outlined box */
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button {{
+  background: {SURFACE} !important;
+  border: 1px solid {BORDER} !important;
+  color: {MUTED} !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button:hover {{
+  border-color: {NAVY_DEEP} !important;
+  color: {NAVY_DEEP} !important;
+  background: rgba(0, 61, 165, 0.04) !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button p {{
+  color: {MUTED} !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button:hover p {{
+  color: {NAVY_DEEP} !important;
+}}
+
+/* ON state — solid blue */
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-cite-sources button {{
+  background: {NAVY_DEEP} !important;
+  border: 1px solid {NAVY_DEEP} !important;
+  color: white !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-cite-sources button:hover {{
+  background: #002D7A !important;
+  border-color: #002D7A !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-cite-sources button p {{
+  color: white !important;
+}}
+
+/* Chip icon via CSS ::before */
+[data-testid="stBottom"] .st-key-chip-cite-sources button p::before {{
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  vertical-align: -2px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}}
+
+/* OFF — bookmark icon, muted */
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button p::before {{
+  background-image: url("{_CHIP_ICON_CITE}");
+  opacity: 0.5;
+}}
+
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button:hover p::before {{
+  opacity: 0.8;
+}}
+
+/* ON — X dismiss icon, white */
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-cite-sources button p::before {{
+  background-image: url("{_CHIP_ICON_DISMISS}");
+  opacity: 1;
+  filter: brightness(0) invert(1);
+}}
+
+/* ---- Commentary chip ---- */
+
+/* Chip button — shared base */
+[data-testid="stBottom"] .st-key-chip-commentary button {{
+  display: inline-flex !important;
+  align-items: center;
+  border-radius: 999px !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  padding: 0.25rem 0.75rem !important;
+  min-height: unset !important;
+  line-height: 1.4 !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease;
+  width: auto !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-commentary button p {{
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+}}
+
+/* OFF state — outlined box */
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button {{
+  background: {SURFACE} !important;
+  border: 1px solid {BORDER} !important;
+  color: {MUTED} !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button:hover {{
+  border-color: {NAVY_DEEP} !important;
+  color: {NAVY_DEEP} !important;
+  background: rgba(0, 61, 165, 0.04) !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button p {{
+  color: {MUTED} !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button:hover p {{
+  color: {NAVY_DEEP} !important;
+}}
+
+/* ON state — solid blue */
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-commentary button {{
+  background: {NAVY_DEEP} !important;
+  border: 1px solid {NAVY_DEEP} !important;
+  color: white !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-commentary button:hover {{
+  background: #002D7A !important;
+  border-color: #002D7A !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-commentary button p {{
+  color: white !important;
+}}
+
+/* Chip icon via CSS ::before */
+[data-testid="stBottom"] .st-key-chip-commentary button p::before {{
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  vertical-align: -2px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}}
+
+/* OFF — lightbulb icon, muted */
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button p::before {{
+  background-image: url("{_CHIP_ICON_COMMENTARY}");
+  opacity: 0.5;
+}}
+
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button:hover p::before {{
+  opacity: 0.8;
+}}
+
+/* ON — X dismiss icon, white */
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-commentary button p::before {{
   background-image: url("{_CHIP_ICON_DISMISS}");
   opacity: 1;
   filter: brightness(0) invert(1);
