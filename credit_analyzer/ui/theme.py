@@ -3426,16 +3426,23 @@ def chat_chips_relocate_script() -> str:
     var doc = parent.document;
     var chatInput = doc.querySelector('[data-testid="stChatInput"]');
     if (!chatInput) return;
-    var parent_el = chatInput.parentElement;
-    if (!parent_el) return;
-    // chip-on goes BEFORE the chat input, chip-off goes AFTER
+    // Walk up from the chat input to find the stBottom > div container
+    var bottom = doc.querySelector('[data-testid="stBottom"] > div');
+    if (!bottom) return;
+    // Find the direct child of bottom that contains the chat input
+    var inputWrapper = chatInput;
+    while (inputWrapper && inputWrapper.parentElement !== bottom) {
+        inputWrapper = inputWrapper.parentElement;
+    }
+    if (!inputWrapper) return;
+    // chip-on goes BEFORE the input wrapper, chip-off goes AFTER
     var onEl = doc.querySelector('.st-key-chip-on');
     var offEl = doc.querySelector('.st-key-chip-off');
-    if (onEl && !parent_el.contains(onEl)) {
-        parent_el.insertBefore(onEl, chatInput);
+    if (onEl && !bottom.contains(onEl)) {
+        bottom.insertBefore(onEl, inputWrapper);
     }
-    if (offEl && !parent_el.contains(offEl)) {
-        chatInput.insertAdjacentElement('afterend', offEl);
+    if (offEl && !bottom.contains(offEl)) {
+        inputWrapper.insertAdjacentElement('afterend', offEl);
     }
     // Clean up old containers from previous versions
     ['chat-chips-on', 'chat-chips-off'].forEach(function(id) {
