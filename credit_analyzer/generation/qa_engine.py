@@ -516,7 +516,7 @@ class QAEngine:
         full_text_parts: list[str] = []
         start = __import__("time").perf_counter()
         for token in self._llm.stream_complete(
-            system_prompt=QA_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             user_prompt=user_prompt,
             max_tokens=self._max_gen_tokens,
         ):
