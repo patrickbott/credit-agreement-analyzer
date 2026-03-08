@@ -193,6 +193,10 @@ class QAEngine:
         if commentary:
             system_prompt += COMMENTARY_ADDENDUM
 
+        # Commentary appends 3-5 market-context bullets which can easily
+        # push output past the default 1024-token limit, causing truncation.
+        effective_max_tokens = self._max_gen_tokens * 2 if commentary else self._max_gen_tokens
+
         recent_history = self._history[-self._max_history :]
         retrieval_rounds = 1
 
@@ -210,7 +214,7 @@ class QAEngine:
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.0,
-            max_tokens=self._max_gen_tokens,
+            max_tokens=effective_max_tokens,
         )
         logger.debug("LLM response time: %.2fs", time.perf_counter() - llm_start)
 
@@ -254,7 +258,7 @@ class QAEngine:
                     system_prompt=final_prompt,
                     user_prompt=user_prompt,
                     temperature=0.0,
-                    max_tokens=self._max_gen_tokens,
+                    max_tokens=effective_max_tokens,
                 )
                 raw_text = llm_response.text
 
@@ -329,6 +333,10 @@ class QAEngine:
         if commentary:
             system_prompt += COMMENTARY_ADDENDUM
 
+        # Commentary appends 3-5 market-context bullets which can easily
+        # push output past the default 1024-token limit, causing truncation.
+        effective_max_tokens = self._max_gen_tokens * 2 if commentary else self._max_gen_tokens
+
         recent_history = self._history[-self._max_history:]
         retrieval_rounds = 1
 
@@ -347,7 +355,7 @@ class QAEngine:
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     temperature=0.0,
-                    max_tokens=self._max_gen_tokens,
+                    max_tokens=effective_max_tokens,
                 )
                 _, follow_up = _extract_needs_context(preliminary.text)
                 if follow_up is None:
@@ -387,7 +395,7 @@ class QAEngine:
         for token in self._llm.stream_complete(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            max_tokens=self._max_gen_tokens,
+            max_tokens=effective_max_tokens,
         ):
             full_text_parts.append(token)
             yield token
