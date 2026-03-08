@@ -290,6 +290,8 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
             if rest:
                 self._reset_x()
                 self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
+                # Defensive fallback: prompts instruct omission, but render
+                # gracefully if a model still produces "NOT FOUND" text.
                 if rest.upper().startswith("NOT FOUND"):
                     self.set_text_color(*_MUTED)  # pyright: ignore[reportUnknownMemberType]
                     self.set_font(_FONT_FAMILY, "I", 9)  # pyright: ignore[reportUnknownMemberType]

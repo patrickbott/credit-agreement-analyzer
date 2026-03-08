@@ -7,6 +7,7 @@ assembly, conversation history, response parsing, and source citations.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Generator, Sequence
 from dataclasses import dataclass, field
 
@@ -370,7 +371,7 @@ class QAEngine:
 
         # Stream tokens from LLM
         full_text_parts: list[str] = []
-        start = __import__("time").perf_counter()
+        start = time.perf_counter()
         for token in self._llm.stream_complete(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
@@ -378,7 +379,7 @@ class QAEngine:
         ):
             full_text_parts.append(token)
             yield token
-        duration = __import__("time").perf_counter() - start
+        duration = time.perf_counter() - start
 
         raw_text = "".join(full_text_parts)
         # Strip any lingering <needs_context> tag
@@ -453,7 +454,7 @@ class QAEngine:
                     "Reformulated '%s' -> '%s'", question, reformulated
                 )
                 return reformulated
-        except Exception:
+        except Exception:  # Intentionally broad: best-effort reformulation must not crash Q&A
             logger.warning(
                 "Reformulation failed, using original question",
                 exc_info=True,

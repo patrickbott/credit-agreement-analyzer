@@ -19,8 +19,8 @@ __all__ = [
     "build_citations_from_chunks",
     "citations_from_chunks",
     "enrich_citations",
-    "enrich_inline_citations",
-    "inline_citations_from_sources",
+    "enrich_inline_citations",  # Only used in tests (via response_parser *)
+    "inline_citations_from_sources",  # Only used in tests (via response_parser *)
 ]
 
 # ---------------------------------------------------------------------------
@@ -276,6 +276,8 @@ def build_citations_from_chunks(
     citations: list[InlineCitation] = []
     for old_num in seen_order:
         idx = old_num - 1
+        if idx < 0 or idx >= len(chunks):
+            continue  # Defensive: skip if bounds validation above changes
         hc = chunks[idx]
         citations.append(InlineCitation(
             marker_number=renumber_map[old_num],

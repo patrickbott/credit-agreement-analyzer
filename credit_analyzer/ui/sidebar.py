@@ -100,7 +100,7 @@ def remove_document(document_id: str) -> None:
     for key in list(st.session_state.keys()):
         if "file_uploader" in str(key).lower() or "FormSubmitter" in str(key):
             st.session_state.pop(key, None)
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(KeyError, ValueError):
         load_vector_store().delete_collection(document_id)
     # Switch active document to the next available, or None.
     remaining = list(documents.keys())
