@@ -5,8 +5,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from credit_analyzer.generation.prompts import (
+    CITE_SOURCES_ADDENDUM,
+    COMMENTARY_ADDENDUM,
     ConversationTurn,
-    _format_page_numbers,
+    _format_page_numbers,  # type: ignore[reportPrivateUsage]
     build_context_prompt,
     truncate_definition,
 )
@@ -582,6 +584,50 @@ class TestQAEngine:
         for call in llm.complete.call_args_list:
             assert call.kwargs["temperature"] == 0.0
 
+    def test_cite_sources_adds_addendum(self) -> None:
+        """cite_sources=True appends the cite sources addendum to the system prompt."""
+        retriever = MagicMock(spec=HybridRetriever)
+        retriever.retrieve.return_value = _make_retrieval_result()
+
+        llm = MagicMock()
+        llm.complete = MagicMock(return_value=_mock_llm_response())
+
+        engine = QAEngine(retriever=retriever, llm=llm)
+        engine.ask("Q?", "doc1", cite_sources=True)
+
+        system_prompt: str = llm.complete.call_args.kwargs["system_prompt"]
+        assert "INLINE CITATIONS" in system_prompt
+
+    def test_commentary_adds_addendum(self) -> None:
+        """commentary=True appends the commentary addendum to the system prompt."""
+        retriever = MagicMock(spec=HybridRetriever)
+        retriever.retrieve.return_value = _make_retrieval_result()
+
+        llm = MagicMock()
+        llm.complete = MagicMock(return_value=_mock_llm_response())
+
+        engine = QAEngine(retriever=retriever, llm=llm)
+        engine.ask("Q?", "doc1", commentary=True)
+
+        system_prompt: str = llm.complete.call_args.kwargs["system_prompt"]
+        assert "COMMENTARY MODE" in system_prompt
+
+    def test_all_addendums_stack(self) -> None:
+        """All addendums can be active simultaneously."""
+        retriever = MagicMock(spec=HybridRetriever)
+        retriever.retrieve.return_value = _make_retrieval_result()
+
+        llm = MagicMock()
+        llm.complete = MagicMock(return_value=_mock_llm_response())
+
+        engine = QAEngine(retriever=retriever, llm=llm)
+        engine.ask("Q?", "doc1", deep_analysis=True, cite_sources=True, commentary=True)
+
+        system_prompt: str = llm.complete.call_args.kwargs["system_prompt"]
+        assert "INLINE CITATIONS" in system_prompt
+        assert "COMMENTARY MODE" in system_prompt
+        assert "ADDITIONAL CONTEXT RETRIEVAL" in system_prompt
+
     def test_empty_retrieval_result(self) -> None:
         """Engine handles empty retrieval gracefully."""
         engine = self._make_engine(
@@ -642,22 +688,22 @@ class TestStripMarkdown:
     """Tests for post-processing markdown removal."""
 
     def test_bold_stripped(self) -> None:
-        from credit_analyzer.generation.qa_engine import _strip_markdown
+        from credit_analyzer.generation.qa_engine import _strip_markdown  # type: ignore[reportPrivateUsage]
 
         assert _strip_markdown("This is **bold** text") == "This is bold text"
 
     def test_headers_stripped(self) -> None:
-        from credit_analyzer.generation.qa_engine import _strip_markdown
+        from credit_analyzer.generation.qa_engine import _strip_markdown  # type: ignore[reportPrivateUsage]
 
         assert _strip_markdown("## Section Title\nContent") == "Section Title\nContent"
 
     def test_backticks_stripped(self) -> None:
-        from credit_analyzer.generation.qa_engine import _strip_markdown
+        from credit_analyzer.generation.qa_engine import _strip_markdown  # type: ignore[reportPrivateUsage]
 
         assert _strip_markdown("Use `code` here") == "Use code here"
 
     def test_plain_text_unchanged(self) -> None:
-        from credit_analyzer.generation.qa_engine import _strip_markdown
+        from credit_analyzer.generation.qa_engine import _strip_markdown  # type: ignore[reportPrivateUsage]
 
         text = "Plain text with 1. numbered list"
         assert _strip_markdown(text) == text
@@ -841,3 +887,20 @@ class TestPreambleInjection:
         assert len(result) == 1
         assert result[0].section_title == "Restricted Payments"
         assert result[0].page_numbers == [45]
+
+
+class TestPromptAddendums:
+    """Tests for Cite Sources and Commentary prompt addendums."""
+
+    def test_cite_sources_addendum_exists(self) -> None:
+        assert len(CITE_SOURCES_ADDENDUM) > 50
+        assert "section" in CITE_SOURCES_ADDENDUM.lower()
+
+    def test_commentary_addendum_exists(self) -> None:
+        assert len(COMMENTARY_ADDENDUM) > 50
+        assert "commentary" in COMMENTARY_ADDENDUM.lower()
+
+    def test_commentary_addendum_is_optional(self) -> None:
+        """Commentary should instruct the LLM that it's optional, not required."""
+        lower = COMMENTARY_ADDENDUM.lower()
+        assert "omit" in lower or "only when" in lower or "if relevant" in lower or "do not" in lower

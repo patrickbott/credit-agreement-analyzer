@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import re
+import time
 from collections import Counter
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -23,38 +25,21 @@ from credit_analyzer.processing.chunker import Chunk
 from credit_analyzer.processing.definitions import DefinitionsIndex
 from credit_analyzer.retrieval.bm25_store import BM25Store
 from credit_analyzer.retrieval.embedder import Embedder
+from credit_analyzer.retrieval.fusion import (
+    compute_term_document_frequency as _compute_term_document_frequency,
+)
+from credit_analyzer.retrieval.fusion import (
+    merge_multi_query_results as merge_multi_query_results,
+)
+from credit_analyzer.retrieval.query_helpers import (
+    query_term_overlap as _query_term_overlap,
+)
 from credit_analyzer.retrieval.reranker import Reranker
 from credit_analyzer.retrieval.vector_store import VectorStore
 
-SourceLabel = Literal["vector", "bm25", "both", "definition"]
+logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Synonym-aware sibling filter
-# ---------------------------------------------------------------------------
-
-# Synonym groups for legal/financial terms.  When a query word is a key,
-# any word in the corresponding frozenset counts as a match in sibling text.
-_LEGAL_SYNONYMS: dict[str, frozenset[str]] = {
-    "spread": frozenset({"margin", "rate", "spread", "pricing"}),
-    "margin": frozenset({"spread", "margin", "rate", "pricing"}),
-    "rate": frozenset({"spread", "margin", "rate", "interest", "pricing"}),
-    "covenant": frozenset({"covenant", "restriction", "limitation", "prohibition"}),
-    "lien": frozenset({"lien", "security", "encumbrance", "pledge", "collateral"}),
-    "debt": frozenset({"debt", "indebtedness", "borrowing", "obligation", "loan"}),
-    "payment": frozenset({"payment", "distribution", "dividend", "disbursement"}),
-    "basket": frozenset({"basket", "exception", "carve-out", "permitted"}),
-    "facility": frozenset({"facility", "commitment", "loan", "credit"}),
-    "prepayment": frozenset({"prepayment", "repayment", "amortization", "redemption"}),
-    "investment": frozenset({"investment", "acquisition", "purchase"}),
-    "default": frozenset({"default", "breach", "violation", "event"}),
-    "maturity": frozenset({"maturity", "termination", "expiration"}),
-    "leverage": frozenset({"leverage", "ratio", "coverage", "test"}),
-}
-
-_STOP_WORDS: frozenset[str] = frozenset({
-    "that", "this", "with", "from", "have", "been", "were", "shall",
-    "such", "each", "upon", "into", "under", "more", "than", "also",
-})
+SourceLabel = Literal["vector", "bm25", "both", "definition", "preamble"]
 
 
 @dataclass
@@ -84,112 +69,6 @@ class RetrievalResult:
 
     chunks: list[HybridChunk]
     injected_definitions: dict[str, str]
-
-
-def _query_term_overlap(query: str, text: str, min_overlap: int = 1) -> bool:
-    """Check whether *text* shares enough topical vocabulary with *query*.
-
-    Used to filter sibling chunks during expansion so that completely
-    unrelated siblings (e.g. a definitions sibling about "Tax" when the
-    query is about "liens") are excluded.
-
-    Query words are expanded with ``_LEGAL_SYNONYMS`` so that e.g.
-    "spread" also matches sibling text containing "margin".
-    """
-    raw_words = (w.strip(".,;:!?()[]{}\"'") for w in query.split())
-    query_words = {
-        w.lower() for w in raw_words
-        if len(w) >= 4 and w.lower() not in _STOP_WORDS
-    }
-    if not query_words:
-        return True  # Can't filter, allow through
-
-    # Expand query words with synonyms (try singular form too)
-    expanded_words: set[str] = set()
-    for w in query_words:
-        expanded_words.add(w)
-        if w in _LEGAL_SYNONYMS:
-            expanded_words.update(_LEGAL_SYNONYMS[w])
-        elif w.endswith("s") and w[:-1] in _LEGAL_SYNONYMS:
-            expanded_words.update(_LEGAL_SYNONYMS[w[:-1]])
-
-    text_lower = text.lower()
-    overlap = sum(1 for w in expanded_words if w in text_lower)
-    return overlap >= min_overlap
-
-
-def merge_multi_query_results(
-    per_query_results: list[list[HybridChunk]],
-    per_query_definitions: list[dict[str, str]],
-    top_k: int,
-) -> RetrievalResult:
-    """Merge results from multiple queries using round-robin interleaving.
-
-    Ensures each query contributes proportionally to the final result set,
-    preventing dominant queries from crowding out niche but important results.
-
-    Args:
-        per_query_results: Lists of HybridChunks, one list per query.
-        per_query_definitions: Injected definitions dicts, one per query.
-        top_k: Maximum number of chunks in the merged result.
-
-    Returns:
-        Merged RetrievalResult with round-robin interleaved chunks and
-        combined definitions.
-    """
-    seen_ids: set[str] = set()
-    merged: list[HybridChunk] = []
-    all_definitions: dict[str, str] = {}
-
-    for defs in per_query_definitions:
-        all_definitions.update(defs)
-
-    # Round-robin: take one chunk from each query in turn
-    max_rank = max((len(r) for r in per_query_results), default=0)
-    for rank in range(max_rank):
-        if len(merged) >= top_k:
-            break
-        for q_results in per_query_results:
-            if rank < len(q_results):
-                hc = q_results[rank]
-                if hc.chunk.chunk_id not in seen_ids:
-                    seen_ids.add(hc.chunk.chunk_id)
-                    merged.append(hc)
-                    if len(merged) >= top_k:
-                        break
-
-    return RetrievalResult(chunks=merged, injected_definitions=all_definitions)
-
-
-def _compute_term_document_frequency(
-    chunks: Sequence[Chunk],
-    definitions_index: DefinitionsIndex,
-) -> dict[str, float]:
-    """Compute fraction of chunks each defined term appears in.
-
-    Used to automatically identify ubiquitous boilerplate terms like
-    "Borrower" and "Lender" that appear in nearly every section.
-    Agreement-agnostic: adapts to whatever document is indexed.
-
-    Args:
-        chunks: All chunks in the index.
-        definitions_index: The definitions index for term matching.
-
-    Returns:
-        Mapping from term name to fraction of chunks containing it
-        (0.0 to 1.0).
-    """
-    if not chunks:
-        return {}
-
-    term_counts: Counter[str] = Counter()
-    for chunk in chunks:
-        # Use a set so each chunk only counts once per term
-        unique_terms = set(definitions_index.find_terms_in_text(chunk.text))
-        term_counts.update(unique_terms)
-
-    total = len(chunks)
-    return {term: count / total for term, count in term_counts.items()}
 
 
 class HybridRetriever:
@@ -238,6 +117,12 @@ class HybridRetriever:
             section_chunks[section_id].sort(key=lambda c: c.chunk_index)
         self._section_chunks: dict[str, list[Chunk]] = section_chunks
 
+        # Cache for find_terms_in_text results keyed by chunk_id.
+        # Avoids redundant regex scans when the same chunk text is
+        # inspected during retrieval, sibling expansion, and definition
+        # injection within the same query.
+        self._chunk_terms_cache: dict[str, list[str]] = {}
+
         # Compute corpus-level term frequency for ubiquity detection.
         self._term_doc_freq = _compute_term_document_frequency(
             list(bm25_store.chunks), definitions_index,
@@ -247,6 +132,15 @@ class HybridRetriever:
             for term, freq in self._term_doc_freq.items()
             if freq > DEFINITION_UBIQUITY_THRESHOLD
         )
+
+    def _find_chunk_terms(self, chunk: Chunk) -> list[str]:
+        """Return defined terms in *chunk*, using a per-instance cache."""
+        cached = self._chunk_terms_cache.get(chunk.chunk_id)
+        if cached is not None:
+            return cached
+        terms = self._definitions_index.find_terms_in_text(chunk.text)
+        self._chunk_terms_cache[chunk.chunk_id] = terms
+        return terms
 
     def retrieve(
         self,
@@ -273,6 +167,9 @@ class HybridRetriever:
         Returns:
             RetrievalResult with ranked chunks and optional definitions.
         """
+        logger.info("Hybrid retrieval: query=%r, top_k=%d", query[:120], top_k)
+        retrieval_start = time.perf_counter()
+
         # Over-fetch candidates for reranking when a reranker is available.
         rerank_k = top_k * RERANK_CANDIDATES_MULTIPLIER if self._reranker else top_k
         fetch_k = rerank_k
@@ -296,6 +193,11 @@ class HybridRetriever:
             top_k=fetch_k,
             section_filter=section_filter,
             section_types_exclude=section_types_exclude,
+        )
+
+        logger.debug(
+            "Retrieval sources: vector_hits=%d, bm25_hits=%d",
+            len(vector_results), len(bm25_results),
         )
 
         # --- Reciprocal Rank Fusion (RRF) ---
@@ -337,7 +239,9 @@ class HybridRetriever:
 
         # --- Cross-encoder reranking ---
         if self._reranker and hybrid_chunks:
+            rerank_start = time.perf_counter()
             hybrid_chunks = self._reranker.rerank(query, hybrid_chunks, top_k)
+            logger.debug("Reranking took %.2fs", time.perf_counter() - rerank_start)
         else:
             hybrid_chunks = hybrid_chunks[:top_k]
 
@@ -364,6 +268,12 @@ class HybridRetriever:
             hybrid_chunks, injected = self._inject_and_expand_definitions(
                 query, hybrid_chunks, top_k,
             )
+
+        retrieval_duration = time.perf_counter() - retrieval_start
+        logger.info(
+            "Hybrid retrieval complete: chunks=%d, injected_defs=%d, time=%.2fs",
+            len(hybrid_chunks), len(injected), retrieval_duration,
+        )
 
         return RetrievalResult(chunks=hybrid_chunks, injected_definitions=injected)
 
@@ -520,7 +430,7 @@ class HybridRetriever:
         # not just incidentally containing a common word.
         metadata_terms: set[str] = set()
         for hc in chunks:
-            terms = self._definitions_index.find_terms_in_text(hc.chunk.text)
+            terms = self._find_chunk_terms(hc.chunk)
             chunk_term_counts.update(terms)
             metadata_terms.update(hc.chunk.defined_terms_present)
 
@@ -726,7 +636,14 @@ class HybridRetriever:
         # Insert promoted chunks
         if promoted_terms:
             scores = [hc.score for hc in chunks]
-            median_score = sorted(scores)[len(scores) // 2] if scores else 0.5
+            sorted_scores = sorted(scores)
+            n = len(sorted_scores)
+            if n == 0:
+                median_score = 0.5
+            elif n % 2 == 1:
+                median_score = sorted_scores[n // 2]
+            else:
+                median_score = (sorted_scores[n // 2 - 1] + sorted_scores[n // 2]) / 2
             promotion_score = median_score * 0.95
 
             for term in promoted_terms:

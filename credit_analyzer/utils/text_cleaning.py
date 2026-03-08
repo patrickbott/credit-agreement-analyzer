@@ -65,6 +65,30 @@ def clean_extracted_text(text: str) -> str:
     return text
 
 
+_PIPE_TABLE_LINE = re.compile(r"^\s*\|.*\|.*$")
+
+
+def normalize_tables(text: str) -> str:
+    """Ensure markdown-style pipe tables have blank lines before and after.
+
+    LLMs sometimes emit tables immediately after a paragraph or heading
+    without a blank line separator.  This ensures the line-based table
+    parser can detect table boundaries.
+    """
+    lines = text.split("\n")
+    result: list[str] = []
+    prev_was_table = False
+    for line in lines:
+        is_table = bool(_PIPE_TABLE_LINE.match(line))
+        if is_table and not prev_was_table and result and result[-1].strip():
+            result.append("")  # blank line before table
+        if not is_table and prev_was_table and line.strip():
+            result.append("")  # blank line after table
+        result.append(line)
+        prev_was_table = is_table
+    return "\n".join(result)
+
+
 def remove_page_artifacts(text: str) -> str:
     """Strip common header/footer artifacts: standalone page numbers, running headers."""
     # Standalone page number lines like "- 47 -" or just "47"

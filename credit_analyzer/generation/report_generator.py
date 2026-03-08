@@ -13,321 +13,45 @@ import re
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
 from datetime import datetime
 
-from credit_analyzer.config import QA_DEFINITION_MAX_CHARS, REPORT_MAX_WORKERS
+from credit_analyzer.config import REPORT_MAX_WORKERS
+from credit_analyzer.generation.report_context import (
+    build_extraction_context,
+    retrieve_for_section,
+)
+from credit_analyzer.generation.report_models import (
+    GeneratedReport,
+    GeneratedSection,
+    format_page_numbers,
+)
 from credit_analyzer.generation.report_template import (
     ALL_REPORT_SECTIONS,
     ReportSectionTemplate,
-    RetrievalQuery,
-    SectionStatus,
     get_extraction_system_prompt,
 )
 from credit_analyzer.generation.response_parser import (
-    ConfidenceLevel,
-    SourceCitation,
     build_citations_from_chunks,
     citations_from_chunks,
     extract_answer_body,
     parse_confidence,
 )
 from credit_analyzer.llm.base import LLMProvider, LLMResponse
-from credit_analyzer.processing.chunker import Chunk
 from credit_analyzer.retrieval.hybrid_retriever import (
-    HybridChunk,
     HybridRetriever,
-    RetrievalResult,
-    merge_multi_query_results,
 )
 from credit_analyzer.utils.text_cleaning import strip_markdown as _strip_markdown
 
 logger = logging.getLogger(__name__)
 
 ReportProgressCallback = Callable[[str, float], None]
+SectionCallback = Callable[["GeneratedSection"], None]
 
-
-# ---------------------------------------------------------------------------
-# Result data classes
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class GeneratedSection:
-    """One completed section of the report.
-
-    Attributes:
-        section_number: Display order.
-        title: Section heading.
-        body: The extracted content (plain text, no markdown formatting).
-        confidence: LLM-assessed confidence level.
-        sources: Parsed source citations.
-        status: Whether the section completed successfully.
-        error_message: Error detail if status is "error".
-        duration_seconds: LLM call duration.
-        chunk_count: Number of context chunks used.
-    """
-
-    section_number: int
-    title: str
-    body: str
-    confidence: ConfidenceLevel
-    sources: list[SourceCitation]
-    status: SectionStatus
-    error_message: str = ""
-    duration_seconds: float = 0.0
-    chunk_count: int = 0
-    inline_citations: list = field(default_factory=list)
-
-
-@dataclass
-class GeneratedReport:
-    """A complete generated report.
-
-    Attributes:
-        borrower_name: Extracted borrower name (for the title).
-        generated_at: Timestamp of generation.
-        sections: All generated sections in order.
-        total_duration_seconds: Sum of all LLM call durations.
-    """
-
-    borrower_name: str
-    generated_at: datetime
-    sections: list[GeneratedSection] = field(default_factory=lambda: list[GeneratedSection]())
-    total_duration_seconds: float = 0.0
-
-    def to_markdown(self) -> str:
-        """Assemble the full report as a plain-text markdown document."""
-        lines: list[str] = []
-        lines.append(f"# Credit Agreement Analysis: {self.borrower_name}")
-        lines.append(f"Generated: {self.generated_at.strftime('%Y-%m-%d %H:%M')}")
-        lines.append("")
-        lines.append(
-            "DISCLAIMER: This report is auto-generated and should be "
-            "verified against the source document. Extraction may be "
-            "incomplete for non-standard agreement formats."
-        )
-
-        for section in self.sections:
-            lines.append("")
-            lines.append("---")
-            lines.append("")
-            lines.append(
-                f"## Section {section.section_number}: {section.title}"
-            )
-            lines.append("")
-
-            if section.status == "error":
-                lines.append(
-                    f"GENERATION ERROR: {section.error_message}"
-                )
-                continue
-
-            if section.status == "pending":
-                lines.append("(Not yet generated)")
-                continue
-
-            lines.append(section.body)
-            lines.append("")
-
-            # Confidence
-            lines.append(f"Confidence: {section.confidence}")
-
-            # Sources
-            if section.sources:
-                source_strs: list[str] = []
-                for src in section.sources:
-                    pages = ", ".join(str(p) for p in src.page_numbers)
-                    if pages:
-                        source_strs.append(
-                            f"Section {src.section_id} (pp. {pages})"
-                        )
-                    else:
-                        source_strs.append(f"Section {src.section_id}")
-                lines.append(f"Sources: {', '.join(source_strs)}")
-
-        lines.append("")
-        lines.append("---")
-        lines.append(
-            f"Total generation time: "
-            f"{self.total_duration_seconds:.1f}s"
-        )
-        lines.append("")
-        return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Context assembly for report sections
-# ---------------------------------------------------------------------------
-
-
-def _format_page_numbers(pages: Sequence[int]) -> str:
-    """Compact page range string (e.g. [62,63,64] -> '62-64')."""
-    if not pages:
-        return ""
-    sorted_pages = sorted(set(pages))
-    ranges: list[str] = []
-    start = sorted_pages[0]
-    end = start
-    for p in sorted_pages[1:]:
-        if p == end + 1:
-            end = p
-        else:
-            ranges.append(f"{start}-{end}" if end > start else str(start))
-            start = end = p
-    ranges.append(f"{start}-{end}" if end > start else str(start))
-    return ", ".join(ranges)
-
-
-def _build_extraction_context(
-    chunks: Sequence[HybridChunk],
-    definitions: dict[str, str],
-    extraction_prompt: str,
-    preamble_text: str | None = None,
-    preamble_page_numbers: Sequence[int] | None = None,
-) -> tuple[str, list[HybridChunk]]:
-    """Assemble the user prompt for a report section extraction.
-
-    Similar to the Q&A context builder but without conversation history
-    and with the extraction prompt appended instead of a question.
-
-    Returns:
-        A tuple of (prompt_string, numbered_chunks) where numbered_chunks
-        is the list of chunks in the order they were numbered [Source 1],
-        [Source 2], etc. in the prompt.
-    """
-    parts: list[str] = ["=== CONTEXT FROM CREDIT AGREEMENT ===\n"]
-
-    # Build the numbered source list. Preamble gets [Source 1] when present.
-    numbered: list[HybridChunk] = []
-    source_num = 1
-
-    if preamble_text:
-        preamble_page_list = list(preamble_page_numbers or [])
-        preamble_pages = _format_page_numbers(preamble_page_list)
-        page_label = preamble_pages if preamble_pages else "n/a"
-        parts.append(
-            f"[Source {source_num}] Preamble and Recitals "
-            f"(pp. {page_label})\n"
-            f"{preamble_text}\n"
-        )
-        numbered.append(HybridChunk(
-            chunk=Chunk(
-                chunk_id="__preamble__",
-                text=preamble_text,
-                section_id="Preamble",
-                section_title="Preamble and Recitals",
-                article_number=0,
-                article_title="",
-                section_type="preamble",
-                chunk_type="text",
-                page_numbers=preamble_page_list,
-                defined_terms_present=[],
-                chunk_index=0,
-                token_count=0,
-            ),
-            score=1.0,
-            source="preamble",
-        ))
-        source_num += 1
-
-    # Sort chunks by document position so cross-references flow naturally.
-    sorted_chunks = sorted(
-        chunks,
-        key=lambda hc: (hc.chunk.article_number, hc.chunk.section_id, hc.chunk.chunk_index),
-    )
-
-    for hc in sorted_chunks:
-        c = hc.chunk
-        pages = _format_page_numbers(c.page_numbers)
-        parts.append(
-            f"[Source {source_num}] {c.section_title} "
-            f"(Section {c.section_id}, pp. {pages})\n"
-            f"{c.text}\n"
-        )
-        numbered.append(hc)
-        source_num += 1
-
-    if definitions:
-        # Skip definitions whose text already appears in a chunk.
-        chunk_texts = " ".join(hc.chunk.text for hc in chunks)
-        filtered = {
-            term: defn
-            for term, defn in definitions.items()
-            if defn[:80] not in chunk_texts
-        }
-        if filtered:
-            parts.append("\n=== RELEVANT DEFINITIONS ===")
-            for term, defn in filtered.items():
-                truncated = defn[:QA_DEFINITION_MAX_CHARS] if len(defn) > QA_DEFINITION_MAX_CHARS else defn
-                parts.append(f'"{term}" means {truncated}')
-
-    parts.append(f"\n=== EXTRACTION TASK ===\n{extraction_prompt}")
-
-    return "\n".join(parts), numbered
-
-
-# ---------------------------------------------------------------------------
-# Multi-query retrieval with deduplication
-# ---------------------------------------------------------------------------
-
-
-def _retrieve_for_section(
-    retriever: HybridRetriever,
-    document_id: str,
-    queries: Sequence[RetrievalQuery],
-    top_k: int,
-) -> RetrievalResult:
-    """Run multiple retrieval queries and merge results via round-robin.
-
-    Each query's results are kept as a separate list and merged using
-    round-robin interleaving so that every query contributes proportionally
-    to the final result set.  This prevents dominant queries from crowding
-    out niche but important results (e.g. fee-related chunks being dropped
-    because facility-size chunks score higher).
-
-    Unfiltered queries (no section_filter) automatically exclude the
-    ``miscellaneous`` section type to reduce noise.
-
-    Args:
-        retriever: The hybrid retriever instance.
-        document_id: Document collection ID.
-        queries: Retrieval queries to execute.
-        top_k: Maximum total chunks to return after merging.
-
-    Returns:
-        Merged RetrievalResult.
-    """
-    per_query_results: list[list[HybridChunk]] = []
-    per_query_definitions: list[dict[str, str]] = []
-
-    def _run_query(rq: RetrievalQuery) -> RetrievalResult:
-        # Unfiltered queries exclude miscellaneous to reduce noise,
-        # matching the behaviour of the Q&A retrieval path.
-        exclude: tuple[str, ...] | None = None
-        if rq.section_filter is None:
-            exclude = ("miscellaneous",)
-
-        return retriever.retrieve(
-            query=rq.query,
-            document_id=document_id,
-            top_k=top_k,
-            section_filter=rq.section_filter,
-            section_types_exclude=exclude,
-        )
-
-    with ThreadPoolExecutor(max_workers=len(queries)) as pool:
-        results = list(pool.map(_run_query, queries))
-
-    for result in results:
-        per_query_results.append(result.chunks)
-        per_query_definitions.append(result.injected_definitions)
-
-    return merge_multi_query_results(
-        per_query_results, per_query_definitions, top_k,
-    )
-
-
+# Re-export moved helpers under their original private names so that
+# existing imports (including tests) continue to work.
+_build_extraction_context = build_extraction_context
+_retrieve_for_section = retrieve_for_section
+_format_page_numbers = format_page_numbers
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +97,7 @@ class ReportGenerator:
         *,
         sections: Sequence[ReportSectionTemplate] = ALL_REPORT_SECTIONS,
         progress_callback: ReportProgressCallback | None = None,
+        section_callback: SectionCallback | None = None,
     ) -> GeneratedReport:
         """Generate a full report for a processed document.
 
@@ -381,10 +106,14 @@ class ReportGenerator:
             sections: Section templates to generate (defaults to all 10).
             progress_callback: Called with (label, progress_fraction) as
                 each section completes.
+            section_callback: Called with a completed ``GeneratedSection``
+                as soon as it finishes, enabling progressive rendering.
 
         Returns:
             A GeneratedReport with all sections.
         """
+        logger.info("Starting report generation: %d sections", len(sections))
+
         report = GeneratedReport(
             borrower_name="(Unknown Borrower)",
             generated_at=datetime.now(),
@@ -405,7 +134,7 @@ class ReportGenerator:
                 0.0,
             )
             try:
-                generated = self._generate_section(
+                generated = self.generate_section(
                     first_section, document_id, system_prompt
                 )
             except Exception as exc:
@@ -425,6 +154,8 @@ class ReportGenerator:
                 )
 
             report.sections.append(generated)
+            if section_callback is not None:
+                section_callback(generated)
 
             if first_section.section_number == 1 and generated.status == "complete":
                 borrower = _extract_borrower_name(generated.body)
@@ -439,7 +170,7 @@ class ReportGenerator:
                 template: ReportSectionTemplate,
             ) -> GeneratedSection:
                 try:
-                    return self._generate_section(
+                    return self.generate_section(
                         template, document_id, system_prompt
                     )
                 except Exception as exc:
@@ -474,6 +205,8 @@ class ReportGenerator:
                         f"Completed: {section_result.title}",
                         completed_count / max(total, 1),
                     )
+                    if section_callback is not None:
+                        section_callback(section_result)
 
             # Append in original section order
             for t in remaining_sections:
@@ -482,10 +215,14 @@ class ReportGenerator:
         # Track wall-clock time instead of sum of section times
         report.total_duration_seconds = time.monotonic() - wall_clock_start
 
+        logger.info(
+            "Report generation complete: sections=%d, total_time=%.2fs",
+            len(report.sections), report.total_duration_seconds or 0.0,
+        )
         _notify(progress_callback, "Report complete.", 1.0)
         return report
 
-    def _generate_section(
+    def generate_section(
         self,
         template: ReportSectionTemplate,
         document_id: str,
@@ -501,8 +238,14 @@ class ReportGenerator:
         Returns:
             A completed GeneratedSection.
         """
+        logger.info(
+            "Generating section %d: %s",
+            template.section_number, template.title,
+        )
+        section_start = time.monotonic()
+
         # Retrieve context via multi-query
-        result = _retrieve_for_section(
+        result = retrieve_for_section(
             self._retriever,
             document_id,
             template.retrieval_queries,
@@ -512,7 +255,7 @@ class ReportGenerator:
         preamble = self._preamble_text if template.include_preamble else None
 
         # Assemble context + extraction prompt
-        user_prompt, numbered_chunks = _build_extraction_context(
+        user_prompt, numbered_chunks = build_extraction_context(
             chunks=result.chunks,
             definitions=result.injected_definitions,
             extraction_prompt=template.extraction_prompt,
@@ -533,6 +276,13 @@ class ReportGenerator:
         confidence = parse_confidence(raw_text)
         sources = citations_from_chunks(result.chunks)
         inline_cites, body = build_citations_from_chunks(body, numbered_chunks)
+
+        section_duration = time.monotonic() - section_start
+        logger.info(
+            "Section %d (%s) complete: confidence=%s, chunks=%d, time=%.2fs",
+            template.section_number, template.title, confidence,
+            len(result.chunks), section_duration,
+        )
 
         return GeneratedSection(
             section_number=template.section_number,
@@ -574,7 +324,8 @@ def _extract_borrower_name(section_body: str) -> str | None:
         )
     if match:
         name = match.group(1).strip().rstrip(".")
-        # Strip trailing citation like "(Preamble, p. 9)"
+        # Strip trailing citation markers like [1] and (Preamble, p. 9)
+        name = re.sub(r"\s*\[\d+\]", "", name)
         name = re.sub(r"\s*\(.*$", "", name).strip().rstrip(",.")
         if name and name.upper() not in ("NOT FOUND", "NOT IDENTIFIED IN THE PROVIDED CONTEXT"):
             return name

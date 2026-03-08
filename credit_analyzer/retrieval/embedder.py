@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from collections.abc import Callable, Sequence
 from typing import cast
 
@@ -12,6 +14,26 @@ from sentence_transformers import SentenceTransformer  # pyright: ignore[reportM
 from credit_analyzer.config import EMBEDDING_MODEL
 
 _BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+
+def _load_model(model_name: str) -> SentenceTransformer:
+    """Load SentenceTransformer with noisy library warnings suppressed."""
+    # Suppress HF Hub auth warning and safetensors load report
+    prev_hf = os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
+    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    loggers_to_quiet = ["safetensors", "sentence_transformers", "huggingface_hub"]
+    saved_levels = {name: logging.getLogger(name).level for name in loggers_to_quiet}
+    for name in loggers_to_quiet:
+        logging.getLogger(name).setLevel(logging.ERROR)
+    try:
+        return SentenceTransformer(model_name)
+    finally:
+        for name, level in saved_levels.items():
+            logging.getLogger(name).setLevel(level)
+        if prev_hf is None:
+            os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
+        else:
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = prev_hf
 
 
 class Embedder:
@@ -26,7 +48,7 @@ class Embedder:
     """
 
     def __init__(self, model_name: str = EMBEDDING_MODEL) -> None:
-        self._model: SentenceTransformer = SentenceTransformer(model_name)
+        self._model: SentenceTransformer = _load_model(model_name)
         self._model_name = model_name
         self._is_bge = "bge" in model_name.lower()
 

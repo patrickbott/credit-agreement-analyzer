@@ -8,9 +8,9 @@ from credit_analyzer.generation.report_generator import (
     GeneratedReport,
     GeneratedSection,
     ReportGenerator,
-    _build_extraction_context,
-    _extract_borrower_name,
-    _retrieve_for_section,
+    _build_extraction_context,  # type: ignore[reportPrivateUsage]
+    _extract_borrower_name,  # type: ignore[reportPrivateUsage]
+    _retrieve_for_section,  # type: ignore[reportPrivateUsage]
 )
 from credit_analyzer.generation.report_template import (
     ALL_REPORT_SECTIONS,
@@ -472,7 +472,7 @@ class TestGeneratedReportMarkdown:
 
     def test_basic_structure(self) -> None:
         """Markdown has title, disclaimer, and section headings."""
-        gen = TestReportGenerator._make_generator()
+        gen = TestReportGenerator._make_generator()  # type: ignore[reportPrivateUsage]
         report = gen.generate(
             "doc1",
             sections=(ALL_REPORT_SECTIONS[0],),
@@ -509,7 +509,7 @@ class TestGeneratedReportMarkdown:
 
     def test_total_duration_in_markdown(self) -> None:
         """Total generation time appears at the bottom."""
-        gen = TestReportGenerator._make_generator()
+        gen = TestReportGenerator._make_generator()  # type: ignore[reportPrivateUsage]
         report = gen.generate("doc1", sections=(ALL_REPORT_SECTIONS[0],))
         md = report.to_markdown()
         assert "Total generation time:" in md
@@ -527,7 +527,7 @@ class TestPDFExport:
         """PDF output starts with the %PDF header."""
         from credit_analyzer.generation.pdf_export import report_to_pdf_bytes
 
-        gen = TestReportGenerator._make_generator()
+        gen = TestReportGenerator._make_generator()  # type: ignore[reportPrivateUsage]
         report = gen.generate("doc1", sections=(ALL_REPORT_SECTIONS[0],))
         pdf_bytes = report_to_pdf_bytes(report)
 

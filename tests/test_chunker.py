@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from credit_analyzer.processing.chunker import Chunker, _count_tokens, _estimate_chunk_pages
-from credit_analyzer.processing.definitions import DefinitionsIndex
+from credit_analyzer.processing.chunker import (
+    Chunker,
+    _count_tokens,  # type: ignore[reportPrivateUsage]
+    _estimate_chunk_pages,  # type: ignore[reportPrivateUsage]
+)
+from credit_analyzer.processing.definitions import DefinitionEntry, DefinitionsIndex
 from credit_analyzer.processing.section_detector import DocumentSection, SectionType
 
 
@@ -37,9 +41,9 @@ def _small_index() -> DefinitionsIndex:
     """A small definitions index for testing term detection in chunks."""
     return DefinitionsIndex(
         definitions={
-            "Borrower": "the entity",
-            "Available Amount": "some amount",
-            "EBITDA": "earnings before...",
+            "Borrower": DefinitionEntry(text="the entity"),
+            "Available Amount": DefinitionEntry(text="some amount"),
+            "EBITDA": DefinitionEntry(text="earnings before..."),
         }
     )
 
@@ -141,8 +145,8 @@ def test_definitions_chunked_per_term() -> None:
     big_def = "word " * 60  # ~60 tokens
     index = DefinitionsIndex(
         definitions={
-            "Term A": f'"Term A" means {big_def}',
-            "Term B": f'"Term B" means {big_def}',
+            "Term A": DefinitionEntry(text=f'"Term A" means {big_def}'),
+            "Term B": DefinitionEntry(text=f'"Term B" means {big_def}'),
         }
     )
     section = _make_section("ignored", section_type="definitions", section_id="ARTICLE_1", article_number=1)
@@ -159,10 +163,10 @@ def test_small_definitions_grouped() -> None:
     """Small definitions are grouped into fewer chunks."""
     index = DefinitionsIndex(
         definitions={
-            "A": '"A" means a.',
-            "B": '"B" means b.',
-            "C": '"C" means c.',
-            "D": '"D" means d.',
+            "A": DefinitionEntry(text='"A" means a.'),
+            "B": DefinitionEntry(text='"B" means b.'),
+            "C": DefinitionEntry(text='"C" means c.'),
+            "D": DefinitionEntry(text='"D" means d.'),
         }
     )
     section = _make_section("ignored", section_type="definitions", section_id="ARTICLE_1", article_number=1)
@@ -307,7 +311,7 @@ def test_multi_page_section_narrows_pages() -> None:
     section.page_end = 56
 
     chunker = Chunker()
-    chunks = chunker._chunk_section(section, _empty_index())
+    chunks = chunker._chunk_section(section, _empty_index())  # type: ignore[reportPrivateUsage]
 
     # Should produce multiple chunks
     assert len(chunks) > 2

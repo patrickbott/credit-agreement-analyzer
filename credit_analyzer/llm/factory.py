@@ -12,9 +12,6 @@ from credit_analyzer.config import (
     OLLAMA_MODEL,
 )
 from credit_analyzer.llm.base import LLMProvider
-from credit_analyzer.llm.claude_provider import ClaudeProvider
-from credit_analyzer.llm.internal_provider import InternalLLMProvider
-from credit_analyzer.llm.ollama_provider import OllamaProvider
 
 ProviderName = Literal["ollama", "claude", "internal"]
 
@@ -33,12 +30,18 @@ def get_provider(provider_name: str | None = None) -> LLMProvider:
     name = provider_name if provider_name is not None else LLM_PROVIDER
 
     if name == "ollama":
+        from credit_analyzer.llm.ollama_provider import OllamaProvider
+
         return OllamaProvider(model=OLLAMA_MODEL, base_url=OLLAMA_BASE_URL)
 
     if name == "claude":
+        from credit_analyzer.llm.claude_provider import ClaudeProvider
+
         return ClaudeProvider(model=CLAUDE_MODEL, api_key=CLAUDE_API_KEY)
 
     if name == "internal":
+        from credit_analyzer.llm.internal_provider import InternalLLMProvider
+
         return InternalLLMProvider()
 
     msg = f"Unknown LLM provider: {name!r}. Valid options: {sorted(_VALID_PROVIDERS)}"

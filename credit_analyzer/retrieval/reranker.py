@@ -8,7 +8,9 @@ independent bi-encoder / BM25 scores used in the first stage.
 
 from __future__ import annotations
 
+import logging
 import math
+import os
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -20,6 +22,25 @@ if TYPE_CHECKING:
     from credit_analyzer.retrieval.hybrid_retriever import HybridChunk
 
 
+def _load_cross_encoder(model_name: str) -> CrossEncoder:
+    """Load CrossEncoder with noisy library warnings suppressed."""
+    prev_hf = os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
+    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    loggers_to_quiet = ["safetensors", "sentence_transformers", "huggingface_hub"]
+    saved_levels = {name: logging.getLogger(name).level for name in loggers_to_quiet}
+    for name in loggers_to_quiet:
+        logging.getLogger(name).setLevel(logging.ERROR)
+    try:
+        return CrossEncoder(model_name)  # pyright: ignore[reportUnknownMemberType]
+    finally:
+        for name, level in saved_levels.items():
+            logging.getLogger(name).setLevel(level)
+        if prev_hf is None:
+            os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
+        else:
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = prev_hf
+
+
 class Reranker:
     """Cross-encoder reranker using sentence-transformers.
 
@@ -28,7 +49,7 @@ class Reranker:
     """
 
     def __init__(self, model_name: str = RERANKER_MODEL) -> None:
-        self._model: CrossEncoder = CrossEncoder(model_name)  # pyright: ignore[reportUnknownMemberType]
+        self._model: CrossEncoder = _load_cross_encoder(model_name)
 
     def rerank(
         self,

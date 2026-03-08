@@ -18,7 +18,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from credit_analyzer.processing.chunker import Chunk
-from credit_analyzer.processing.definitions import DefinitionsIndex
+from credit_analyzer.processing.definitions import DefinitionEntry, DefinitionsIndex
 from credit_analyzer.processing.section_detector import SectionType
 from credit_analyzer.retrieval.bm25_store import BM25Store
 from credit_analyzer.retrieval.embedder import Embedder
@@ -432,7 +432,7 @@ def _build_all_chunks() -> list[Chunk]:
 def _build_definitions_index() -> dict[str, str]:
     """Build a definitions dict from the definition fixture chunks."""
     definitions: dict[str, str] = {}
-    for key, spec in _FIXTURE_CHUNKS.items():
+    for _key, spec in _FIXTURE_CHUNKS.items():
         if spec["chunk_type"] == "definition":
             for term in spec.get("defined_terms_present", []):
                 definitions[term] = spec["text"]
@@ -509,7 +509,11 @@ def _build_test_retriever() -> HybridRetriever:
 
     chunks = _build_all_chunks()
     definitions = _build_definitions_index()
-    defn_index = DefinitionsIndex(definitions=definitions)
+    defn_entries = {
+        term: DefinitionEntry(text=text)
+        for term, text in definitions.items()
+    }
+    defn_index = DefinitionsIndex(definitions=defn_entries)
 
     # Real BM25 store with indexed chunks
     bm25_store = BM25Store()
@@ -528,7 +532,7 @@ def _build_test_retriever() -> HybridRetriever:
         mock_vector._last_query_text = query  # type: ignore[attr-defined]
         return _dummy_embedding
 
-    mock_embedder.embed_query.side_effect = _embed_and_stash
+    mock_embedder.embed_query.side_effect = _embed_and_stash  # type: ignore[reportAttributeAccessIssue]
 
     return HybridRetriever(
         vector_store=mock_vector,

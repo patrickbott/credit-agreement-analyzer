@@ -70,7 +70,7 @@ def test_build_citations_from_chunks_out_of_range():
 
 
 def test_build_citations_from_chunks_empty():
-    citations, body = build_citations_from_chunks("No markers.", [])
+    citations, _body = build_citations_from_chunks("No markers.", [])
     assert citations == []
 
 

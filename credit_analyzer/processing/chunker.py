@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -17,6 +18,8 @@ from credit_analyzer.config import (
 )
 from credit_analyzer.processing.definitions import DefinitionsIndex
 from credit_analyzer.processing.section_detector import DocumentSection
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_for_search(text: str) -> str:
@@ -143,8 +146,12 @@ _PARAGRAPH_SPLIT_DOUBLE = re.compile(r"\n\s*\n|\n\s*(?=\([a-z]\)|\([ivx]+\))")
 _PARAGRAPH_SPLIT_SINGLE = re.compile(r"\n")
 
 
-def _count_tokens(text: str, encoding: tiktoken.Encoding) -> int:
+def _count_tokens(text: str, encoding: tiktoken.Encoding, _cache: dict[str, int] = {}) -> int:  # noqa: B006
     """Count tokens in text using the given tiktoken encoding.
+
+    Results are cached in a mutable default dict so that repeated calls on
+    overlapping text (common during paragraph splitting with overlap) avoid
+    redundant tokenization.
 
     Args:
         text: The text to tokenize.
@@ -153,7 +160,12 @@ def _count_tokens(text: str, encoding: tiktoken.Encoding) -> int:
     Returns:
         Number of tokens.
     """
-    return len(encoding.encode(text))
+    cached = _cache.get(text)
+    if cached is not None:
+        return cached
+    count = len(encoding.encode(text))
+    _cache[text] = count
+    return count
 
 
 def _generate_chunk_id() -> str:
@@ -193,6 +205,7 @@ class Chunker:
         """
         all_chunks: list[Chunk] = []
 
+        logger.info("Chunking %d sections", len(sections))
         definitions_chunked = False
 
         for section in sections:
@@ -206,6 +219,21 @@ class Chunker:
             else:
                 chunks = self._chunk_section(section, definitions_index)
             all_chunks.extend(chunks)
+
+        token_counts = [c.token_count for c in all_chunks]
+        oversized = [c for c in all_chunks if c.token_count > CHUNK_MAX_TOKENS]
+        logger.info(
+            "Chunking complete: chunks=%d, min_tokens=%d, max_tokens=%d, avg_tokens=%d",
+            len(all_chunks),
+            min(token_counts) if token_counts else 0,
+            max(token_counts) if token_counts else 0,
+            sum(token_counts) // max(len(token_counts), 1),
+        )
+        if oversized:
+            logger.debug(
+                "Oversized chunks (>%d tokens): %d",
+                CHUNK_MAX_TOKENS, len(oversized),
+            )
 
         return all_chunks
 
@@ -231,7 +259,8 @@ class Chunker:
         small_terms: list[str] = []
         small_tokens = 0
 
-        for term, definition in definitions_index.definitions.items():
+        for term, entry in definitions_index.definitions.items():
+            definition = entry.text
             token_count = _count_tokens(definition, self._encoding)
 
             if token_count >= MIN_DEFINITION_CHUNK_TOKENS:

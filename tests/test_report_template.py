@@ -85,9 +85,9 @@ class TestExtractionSystemPrompt:
         prompt = get_extraction_system_prompt()
         assert len(prompt) > 100
 
-    def test_has_confidence_instruction(self) -> None:
+    def test_no_confidence_instruction(self) -> None:
         prompt = get_extraction_system_prompt()
-        assert "Confidence:" in prompt
+        assert "Confidence:" not in prompt
 
     def test_has_citation_instruction(self) -> None:
         prompt = get_extraction_system_prompt()

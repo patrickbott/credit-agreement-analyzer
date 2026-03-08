@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import logging
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +17,8 @@ import pytesseract  # pyright: ignore[reportMissingTypeStubs]
 from PIL import Image
 
 from credit_analyzer.config import OCR_TEXT_LENGTH_THRESHOLD, TESSERACT_CMD
+
+logger = logging.getLogger(__name__)
 
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
@@ -87,6 +91,31 @@ def _extract_tables_from_page(plumber_page: pdfplumber.page.Page) -> list[str]:
     return [_table_to_markdown(t) for t in tables if t]
 
 
+def _process_page(
+    page_idx: int, fitz_doc: Any, plumber_doc: Any
+) -> ExtractedPage:
+    """Extract text and tables from a single PDF page."""
+    fitz_page: Any = fitz_doc[page_idx]
+    plumber_page = plumber_doc.pages[page_idx]
+
+    raw_text = cast(str, fitz_page.get_text())
+    is_ocr = False
+
+    if len(raw_text.strip()) < OCR_TEXT_LENGTH_THRESHOLD:
+        logger.debug("Page %d: text too short (%d chars), falling back to OCR", page_idx + 1, len(raw_text.strip()))
+        raw_text = _ocr_page(fitz_page)
+        is_ocr = True
+
+    tables = _extract_tables_from_page(plumber_page)
+
+    return ExtractedPage(
+        page_number=page_idx + 1,
+        text=raw_text,
+        tables=tables,
+        is_ocr=is_ocr,
+    )
+
+
 class PDFExtractor:
     """Extracts text and tables from credit agreement PDFs.
 
@@ -109,42 +138,26 @@ class PDFExtractor:
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
-        pages: list[ExtractedPage] = []
-        ocr_count = 0
-        digital_count = 0
+        logger.info("Starting PDF extraction: %s", pdf_path.name)
+        extraction_start = time.perf_counter()
 
         fitz_doc: Any = fitz.open(str(pdf_path))
         plumber_doc = pdfplumber.open(str(pdf_path))
 
         try:
-            for page_idx in range(len(fitz_doc)):
-                fitz_page: Any = fitz_doc[page_idx]
-                plumber_page = plumber_doc.pages[page_idx]
-                page_number = page_idx + 1
-
-                raw_text = cast(str, fitz_page.get_text())
-                is_ocr = False
-
-                if len(raw_text.strip()) < OCR_TEXT_LENGTH_THRESHOLD:
-                    raw_text = _ocr_page(fitz_page)
-                    is_ocr = True
-                    ocr_count += 1
-                else:
-                    digital_count += 1
-
-                tables = _extract_tables_from_page(plumber_page)
-
-                pages.append(
-                    ExtractedPage(
-                        page_number=page_number,
-                        text=raw_text,
-                        tables=tables,
-                        is_ocr=is_ocr,
-                    )
-                )
+            # NOTE: PyMuPDF and pdfplumber are not thread-safe for concurrent
+            # page access on the same document, so extraction is sequential.
+            num_pages = len(fitz_doc)
+            pages = [
+                _process_page(i, fitz_doc, plumber_doc)
+                for i in range(num_pages)
+            ]
         finally:
             fitz_doc.close()
             plumber_doc.close()
+
+        ocr_count = sum(1 for p in pages if p.is_ocr)
+        digital_count = len(pages) - ocr_count
 
         if ocr_count == 0:
             extraction_method = "digital"
@@ -152,6 +165,12 @@ class PDFExtractor:
             extraction_method = "ocr"
         else:
             extraction_method = "mixed"
+
+        extraction_duration = time.perf_counter() - extraction_start
+        logger.info(
+            "PDF extraction complete: pages=%d, method=%s, ocr_pages=%d, time=%.2fs",
+            len(pages), extraction_method, ocr_count, extraction_duration,
+        )
 
         return ExtractedDocument(
             pages=pages,

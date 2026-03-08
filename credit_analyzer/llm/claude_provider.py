@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Generator
 from typing import Any, cast
 
 import anthropic  # pyright: ignore[reportMissingTypeStubs]
@@ -41,6 +42,7 @@ class ClaudeProvider(LLMProvider):
         max_tokens: int = 2048,
     ) -> LLMResponse:
         """Send a completion request to the Anthropic Messages API."""
+        logger.debug("Claude request: model=%s, max_tokens=%d", self._model, max_tokens)
         start = time.perf_counter()
 
         response: Any = self._client.messages.create(
@@ -74,6 +76,11 @@ class ClaudeProvider(LLMProvider):
         usage: Any = response.usage
         tokens_used = cast(int, getattr(usage, "output_tokens", 0))
 
+        logger.info(
+            "Claude response: model=%s, tokens=%d, time=%.2fs",
+            self._model, tokens_used, duration,
+        )
+
         return LLMResponse(
             text=text,
             tokens_used=tokens_used,
@@ -81,7 +88,13 @@ class ClaudeProvider(LLMProvider):
             duration_seconds=duration,
         )
 
-    def stream_complete(self, system_prompt: str, user_prompt: str, max_tokens: int = 2048):
+    def stream_complete(  # noqa: ARG002
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+    ) -> Generator[str, None, None]:
         """Stream completion tokens as they are generated."""
         with self._client.messages.stream(
             model=self._model,

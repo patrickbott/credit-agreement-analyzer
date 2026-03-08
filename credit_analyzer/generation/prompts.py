@@ -15,14 +15,18 @@ from credit_analyzer.processing.chunker import Chunk
 from credit_analyzer.retrieval.hybrid_retriever import HybridChunk
 
 # ---------------------------------------------------------------------------
-# System prompts (mirrors docs/PROMPTS.md)
+# System prompts
 # ---------------------------------------------------------------------------
 
 QA_SYSTEM_PROMPT: str = """\
-FORMATTING RULE (STRICT): You must write in plain text only. Never use \
-markdown: no ** for bold, no ## for headers, no ` for \
-code. Use numbered (1., 2., 3.) or bulleted ('-') lists for structure. Write section titles \
-in plain text on their own line.
+FORMATTING RULES (STRICT):
+- Do NOT use markdown bold (**), headers (##), or backticks (`).
+- Use numbered lists (1., 2., 3.) or bullet lists (- item) for structure.
+- Write section labels in ALL CAPS on their own line.
+- USE TABLES when data has a natural tabular structure (pricing grids, \
+step-downs, comparisons). Format tables with pipes: "| Col A | Col B |" \
+on each row, "| --- | --- |" separator after the header row, and a blank \
+line before and after the table.
 
 You are a leveraged finance analyst assistant analyzing a specific credit \
 agreement. Answer questions accurately based ONLY on the provided context \
@@ -31,13 +35,51 @@ excerpts.
 RULES:
 1. Base answers ONLY on the provided context. Do not supplement with general \
 knowledge about credit agreements or market conventions.
-2. Cite the Section number (e.g., "Section 7.06(a)") for factual claims.
-3. If the context does not contain the answer, say so clearly and suggest \
+2. If the context does not contain the answer, say so clearly and suggest \
 where the user might look (e.g., "check the definitions section" or \
 "see Schedule 1.1A").
-4. State dollar amounts, ratios, and percentages exactly as they appear in \
+3. State dollar amounts, ratios, and percentages exactly as they appear in \
 the document.
-5. Do not assume provisions exist if they are not in the context.
+4. Do not assume provisions exist if they are not in the context.
+
+RESPONSE STYLE:
+1. Write like a senior investment banking analyst briefing a colleague, not \
+like a lawyer.
+2. Summarize provisions in plain business language. Do not quote lengthy \
+legal text verbatim. Instead, state what the provision means in practical \
+terms.
+3. Keep answers concise and structured. Lead with the direct answer, then \
+provide supporting detail if needed.
+4. Use numbered lists for multi-part answers (e.g., baskets, step-downs, \
+conditions).
+5. When the answer has a natural tabular structure (pricing grids, \
+step-downs, basket comparisons), present it as a table (see formatting \
+rules above).
+"""
+
+REFORMULATION_SYSTEM_PROMPT: str = """\
+Given the conversation history below, reformulate the latest question into a \
+standalone search query that captures the full intent. Respond with ONLY the \
+search query, nothing else."""
+
+DEEP_ANALYSIS_ADDENDUM: str = """
+
+ADDITIONAL CONTEXT RETRIEVAL:
+If the provided context is insufficient to fully and accurately answer the \
+question, output <needs_context>your follow-up search query</needs_context> \
+at the END of your response. The system will retrieve additional context and \
+ask you again with the expanded context. Only request additional context if \
+you genuinely need it — do not request context speculatively."""
+
+CONCISE_ADDENDUM: str = """
+
+CONCISE MODE:
+Give a short, direct answer. Lead with the key fact or number. Skip \
+background explanation and only include the essential details. Use \
+bullet points over paragraphs. Aim for 2-4 sentences unless the \
+question requires enumeration."""
+
+CITE_SOURCES_ADDENDUM: str = """
 
 INLINE CITATIONS:
 Each context excerpt is labeled [Source 1], [Source 2], etc. When you make \
@@ -46,35 +88,25 @@ covenant tests), place the corresponding source number in brackets \
 immediately after the claim, e.g. [1], [2]. Reuse the same number when \
 the same source supports multiple claims. Do NOT let citations make your \
 response longer -- keep the same concise style.
+Cite the Section number (e.g., "Section 7.06(a)") for factual claims. \
+Cite clause-level references, not just article-level. When referencing \
+defined terms, note where they are defined (e.g., "as defined in \
+Section 1.01, p. 12")."""
 
-RESPONSE STYLE:
-1. Write like a senior investment banking analyst briefing a colleague, not \
-like a lawyer.
-2. Summarize provisions in plain business language. Do not quote lengthy \
-legal text verbatim. Instead, state what the provision means in practical \
-terms and cite the section/page so the reader can verify.
-3. Keep answers concise and structured. Lead with the direct answer, then \
-provide supporting detail if needed.
-4. Use numbered lists for multi-part answers (e.g., baskets, step-downs, \
-conditions).
+COMMENTARY_ADDENDUM: str = """
 
-At the end of your answer, provide:
+COMMENTARY MODE:
+Where relevant, append a brief COMMENTARY section at the end of your response \
+with 3-5 bullet points covering any of the following that apply:
+- Market context: how this compares to typical leveraged credit agreement terms
+- Borrower/lender lean: which party benefits from this language and why
+- Notable outliers: unusually large or small baskets, atypical carve-outs, \
+missing protections, or other oddities worth flagging
+- Key takeaways: what the deal team should be aware of
 
-Confidence: HIGH | MEDIUM | LOW
-1. HIGH: Answer is directly stated in the provided context.
-2. MEDIUM: Requires some interpretation or context is partial.
-3. LOW: Context is limited; manual verification recommended.
-
-IMPORTANT: If the context does not contain sufficient information to \
-answer the question, confidence must be MEDIUM or LOW. You only see a \
-subset of the full agreement, so absence from the context does not mean \
-the provision does not exist elsewhere in the document.
-"""
-
-REFORMULATION_SYSTEM_PROMPT: str = """\
-Given the conversation history below, reformulate the latest question into a \
-standalone search query that captures the full intent. Respond with ONLY the \
-search query, nothing else."""
+Omit the COMMENTARY section entirely if the question is a simple lookup, \
+definitional, or procedural question that does not warrant market commentary. \
+Do not force commentary where it adds no value."""
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +188,21 @@ def truncate_definition(definition: str, max_chars: int = QA_DEFINITION_MAX_CHAR
 # ---------------------------------------------------------------------------
 
 
+def _reorder_lost_in_middle(chunks: list[HybridChunk]) -> list[HybridChunk]:
+    """Reorder chunks so highest-relevance appear at start and end.
+
+    LLMs attend more to content at the beginning and end of context and
+    less to the middle (Liu et al., 2023).  This places the best-scoring
+    chunks at both extremes and lower-scoring ones in the center.
+    """
+    if len(chunks) <= 2:
+        return chunks
+    ranked = sorted(chunks, key=lambda hc: hc.score, reverse=True)
+    start = ranked[0::2]  # 1st, 3rd, 5th … best at beginning
+    end = ranked[1::2]  # 2nd, 4th, 6th … reversed so best at end
+    return start + list(reversed(end))
+
+
 def build_context_prompt(
     chunks: Sequence[HybridChunk],
     definitions: dict[str, str],
@@ -166,7 +213,7 @@ def build_context_prompt(
 ) -> tuple[str, list[HybridChunk]]:
     """Assemble the user prompt from retrieved context, definitions, history.
 
-    Follows the Q&A Context Template from ``docs/PROMPTS.md``.
+    Follows the in-code Q&A context template shape.
 
     When ``preamble_text`` is provided, it is always injected first as
     it contains headline terms (borrower, facility sizes, date) that
@@ -223,12 +270,10 @@ def build_context_prompt(
         ))
         source_num += 1
 
-    # Sort chunks by document position so cross-references flow naturally.
-    # Score information is preserved on each HybridChunk for debugging/UI.
-    sorted_chunks = sorted(
-        chunks,
-        key=lambda hc: (hc.chunk.article_number, hc.chunk.section_id, hc.chunk.chunk_index),
-    )
+    # Reorder chunks to mitigate "lost in the middle" — LLMs attend more
+    # to context at the start and end than the middle.  Place the highest-
+    # relevance chunks at the beginning and end, lower-relevance in between.
+    sorted_chunks = _reorder_lost_in_middle(list(chunks))
 
     for hc in sorted_chunks:
         c = hc.chunk

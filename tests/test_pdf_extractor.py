@@ -10,7 +10,7 @@ import pytest
 
 from credit_analyzer.processing.pdf_extractor import (
     PDFExtractor,
-    _table_to_markdown,
+    _table_to_markdown,  # type: ignore[reportPrivateUsage]
 )
 
 # ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ def _make_fitz_page(text: str) -> MagicMock:
 def _make_fitz_doc(pages: list[MagicMock]) -> MagicMock:
     doc = MagicMock()
     doc.__len__ = MagicMock(return_value=len(pages))
-    doc.__getitem__ = MagicMock(side_effect=lambda i: pages[i])
+    doc.__getitem__ = MagicMock(side_effect=lambda i: pages[i])  # type: ignore[reportUnknownLambdaType]
     return doc
 
 

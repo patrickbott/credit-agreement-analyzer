@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -45,15 +46,27 @@ _PDF_NOISE_RE = re.compile(
 
 
 @dataclass(frozen=True)
+class DefinitionEntry:
+    """A single parsed definition with metadata."""
+
+    text: str
+    page_number: int | None = None
+
+
+@dataclass(frozen=True)
 class DefinitionsIndex:
     """Lookup index for defined terms extracted from a credit agreement.
 
     Attributes:
-        definitions: Mapping of term name to its full definition text.
+        definitions: Mapping of term name to its ``DefinitionEntry``.
     """
 
-    definitions: dict[str, str]
+    definitions: dict[str, DefinitionEntry]
     _terms_pattern: re.Pattern[str] | None = field(default=None, init=False, repr=False, compare=False)
+    _sub_terms: dict[str, list[str]] = field(
+        default_factory=lambda: dict[str, list[str]](),
+        init=False, repr=False, compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.definitions:
@@ -63,6 +76,20 @@ class DefinitionsIndex:
             # frozen=True requires object.__setattr__ for post_init
             object.__setattr__(self, "_terms_pattern", re.compile(pattern))
 
+            # Pre-compute sub-term relationships: for each term, find all
+            # shorter defined terms that are substrings of it.  This avoids
+            # the O(n*m) loop in find_terms_in_text at query time.
+            sub_terms: dict[str, list[str]] = {}
+            for term in sorted_terms:
+                subs = [
+                    other
+                    for other in sorted_terms
+                    if other != term and other in term
+                ]
+                if subs:
+                    sub_terms[term] = subs
+            object.__setattr__(self, "_sub_terms", sub_terms)
+
     def lookup(self, term: str) -> str | None:
         """Look up a defined term by exact name.
 
@@ -71,6 +98,18 @@ class DefinitionsIndex:
 
         Returns:
             The definition text, or None if not found.
+        """
+        entry = self.definitions.get(term)
+        return entry.text if entry is not None else None
+
+    def lookup_entry(self, term: str) -> DefinitionEntry | None:
+        """Look up a defined term entry by exact name.
+
+        Args:
+            term: The defined term to look up.
+
+        Returns:
+            The ``DefinitionEntry``, or None if not found.
         """
         return self.definitions.get(term)
 
@@ -91,41 +130,62 @@ class DefinitionsIndex:
             return []
         direct_matches = set(self._terms_pattern.findall(text))
         # Also find sub-terms that are wholly contained within longer matches
-        # (regex alternation consumes the longest match, hiding sub-terms)
-        found = set()
+        # (regex alternation consumes the longest match, hiding sub-terms).
+        # Uses pre-computed _sub_terms mapping instead of O(n*m) scan.
+        found: set[str] = set()
         for m in direct_matches:
             if m in self.definitions:
                 found.add(m)
-            # Check if any shorter defined terms are sub-terms of this match
-            for term in self.definitions:
-                if term != m and term in m:
-                    found.add(term)
+            # Add pre-computed sub-terms for this match
+            for sub in self._sub_terms.get(m, ()):
+                found.add(sub)
         result = list(found)
         result.sort(key=len, reverse=True)
         return result
 
     def get_definitions_for_terms(self, terms: Sequence[str]) -> dict[str, str]:
-        """Retrieve definitions for a list of terms.
+        """Retrieve definition texts for a list of terms.
 
         Args:
             terms: Term names to look up.
 
         Returns:
-            Dict mapping each found term to its definition. Terms not in
-            the index are silently skipped.
+            Dict mapping each found term to its definition text. Terms not
+            in the index are silently skipped.
         """
         result: dict[str, str] = {}
         for term in terms:
-            defn = self.definitions.get(term)
-            if defn is not None:
-                result[term] = defn
+            entry = self.definitions.get(term)
+            if entry is not None:
+                result[term] = entry.text
+        return result
+
+    def get_entries_for_terms(self, terms: Sequence[str]) -> dict[str, DefinitionEntry]:
+        """Retrieve definition entries (with metadata) for a list of terms.
+
+        Args:
+            terms: Term names to look up.
+
+        Returns:
+            Dict mapping each found term to its ``DefinitionEntry``. Terms
+            not in the index are silently skipped.
+        """
+        result: dict[str, DefinitionEntry] = {}
+        for term in terms:
+            entry = self.definitions.get(term)
+            if entry is not None:
+                result[term] = entry
         return result
 
 
 class DefinitionsParser:
     """Parses defined terms from a credit agreement's definitions section."""
 
-    def parse(self, definitions_section: DocumentSection) -> DefinitionsIndex:
+    def parse(
+        self,
+        definitions_section: DocumentSection,
+        page_texts: list[tuple[int, str]] | None = None,
+    ) -> DefinitionsIndex:
         """Extract all defined terms and their definitions from a section.
 
         Scans for quoted terms followed by definition verbs (means, shall mean,
@@ -135,6 +195,10 @@ class DefinitionsParser:
         Args:
             definitions_section: The DocumentSection containing definitions
                 (typically Article I).
+            page_texts: Optional list of ``(page_number, page_text)`` tuples
+                for the pages spanned by the definitions section.  When
+                provided, each term is assigned the page number where it
+                appears based on cumulative character offsets.
 
         Returns:
             A DefinitionsIndex with all parsed terms.
@@ -145,15 +209,35 @@ class DefinitionsParser:
         if not term_positions:
             return DefinitionsIndex(definitions={})
 
-        definitions: dict[str, str] = {}
+        # Build page-offset mapping when page texts are available.
+        page_boundaries: list[int] | None = None
+        page_numbers: list[int] | None = None
+        if page_texts:
+            page_boundaries = []
+            page_numbers = []
+            cumulative = 0
+            for page_num, page_text in page_texts:
+                page_boundaries.append(cumulative)
+                page_numbers.append(page_num)
+                cumulative += len(page_text)
+
+        definitions: dict[str, DefinitionEntry] = {}
         for i, (term, start) in enumerate(term_positions):
             # Definition text runs from the start of this term's line
             # to the start of the next term
             end = term_positions[i + 1][1] if i + 1 < len(term_positions) else len(text)
 
             raw_definition = text[start:end].strip()
-            # Clean up: remove trailing whitespace and incomplete sentences
-            definitions[term] = self._clean_definition(raw_definition)
+            cleaned = self._clean_definition(raw_definition)
+
+            # Determine page number via binary search on cumulative offsets.
+            page_number: int | None = None
+            if page_boundaries is not None and page_numbers is not None:
+                idx = bisect.bisect_right(page_boundaries, start) - 1
+                idx = max(0, min(idx, len(page_numbers) - 1))
+                page_number = page_numbers[idx]
+
+            definitions[term] = DefinitionEntry(text=cleaned, page_number=page_number)
 
         return DefinitionsIndex(definitions=definitions)
 

@@ -5,14 +5,14 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from credit_analyzer.processing.chunker import Chunk
-from credit_analyzer.processing.definitions import DefinitionsIndex
+from credit_analyzer.processing.definitions import DefinitionEntry, DefinitionsIndex
 from credit_analyzer.retrieval.bm25_store import BM25Result, BM25Store
 from credit_analyzer.retrieval.embedder import Embedder
 from credit_analyzer.retrieval.hybrid_retriever import (
     HybridChunk,
     HybridRetriever,
     RetrievalResult,
-    _query_term_overlap,
+    _query_term_overlap,  # type: ignore[reportPrivateUsage]
     merge_multi_query_results,
 )
 from credit_analyzer.retrieval.vector_store import RetrievedChunk, VectorStore
@@ -71,7 +71,11 @@ def _make_retriever(
     mock_embedder = MagicMock(spec=Embedder)
     mock_embedder.embed_query.return_value = [0.1] * 384
 
-    defn_index = DefinitionsIndex(definitions=definitions or {})
+    defn_entries = {
+        term: DefinitionEntry(text=text)
+        for term, text in (definitions or {}).items()
+    }
+    defn_index = DefinitionsIndex(definitions=defn_entries)
 
     return HybridRetriever(
         vector_store=mock_vector_store,
@@ -348,11 +352,11 @@ def test_section_types_exclude_passed_to_stores() -> None:
 
     # Verify vector store received the exclude parameter
     call_kwargs = retriever._vector_store.search.call_args  # type: ignore[union-attr]
-    assert call_kwargs.kwargs.get("section_types_exclude") == exclude
+    assert call_kwargs.kwargs.get("section_types_exclude") == exclude  # type: ignore[reportUnknownMemberType]
 
     # Verify BM25 store received the exclude parameter
     bm25_kwargs = retriever._bm25_store.search.call_args  # type: ignore[union-attr]
-    assert bm25_kwargs.kwargs.get("section_types_exclude") == exclude
+    assert bm25_kwargs.kwargs.get("section_types_exclude") == exclude  # type: ignore[reportUnknownMemberType]
 
 
 # ---------------------------------------------------------------------------

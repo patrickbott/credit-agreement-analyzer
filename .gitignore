@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+# Python bytecode / caches
 __pycache__/
 *.py[cod]
 *$py.class
@@ -9,48 +9,40 @@ venv/
 ENV/
 env/
 pip-wheel-metadata/
+
+# Environment files
 .env
 
-# Distribution / packaging
+# Packaging
 dist/
 build/
 *.egg-info/
 credit_analyzer.egg-info/
 
-# Pytest
+# Tool caches
 .pytest_cache/
+.ruff_cache/
+.pyright/
 
-# Jupyter
-.ipynb_checkpoints/
-
-# IDEs and editors
+# IDE / OS
 .vscode/
 .idea/
-
-# OS files
+.ipynb_checkpoints/
 .DS_Store
 Thumbs.db
 
 # Logs
 *.log
 
-# C extensions
+# Native extensions
 *.so
 *.pyd
-credit_agreement.pdf
-__pycache__/
-*.pyc
-uv.lock
-*.egg-info/
-.claude/
-.pytest_cache/
-.ruff_cache/
-.venv/
-.vscode/
 
-# Other
+# Runtime data / local artifacts
 chroma_data/
 chroma_validation/
 chroma_validation_p4/
 demo_uploads/
-
+credit_agreement.pdf
+uv.lock
+.claude/

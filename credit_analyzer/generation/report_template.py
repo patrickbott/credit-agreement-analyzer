@@ -1,6 +1,6 @@
 """Report section definitions, retrieval strategies, and extraction prompts.
 
-Encodes the structure from ``docs/REPORT_TEMPLATE.md`` as typed Python
+Encodes the report structure as typed Python
 objects.  Each ``ReportSectionTemplate`` defines:
 - retrieval queries (multiple per section for comprehensive coverage),
 - section_type filters for targeted retrieval,
@@ -85,6 +85,12 @@ conditions. Skip boilerplate, ordinary-course, and de minimis baskets \
 (e.g. trade payables, statutory liens, workers comp, UCC filings). \
 Aim for the shortest output that captures all material economics.
 
+7. USE TABLES where data has a natural tabular structure (e.g. pricing \
+grids, amortization schedules, covenant step-downs, basket lists with \
+dollar amounts). Format tables as: "| Header 1 | Header 2 |" on the \
+first row, "| --- | --- |" separator row, then data rows with "| val | \
+val |". Always leave a blank line before and after the table.
+
 INLINE CITATIONS:
 Each context excerpt is labeled [Source 1], [Source 2], etc. When you make \
 a specific factual claim (dollar amounts, ratios, percentages, dates, \
@@ -92,9 +98,6 @@ covenant tests), place the corresponding source number in brackets \
 immediately after the claim, e.g. [1], [2]. Reuse the same number when \
 the same source supports multiple claims. Do NOT let citations make your \
 response longer -- keep the same concise bullet-point style.
-
-At the end of your response, on a separate line:
-Confidence: HIGH | MEDIUM | LOW
 """
 
 
