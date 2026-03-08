@@ -66,6 +66,12 @@ _REFERENCE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Matches a "COMMENTARY" section header produced when the commentary chip is on.
+_COMMENTARY_RE = re.compile(
+    r"(?:^|\n)\s*COMMENTARY\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+
 
 # ---------------------------------------------------------------------------
 # Parsing functions
@@ -191,16 +197,36 @@ def parse_inline_citations(text: str) -> list[InlineCitation]:
 def extract_answer_body(text: str) -> str:
     """Strip the Confidence and Sources metadata lines from the answer.
 
+    When both the *Cite Sources* and *Commentary* chips are enabled the LLM
+    produces output in this order::
+
+        Answer [1]  →  References  →  COMMENTARY  →  Confidence / Sources
+
+    A COMMENTARY section is considered part of the answer body and must be
+    preserved.  Only metadata lines (Confidence, Sources, References) that
+    appear *after* any COMMENTARY header are stripped.
+
     Args:
         text: Full LLM response text.
 
     Returns:
         The answer portion with trailing metadata removed.
     """
+    commentary_match = _COMMENTARY_RE.search(text)
+
     earliest_idx = len(text)
-    for pattern in (_CONFIDENCE_RE, _SOURCES_LINE_RE, _REFERENCES_BLOCK_RE):
-        match = pattern.search(text)
-        if match and match.start() < earliest_idx:
-            earliest_idx = match.start()
+
+    if commentary_match:
+        # COMMENTARY exists — only strip metadata that falls after it.
+        for pattern in (_CONFIDENCE_RE, _SOURCES_LINE_RE, _REFERENCES_BLOCK_RE):
+            match = pattern.search(text, commentary_match.start())
+            if match and match.start() < earliest_idx:
+                earliest_idx = match.start()
+    else:
+        # No commentary — strip the earliest metadata marker anywhere.
+        for pattern in (_CONFIDENCE_RE, _SOURCES_LINE_RE, _REFERENCES_BLOCK_RE):
+            match = pattern.search(text)
+            if match and match.start() < earliest_idx:
+                earliest_idx = match.start()
 
     return text[:earliest_idx].strip()

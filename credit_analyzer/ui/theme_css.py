@@ -241,7 +241,7 @@ section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {{
   margin-top: 3px !important;
 }}
 
-/* ---- Stop-generating button — rendered inside streaming chat message ---- */
+/* ---- Stop-generating button — inside streaming chat message ---- */
 
 .st-key-stop-chat-generation {{
   text-align: center;
