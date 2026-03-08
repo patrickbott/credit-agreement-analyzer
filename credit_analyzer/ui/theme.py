@@ -2170,6 +2170,77 @@ div[data-testid="stDownloadButton"] > button:hover {{
   box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }}
 
+/* ---- Chat chips (toggleable options near input bar) ---- */
+
+/* Container for inactive chips — centered below the input */
+.st-key-chat-chips-off {{
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  padding-top: 0.35rem;
+}}
+
+.st-key-chat-chips-off div[data-testid="stButton"] > button {{
+  background: transparent !important;
+  border: 1px solid {BORDER} !important;
+  border-radius: 999px !important;
+  color: {MUTED} !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  padding: 0.2rem 0.75rem !important;
+  min-height: unset !important;
+  line-height: 1.4 !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease;
+}}
+
+.st-key-chat-chips-off div[data-testid="stButton"] > button:hover {{
+  border-color: {NAVY_DEEP} !important;
+  color: {NAVY_DEEP} !important;
+  background: rgba(0, 61, 165, 0.04) !important;
+}}
+
+.st-key-chat-chips-off div[data-testid="stButton"] > button p {{
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+}}
+
+/* Container for active chips — left-aligned above the input */
+.st-key-chat-chips-on {{
+  display: flex;
+  justify-content: flex-start;
+  gap: 0.4rem;
+  padding-bottom: 0.35rem;
+}}
+
+.st-key-chat-chips-on div[data-testid="stButton"] > button {{
+  background: {NAVY_DEEP} !important;
+  border: none !important;
+  border-radius: 999px !important;
+  color: white !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  padding: 0.2rem 0.75rem !important;
+  min-height: unset !important;
+  line-height: 1.4 !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease;
+}}
+
+.st-key-chat-chips-on div[data-testid="stButton"] > button:hover {{
+  background: #002D7A !important;
+}}
+
+.st-key-chat-chips-on div[data-testid="stButton"] > button p {{
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+  color: white !important;
+}}
+
 </style>
 """
 

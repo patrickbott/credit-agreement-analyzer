@@ -80,6 +80,14 @@ at the END of your response. The system will retrieve additional context and \
 ask you again with the expanded context. Only request additional context if \
 you genuinely need it — do not request context speculatively."""
 
+VERBOSE_ADDENDUM: str = """
+
+VERBOSITY OVERRIDE:
+Provide a thorough, detailed answer. Include full breakdowns of conditions, \
+exceptions, and sub-baskets. Quote specific dollar amounts, percentages, \
+ratios, and dates. Walk through multi-step calculations. Do not abbreviate \
+or summarize — err on the side of completeness."""
+
 
 # ---------------------------------------------------------------------------
 # Conversation history

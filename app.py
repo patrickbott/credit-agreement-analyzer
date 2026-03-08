@@ -174,6 +174,8 @@ def _initialize_state() -> None:
     st.session_state.setdefault("generated_reports", {})
     st.session_state.setdefault("provider_status", None)
     st.session_state.setdefault("deep_analysis_enabled", False)
+    st.session_state.setdefault("verbose_answers", False)
+    st.session_state.setdefault("show_definitions", True)
 
 
 def _clear_prompt_edit(document_id: str) -> None:
@@ -758,12 +760,25 @@ def _render_main(
 
     _render_prompt_editor(active_document, provider)
 
-    # Deep analysis toggle
-    st.toggle(
-        "Deep Analysis",
-        key="deep_analysis_enabled",
-        help="Multi-round retrieval for complex cross-reference questions (slower, more thorough)",
-    )
+    # Chat input chips — toggleable options
+    _CHAT_CHIPS: list[tuple[str, str, str]] = [
+        ("deep_analysis_enabled", "Extended Thinking", "\u2715 Extended Thinking"),
+        ("verbose_answers", "Verbose", "\u2715 Verbose"),
+        ("show_definitions", "Definitions", "\u2715 Definitions"),
+    ]
+
+    active_chips = [c for c in _CHAT_CHIPS if st.session_state.get(c[0], False)]
+    inactive_chips = [c for c in _CHAT_CHIPS if not st.session_state.get(c[0], False)]
+
+    # Active chips render above the chat input as blue pills
+    if active_chips:
+        with st.container(key="chat-chips-on"):
+            cols = st.columns(len(active_chips) + 2)  # extra cols for left-align
+            for i, (state_key, _off_label, on_label) in enumerate(active_chips):
+                with cols[i]:
+                    if st.button(on_label, key=f"chip-off-{state_key}"):
+                        st.session_state[state_key] = False
+                        st.rerun()
 
     # Chat input
     user_question = st.chat_input(
@@ -775,6 +790,16 @@ def _render_main(
         if cleaned:
             _queue_chat_question(active_document, cleaned)
             st.rerun()
+
+    # Inactive chips render below the chat input as outlined pills
+    if inactive_chips:
+        with st.container(key="chat-chips-off"):
+            cols = st.columns(len(inactive_chips))
+            for i, (state_key, off_label, _on_label) in enumerate(inactive_chips):
+                with cols[i]:
+                    if st.button(off_label, key=f"chip-on-{state_key}"):
+                        st.session_state[state_key] = True
+                        st.rerun()
 
     # Scroll-to-top button for chat area
     components.html(scroll_to_top_script("section.main"), height=0)
@@ -857,6 +882,7 @@ def _run_pending_chat_question(
             first_token = True
 
             deep = st.session_state.get("deep_analysis_enabled", False)
+            verbose = st.session_state.get("verbose_answers", False)
             status_label = (
                 "Deep analysis: searching relevant sections..."
                 if deep else "Searching relevant sections..."
@@ -868,7 +894,8 @@ def _run_pending_chat_question(
             t0 = time.monotonic()
 
             for item in qa_engine.ask_stream(
-                question, document.document_id, deep_analysis=deep,
+                question, document.document_id,
+                deep_analysis=deep, verbose=verbose,
             ):
                 if isinstance(item, QAResponse):
                     final_response = item
@@ -893,7 +920,7 @@ def _run_pending_chat_question(
                     cited_html = render_inline_citations(
                         final_response.answer, final_response.inline_citations
                     )
-                    if defs_idx and defs_idx.definitions:
+                    if defs_idx and defs_idx.definitions and st.session_state.get("show_definitions", True):
                         footnote_marker = '<div class="cite-footnotes">'
                         fn_pos = cited_html.find(footnote_marker)
                         if fn_pos >= 0:
@@ -910,7 +937,7 @@ def _run_pending_chat_question(
                     )
                 elif final_response.sources:
                     answer_html = format_chat_answer(final_response.answer)
-                    if defs_idx and defs_idx.definitions:
+                    if defs_idx and defs_idx.definitions and st.session_state.get("show_definitions", True):
                         answer_html = highlight_defined_terms(answer_html, defs_idx)
                     footnotes_html = render_source_footnotes(final_response.sources)
                     response_placeholder.markdown(
@@ -922,7 +949,7 @@ def _run_pending_chat_question(
                     )
                 else:
                     answer_html = format_chat_answer(final_response.answer)
-                    if defs_idx and defs_idx.definitions:
+                    if defs_idx and defs_idx.definitions and st.session_state.get("show_definitions", True):
                         answer_html = highlight_defined_terms(answer_html, defs_idx)
                     response_placeholder.markdown(
                         f'<div style="position:relative;">'
@@ -1149,7 +1176,7 @@ def _render_chat_message(
             cited_html = render_inline_citations(
                 response.answer, response.inline_citations
             )
-            if defs_index and defs_index.definitions:
+            if defs_index and defs_index.definitions and st.session_state.get("show_definitions", True):
                 footnote_marker = '<div class="cite-footnotes">'
                 fn_pos = cited_html.find(footnote_marker)
                 if fn_pos >= 0:
@@ -1166,7 +1193,7 @@ def _render_chat_message(
             )
         elif response.sources:
             answer_html = format_chat_answer(response.answer)
-            if defs_index and defs_index.definitions:
+            if defs_index and defs_index.definitions and st.session_state.get("show_definitions", True):
                 answer_html = highlight_defined_terms(answer_html, defs_index)
             footnotes_html = render_source_footnotes(response.sources)
             st.markdown(
@@ -1178,7 +1205,7 @@ def _render_chat_message(
             )
         else:
             answer_html = format_chat_answer(response.answer)
-            if defs_index and defs_index.definitions:
+            if defs_index and defs_index.definitions and st.session_state.get("show_definitions", True):
                 answer_html = highlight_defined_terms(answer_html, defs_index)
             st.markdown(
                 f'<div style="position:relative;">'
