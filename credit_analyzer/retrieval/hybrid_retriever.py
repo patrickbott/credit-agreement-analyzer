@@ -601,7 +601,14 @@ class HybridRetriever:
         # Insert promoted chunks
         if promoted_terms:
             scores = [hc.score for hc in chunks]
-            median_score = sorted(scores)[len(scores) // 2] if scores else 0.5
+            sorted_scores = sorted(scores)
+            n = len(sorted_scores)
+            if n == 0:
+                median_score = 0.5
+            elif n % 2 == 1:
+                median_score = sorted_scores[n // 2]
+            else:
+                median_score = (sorted_scores[n // 2 - 1] + sorted_scores[n // 2]) / 2
             promotion_score = median_score * 0.95
 
             for term in promoted_terms:
