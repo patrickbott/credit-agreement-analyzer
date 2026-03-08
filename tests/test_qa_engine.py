@@ -841,3 +841,26 @@ class TestPreambleInjection:
         assert len(result) == 1
         assert result[0].section_title == "Restricted Payments"
         assert result[0].page_numbers == [45]
+
+
+from credit_analyzer.generation.prompts import (
+    CITE_SOURCES_ADDENDUM,
+    COMMENTARY_ADDENDUM,
+)
+
+
+class TestPromptAddendums:
+    """Tests for Cite Sources and Commentary prompt addendums."""
+
+    def test_cite_sources_addendum_exists(self) -> None:
+        assert len(CITE_SOURCES_ADDENDUM) > 50
+        assert "section" in CITE_SOURCES_ADDENDUM.lower()
+
+    def test_commentary_addendum_exists(self) -> None:
+        assert len(COMMENTARY_ADDENDUM) > 50
+        assert "commentary" in COMMENTARY_ADDENDUM.lower()
+
+    def test_commentary_addendum_is_optional(self) -> None:
+        """Commentary should instruct the LLM that it's optional, not required."""
+        lower = COMMENTARY_ADDENDUM.lower()
+        assert "omit" in lower or "only when" in lower or "if relevant" in lower or "do not" in lower

@@ -88,6 +88,31 @@ background explanation and only include the essential details. Use \
 bullet points over paragraphs. Aim for 2-4 sentences unless the \
 question requires enumeration."""
 
+CITE_SOURCES_ADDENDUM: str = """
+
+CITE SOURCES MODE:
+For every factual claim, provision, or term you reference, include an explicit \
+inline citation with the section number, subsection, and page number where it \
+appears (e.g., "Section 7.06(a) (p. 42)"). Cite clause-level references, not \
+just article-level. When referencing defined terms, note where they are defined \
+(e.g., "as defined in Section 1.01, p. 12"). Every substantive statement \
+should have a citation, not just numbers and ratios."""
+
+COMMENTARY_ADDENDUM: str = """
+
+COMMENTARY MODE:
+Where relevant, append a brief COMMENTARY section at the end of your response \
+with 3-5 bullet points covering any of the following that apply:
+- Market context: how this compares to typical leveraged credit agreement terms
+- Borrower/lender lean: which party benefits from this language and why
+- Notable outliers: unusually large or small baskets, atypical carve-outs, \
+missing protections, or other oddities worth flagging
+- Key takeaways: what the deal team should be aware of
+
+Omit the COMMENTARY section entirely if the question is a simple lookup, \
+definitional, or procedural question that does not warrant market commentary. \
+Do not force commentary where it adds no value."""
+
 
 # ---------------------------------------------------------------------------
 # Conversation history
