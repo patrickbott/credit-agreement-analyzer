@@ -279,25 +279,48 @@ def _render_sidebar(
             disabled=active_document is None,
             use_container_width=True,
         )
-        report_clicked = st.button(
-            "Generate Report",
-            key="gen-report",
-            disabled=active_document is None or not provider_status["ready"],
-            use_container_width=True,
-        )
+        # -- Report feature group --
         reports_cache = st.session_state.get("generated_reports", {})
         has_report = bool(
             active_document and active_document.document_id in reports_cache
         )
-        if has_report and st.button(
-            "Clear Report",
-            key="clear-report",
-            use_container_width=True,
-        ):
-            st.session_state.generated_reports.pop(
-                active_document.document_id, None  # type: ignore[union-attr]
+        report_disabled = active_document is None or not provider_status["ready"]
+
+        if has_report:
+            view_report_clicked = st.button(
+                "View Report",
+                key="view-report",
+                type="primary",
+                disabled=active_document is None,
+                use_container_width=True,
             )
-            st.rerun()
+            new_rpt_col, discard_col = st.columns([5, 1])
+            with new_rpt_col:
+                new_report_clicked = st.button(
+                    "New Report",
+                    key="new-report",
+                    disabled=report_disabled,
+                    use_container_width=True,
+                )
+            with discard_col:
+                discard_clicked = st.button(
+                    "",
+                    key="discard-report",
+                    icon=":material/cancel:",  # pyright: ignore[reportCallIssue]
+                    help="Discard current report",
+                )
+            generate_clicked = False
+        else:
+            generate_clicked = st.button(
+                "Generate Report",
+                key="gen-report",
+                disabled=report_disabled,
+                use_container_width=True,
+            )
+            view_report_clicked = False
+            new_report_clicked = False
+            discard_clicked = False
+
         guide_clicked = st.button(
             "Guide",
             key="open-guide",
@@ -309,20 +332,21 @@ def _render_sidebar(
             st.rerun()
         if defs_clicked and active_document:
             show_definitions_dialog(active_document.definitions_index)
-        if report_clicked and active_document and provider:
-            reports: dict[str, object] = st.session_state.get(
-                "generated_reports", {}
+        if view_report_clicked and active_document:
+            show_report_dialog(active_document)
+        if (generate_clicked or new_report_clicked) and active_document and provider:
+            st.session_state["_show_section_picker"] = True
+        if discard_clicked and active_document:
+            st.session_state.get("generated_reports", {}).pop(
+                active_document.document_id, None
             )
-            if active_document.document_id in reports:
-                show_report_dialog(active_document)
-            else:
-                st.session_state["_show_section_picker"] = True
+            st.rerun()
         if guide_clicked:
             show_guide_dialog()
 
         # Handle pending report generation (from section picker dialog).
         # Two-step approach: first rerun closes the dialog cleanly, second
-        # rerun starts the (slow) generation so the dialog backdrop is gone.
+        # rerun picks up deferred sections so generation starts backdrop-free.
         pending_sections: list[ReportSectionTemplate] | None = (
             st.session_state.pop("_pending_report_sections", None)
         )

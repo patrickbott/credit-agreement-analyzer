@@ -141,9 +141,9 @@ def _render_report(
         unsafe_allow_html=True,
     )
 
-    # PDF download & clear report
+    # PDF download, new report, and discard actions
     pdf_bytes = report_to_pdf_bytes(report)
-    dl_col, clear_col = st.columns([1, 1])
+    dl_col, new_col, discard_col = st.columns([2, 2, 1])
     with dl_col:
         st.download_button(
             "Download PDF",
@@ -151,8 +151,24 @@ def _render_report(
             file_name=f"credit_report_{report.generated_at.strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf",
         )
-    with clear_col:
-        if document is not None and st.button("Clear Report", key="clear-report-dialog"):
+    with new_col:
+        if document is not None and st.button(
+            "New Report",
+            key="new-report-dialog",
+            icon=":material/refresh:",  # pyright: ignore[reportCallIssue]
+        ):
+            st.session_state.get("generated_reports", {}).pop(
+                document.document_id, None
+            )
+            st.session_state["_show_section_picker"] = True
+            st.rerun()
+    with discard_col:
+        if document is not None and st.button(
+            "",
+            key="discard-report-dialog",
+            icon=":material/cancel:",  # pyright: ignore[reportCallIssue]
+            help="Discard current report",
+        ):
             st.session_state.get("generated_reports", {}).pop(
                 document.document_id, None
             )
