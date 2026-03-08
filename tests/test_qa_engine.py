@@ -582,6 +582,50 @@ class TestQAEngine:
         for call in llm.complete.call_args_list:
             assert call.kwargs["temperature"] == 0.0
 
+    def test_cite_sources_adds_addendum(self) -> None:
+        """cite_sources=True appends the cite sources addendum to the system prompt."""
+        retriever = MagicMock(spec=HybridRetriever)
+        retriever.retrieve.return_value = _make_retrieval_result()
+
+        llm = MagicMock()
+        llm.complete = MagicMock(return_value=_mock_llm_response())
+
+        engine = QAEngine(retriever=retriever, llm=llm)
+        engine.ask("Q?", "doc1", cite_sources=True)
+
+        system_prompt: str = llm.complete.call_args.kwargs["system_prompt"]
+        assert "CITE SOURCES MODE" in system_prompt
+
+    def test_commentary_adds_addendum(self) -> None:
+        """commentary=True appends the commentary addendum to the system prompt."""
+        retriever = MagicMock(spec=HybridRetriever)
+        retriever.retrieve.return_value = _make_retrieval_result()
+
+        llm = MagicMock()
+        llm.complete = MagicMock(return_value=_mock_llm_response())
+
+        engine = QAEngine(retriever=retriever, llm=llm)
+        engine.ask("Q?", "doc1", commentary=True)
+
+        system_prompt: str = llm.complete.call_args.kwargs["system_prompt"]
+        assert "COMMENTARY MODE" in system_prompt
+
+    def test_all_addendums_stack(self) -> None:
+        """All addendums can be active simultaneously."""
+        retriever = MagicMock(spec=HybridRetriever)
+        retriever.retrieve.return_value = _make_retrieval_result()
+
+        llm = MagicMock()
+        llm.complete = MagicMock(return_value=_mock_llm_response())
+
+        engine = QAEngine(retriever=retriever, llm=llm)
+        engine.ask("Q?", "doc1", deep_analysis=True, cite_sources=True, commentary=True)
+
+        system_prompt: str = llm.complete.call_args.kwargs["system_prompt"]
+        assert "CITE SOURCES MODE" in system_prompt
+        assert "COMMENTARY MODE" in system_prompt
+        assert "ADDITIONAL CONTEXT RETRIEVAL" in system_prompt
+
     def test_empty_retrieval_result(self) -> None:
         """Engine handles empty retrieval gracefully."""
         engine = self._make_engine(

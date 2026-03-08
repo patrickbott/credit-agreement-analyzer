@@ -19,6 +19,8 @@ from credit_analyzer.config import (
     QA_SECTION_TYPES_EXCLUDE,
 )
 from credit_analyzer.generation.prompts import (
+    CITE_SOURCES_ADDENDUM,
+    COMMENTARY_ADDENDUM,
     CONCISE_ADDENDUM,
     DEEP_ANALYSIS_ADDENDUM,
     QA_SYSTEM_PROMPT,
@@ -289,6 +291,8 @@ class QAEngine:
         *,
         deep_analysis: bool = False,
         concise: bool = False,
+        cite_sources: bool = False,
+        commentary: bool = False,
     ) -> QAResponse:
         """Ask a question about a specific credit agreement.
 
@@ -323,6 +327,10 @@ class QAEngine:
             system_prompt += CONCISE_ADDENDUM
         if deep_analysis:
             system_prompt += DEEP_ANALYSIS_ADDENDUM
+        if cite_sources:
+            system_prompt += CITE_SOURCES_ADDENDUM
+        if commentary:
+            system_prompt += COMMENTARY_ADDENDUM
 
         recent_history = self._history[-self._max_history :]
         retrieval_rounds = 1
@@ -418,6 +426,8 @@ class QAEngine:
         *,
         deep_analysis: bool = False,
         concise: bool = False,
+        cite_sources: bool = False,
+        commentary: bool = False,
     ) -> Generator[str | QAResponse, None, None]:
         """Stream an answer, yielding tokens then the final QAResponse.
 
@@ -445,6 +455,10 @@ class QAEngine:
             system_prompt += CONCISE_ADDENDUM
         if deep_analysis:
             system_prompt += DEEP_ANALYSIS_ADDENDUM
+        if cite_sources:
+            system_prompt += CITE_SOURCES_ADDENDUM
+        if commentary:
+            system_prompt += COMMENTARY_ADDENDUM
 
         recent_history = self._history[-self._max_history:]
         retrieval_rounds = 1
