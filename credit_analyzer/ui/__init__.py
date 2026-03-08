@@ -20,7 +20,7 @@ __all__ = [
 ]
 
 _EXPORTS: dict[str, tuple[str, str]] = {
-    "APP_CSS": ("credit_analyzer.ui.theme", "APP_CSS"),
+    "APP_CSS": ("credit_analyzer.ui.theme_css", "APP_CSS"),
     "DEFAULT_BRIEF_PROMPTS": ("credit_analyzer.ui.demo_report", "DEFAULT_BRIEF_PROMPTS"),
     "SUGGESTED_QUESTIONS": ("credit_analyzer.ui.demo_report", "SUGGESTED_QUESTIONS"),
     "BriefPrompt": ("credit_analyzer.ui.demo_report", "BriefPrompt"),
