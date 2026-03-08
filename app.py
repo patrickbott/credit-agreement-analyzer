@@ -131,6 +131,8 @@ def _initialize_state() -> None:
     st.session_state.setdefault("deep_analysis_enabled", False)
     st.session_state.setdefault("streaming_active", False)
     st.session_state.setdefault("partial_response", None)
+    st.session_state.setdefault("compare_mode", False)
+    st.session_state.setdefault("upload_counter", 0)
 
 
 if __name__ == "__main__":

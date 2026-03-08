@@ -22,7 +22,7 @@ from credit_analyzer.ui.report_pipeline import (
     show_section_picker,
 )
 from credit_analyzer.ui.theme import (
-    document_card,
+    document_card_compact,
     indexing_step,
     rail_card,
 )
@@ -31,7 +31,6 @@ from credit_analyzer.ui.workflows import (
     build_processed_document,
     save_uploaded_pdf,
 )
-
 
 # ---------------------------------------------------------------------------
 # Provider state helpers
@@ -232,29 +231,45 @@ def render_sidebar(
 
         st.markdown("---")
 
-        # -- Document --
-        st.caption("DOCUMENT")
-        if active_document is not None:
-            st.markdown(
-                document_card(
-                    filename=Path(active_document.source_path).name,
-                    pages=active_document.stats.total_pages,
-                    sections=active_document.stats.section_count,
-                    chunks=active_document.stats.chunk_count,
-                    definitions=active_document.stats.definition_count,
-                    source_path=str(active_document.source_path),
-                ),
-                unsafe_allow_html=True,
-            )
-            if st.button("Remove Document", key="remove-doc"):
-                remove_document(active_document.document_id)
-                st.rerun()
-        else:
+        # -- Documents (multi-document list) --
+        _MAX_DOCUMENTS = 4
+        st.caption("DOCUMENTS")
+        all_documents: dict[str, ProcessedDocument] = st.session_state.documents
+
+        for doc_id, doc in all_documents.items():
+            col_card, col_remove = st.columns([5, 1])
+            with col_card:
+                is_active = doc_id == st.session_state.active_document_id
+                st.markdown(
+                    document_card_compact(
+                        filename=Path(doc.source_path).name,
+                        pages=doc.stats.total_pages,
+                        chunks=doc.stats.chunk_count,
+                        is_active=is_active,
+                        doc_id=doc_id,
+                    ),
+                    unsafe_allow_html=True,
+                )
+                if not is_active and st.button(
+                    "Select",
+                    key=f"select-doc-{doc_id}",
+                    use_container_width=True,
+                ):
+                    st.session_state.active_document_id = doc_id
+                    st.rerun()
+            with col_remove:
+                if st.button("\u2715", key=f"remove-doc-{doc_id}"):
+                    remove_document(doc_id)
+                    st.rerun()
+
+        # File uploader (always visible when under limit)
+        if len(all_documents) < _MAX_DOCUMENTS:
             uploaded_file = st.file_uploader(
-                "Agreement PDF",
+                "Add Agreement PDF" if all_documents else "Agreement PDF",
                 type=["pdf"],
                 help="PDF files are saved locally in demo_uploads/.",
                 label_visibility="collapsed",
+                key=f"file_uploader_{st.session_state.get('upload_counter', 0)}",
             )
             if st.button(
                 "Index PDF",
@@ -266,6 +281,8 @@ def render_sidebar(
                     uploaded_file.name, uploaded_file.getvalue()
                 )
                 process_document(pdf_path)
+        else:
+            st.caption("Maximum 4 documents loaded.")
 
         st.markdown("---")
 
@@ -397,6 +414,7 @@ def process_document(pdf_path: Path) -> None:
     st.session_state.active_document_id = document.document_id
     st.session_state.chat_messages[document.document_id] = []
     st.session_state.generated_reports.pop(document.document_id, None)
+    st.session_state.upload_counter = st.session_state.get("upload_counter", 0) + 1
 
     pipeline_placeholder.empty()
     st.rerun()

@@ -104,7 +104,11 @@ def render_main(
     # Handle pending question (synchronous streaming)
     pending = st.session_state.pending_chat_questions.get(doc_id)
     if pending is not None:
-        run_pending_chat_question(active_document, provider, pending)
+        if isinstance(pending, dict) and pending.get("is_comparison"):
+            _run_pending_comparison(provider, pending["question"])
+        else:
+            question_text = pending if isinstance(pending, str) else pending.get("question", "")
+            run_pending_chat_question(active_document, provider, question_text)
         st.rerun()
 
     render_prompt_editor(active_document, provider)
@@ -135,15 +139,33 @@ def render_main(
                 st.session_state["commentary_enabled"] = not commentary
                 st.rerun()
 
+    # Comparison mode toggle
+    all_documents = st.session_state.documents
+    can_compare = len(all_documents) >= 2
+    if can_compare:
+        compare_key = "chip-compare-on" if st.session_state.get("compare_mode") else "chip-compare-off"
+        with st.container(key=compare_key):
+            if st.button(f"Compare ({len(all_documents)} docs)", key="btn-compare"):
+                st.session_state["compare_mode"] = not st.session_state.get("compare_mode", False)
+                st.rerun()
+    else:
+        st.session_state["compare_mode"] = False
+
     # Chat input
+    compare_on = st.session_state.get("compare_mode", False)
     user_question = st.chat_input(
-        "Ask about pricing, covenants, structure...",
+        "Compare provisions across agreements..."
+        if compare_on
+        else "Ask about pricing, covenants, structure...",
         key=_CHAT_INPUT_KEY,
     )
     if user_question is not None:
         cleaned = user_question.strip()
         if cleaned:
-            queue_chat_question(active_document, cleaned)
+            if compare_on and len(all_documents) >= 2:
+                _queue_comparison_question(cleaned)
+            else:
+                queue_chat_question(active_document, cleaned)
             st.rerun()
 
     # Stop button (visible during streaming; clicking interrupts the run)
@@ -573,6 +595,16 @@ def render_chat_message(
                 st.markdown(message_timestamp(ts), unsafe_allow_html=True)
         return
 
+    if message.get("is_comparison") and message["role"] == "assistant":
+        with st.chat_message("assistant"):
+            comp_resp = message.get("comparison_response")
+            if comp_resp is not None:
+                _render_comparison_in_chat(comp_resp)
+            ts = message.get("timestamp")
+            if ts:
+                st.markdown(message_timestamp(ts), unsafe_allow_html=True)
+        return
+
     response: QAResponse = message["response"]
     answer_id = f"answer-{hash(response.answer) & 0xFFFFFFFF:08x}"
     with st.chat_message("assistant"):
@@ -656,3 +688,99 @@ def render_chat_message(
         ts = message.get("timestamp")
         if ts:
             st.markdown(message_timestamp(ts), unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Multi-document comparison
+# ---------------------------------------------------------------------------
+
+
+def _queue_comparison_question(question: str) -> None:
+    """Queue a comparison question that will be answered across all documents."""
+    active_doc_id = st.session_state.active_document_id
+    st.session_state.chat_messages[active_doc_id].append(
+        {
+            "role": "user",
+            "question": question,
+            "timestamp": datetime.now().strftime("%I:%M %p").lstrip("0"),
+            "is_comparison": True,
+        }
+    )
+    st.session_state.pending_chat_questions[active_doc_id] = {
+        "question": question,
+        "is_comparison": True,
+    }
+
+
+def _run_pending_comparison(
+    provider: LLMProvider,
+    question: str,
+) -> None:
+    """Execute a comparison question across all loaded documents."""
+    from credit_analyzer.generation.qa_engine import compare
+
+    documents: dict[str, ProcessedDocument] = st.session_state.documents
+    active_doc_id = st.session_state.active_document_id
+    st.session_state.pending_chat_questions.pop(active_doc_id, None)
+
+    retrievers = {did: doc.retriever for did, doc in documents.items()}
+    doc_names = {did: doc.display_name for did, doc in documents.items()}
+    preambles = {did: doc.preamble_text for did, doc in documents.items()}
+
+    with st.chat_message("assistant"):
+        status_placeholder = st.empty()
+        response_placeholder = st.empty()
+
+        doc_count = len(documents)
+        status_placeholder.markdown(
+            stream_status(f"Comparing across {doc_count} agreements..."),
+            unsafe_allow_html=True,
+        )
+
+        try:
+            result = compare(
+                question=question,
+                retrievers=retrievers,
+                document_names=doc_names,
+                llm=provider,
+                preambles=preambles,
+            )
+        except Exception as exc:
+            status_placeholder.empty()
+            st.error(f"Comparison failed: {exc}")
+            return
+
+        status_placeholder.empty()
+        _render_comparison_in_chat(result, placeholder=response_placeholder)
+
+        ts = datetime.now().strftime("%I:%M %p").lstrip("0")
+        st.markdown(message_timestamp(ts), unsafe_allow_html=True)
+
+    st.session_state.chat_messages[active_doc_id].append(
+        {
+            "role": "assistant",
+            "comparison_response": result,
+            "timestamp": datetime.now().strftime("%I:%M %p").lstrip("0"),
+            "is_comparison": True,
+        }
+    )
+
+
+def _render_comparison_in_chat(
+    comp_resp: object,
+    *,
+    placeholder: Any | None = None,
+) -> None:
+    """Render a ComparisonResponse header and synthesis table in the chat."""
+    from credit_analyzer.generation.qa_engine import ComparisonResponse
+
+    if not isinstance(comp_resp, ComparisonResponse):
+        return
+    doc_list = ", ".join(comp_resp.document_names.values())
+    header_html = (
+        '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.3rem;">'
+        f"Comparing: {doc_list}</div>"
+    )
+    target = placeholder if placeholder is not None else st
+    target.markdown(header_html, unsafe_allow_html=True)
+    st.markdown(comp_resp.synthesis)

@@ -460,3 +460,134 @@ class QAEngine:
             )
 
         return question
+
+
+# ---------------------------------------------------------------------------
+# Multi-document comparison
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ComparisonResponse:
+    """Result of a cross-document comparison query.
+
+    Attributes:
+        question: The original user question.
+        per_document_answers: Mapping of document_id -> extracted answer text.
+        per_document_chunks: Mapping of document_id -> retrieved chunks.
+        synthesis: The synthesized comparison table/text.
+        document_names: Mapping of document_id -> display name.
+    """
+
+    question: str
+    per_document_answers: dict[str, str]
+    per_document_chunks: dict[str, list[HybridChunk]]
+    synthesis: str
+    document_names: dict[str, str]
+
+
+def compare(
+    question: str,
+    retrievers: dict[str, HybridRetriever],
+    document_names: dict[str, str],
+    llm: LLMProvider,
+    *,
+    preambles: dict[str, str | None] | None = None,
+    max_context_chunks: int = QA_MAX_CONTEXT_CHUNKS,
+    max_generation_tokens: int = QA_MAX_GENERATION_TOKENS,
+    section_types_exclude: tuple[str, ...] = QA_SECTION_TYPES_EXCLUDE,
+) -> ComparisonResponse:
+    """Compare provisions across multiple documents.
+
+    Fans the question out to each document's retriever, gets a per-document
+    extraction answer from the LLM, then synthesizes a comparison table.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from credit_analyzer.generation.prompts import (
+        COMPARISON_EXTRACTION_PROMPT,
+        COMPARISON_SYNTHESIS_PROMPT,
+    )
+
+    preambles = preambles or {}
+
+    # Phase 1: Retrieve from all documents in parallel
+    queries = _expand_query(question)
+    per_doc_results: dict[str, RetrievalResult] = {}
+
+    def _retrieve_for_doc(doc_id: str) -> tuple[str, RetrievalResult]:
+        retriever = retrievers[doc_id]
+        result = _retrieve_multi_query(
+            retriever, queries, doc_id,
+            top_k=max_context_chunks,
+            section_types_exclude=section_types_exclude,
+        )
+        return doc_id, result
+
+    with ThreadPoolExecutor(max_workers=len(retrievers)) as pool:
+        for doc_id, result in pool.map(
+            lambda did: _retrieve_for_doc(did), list(retrievers.keys()),
+        ):
+            per_doc_results[doc_id] = result
+
+    # Phase 2: Extract answer per document (parallel LLM calls)
+    per_doc_answers: dict[str, str] = {}
+    per_doc_chunks: dict[str, list[HybridChunk]] = {}
+
+    def _extract_for_doc(doc_id: str) -> tuple[str, str, list[HybridChunk]]:
+        result = per_doc_results[doc_id]
+        doc_name = document_names.get(doc_id, doc_id)
+        preamble = preambles.get(doc_id)
+
+        user_prompt, _ = build_context_prompt(
+            chunks=result.chunks,
+            definitions=result.injected_definitions,
+            history=[],
+            question=question,
+            preamble_text=preamble,
+        )
+
+        system_prompt = COMPARISON_EXTRACTION_PROMPT.format(
+            document_name=doc_name,
+        )
+
+        resp = llm.complete(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.0,
+            max_tokens=max_generation_tokens,
+        )
+        return doc_id, resp.text.strip(), result.chunks
+
+    with ThreadPoolExecutor(max_workers=len(per_doc_results)) as pool:
+        for doc_id, answer, chunks in pool.map(
+            lambda did: _extract_for_doc(did), list(per_doc_results.keys()),
+        ):
+            per_doc_answers[doc_id] = answer
+            per_doc_chunks[doc_id] = chunks
+
+    # Phase 3: Synthesize comparison
+    synthesis_parts: list[str] = []
+    for doc_id, answer in per_doc_answers.items():
+        doc_name = document_names.get(doc_id, doc_id)
+        synthesis_parts.append(f"=== {doc_name} ===\n{answer}")
+
+    synthesis_user_prompt = (
+        f"QUESTION: {question}\n\n"
+        + "\n\n".join(synthesis_parts)
+    )
+
+    synthesis_resp = llm.complete(
+        system_prompt=COMPARISON_SYNTHESIS_PROMPT,
+        user_prompt=synthesis_user_prompt,
+        temperature=0.0,
+        max_tokens=max_generation_tokens,
+    )
+
+    return ComparisonResponse(
+        question=question,
+        per_document_answers=per_doc_answers,
+        per_document_chunks=per_doc_chunks,
+        synthesis=synthesis_resp.text.strip(),
+        document_names=dict(document_names),
+    )
