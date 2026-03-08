@@ -3422,33 +3422,34 @@ def chat_chips_relocate_script() -> str:
     directly before or after the chat input element for correct ordering.
     """
     return """<script>
-(function() {
+(function relocateChip() {
     var doc = parent.document;
     var chatInput = doc.querySelector('[data-testid="stChatInput"]');
-    if (!chatInput) return;
-    // Walk up from the chat input to find the stBottom > div container
     var bottom = doc.querySelector('[data-testid="stBottom"] > div');
-    if (!bottom) return;
+    if (!chatInput || !bottom) {
+        // DOM not ready yet — retry once after a short delay
+        setTimeout(relocateChip, 100);
+        return;
+    }
     // Find the direct child of bottom that contains the chat input
     var inputWrapper = chatInput;
     while (inputWrapper && inputWrapper.parentElement !== bottom) {
         inputWrapper = inputWrapper.parentElement;
     }
     if (!inputWrapper) return;
-    // chip-on goes BEFORE the input wrapper, chip-off goes AFTER
+    // Always force correct position (no contains guard — element may
+    // already be in bottom but in the wrong spot after a rerun)
     var onEl = doc.querySelector('.st-key-chip-on');
     var offEl = doc.querySelector('.st-key-chip-off');
-    if (onEl && !bottom.contains(onEl)) {
+    if (onEl) {
         bottom.insertBefore(onEl, inputWrapper);
     }
-    if (offEl && !bottom.contains(offEl)) {
+    if (offEl) {
         inputWrapper.insertAdjacentElement('afterend', offEl);
     }
     // Clean up old containers from previous versions
-    ['chat-chips-on', 'chat-chips-off'].forEach(function(id) {
-        var old = doc.querySelector('.st-key-' + id);
-        if (old) old.style.display = 'none';
-    });
+    doc.querySelectorAll('.st-key-chat-chips-on, .st-key-chat-chips-off')
+       .forEach(function(el) { el.style.display = 'none'; });
 })();
 </script>"""
 
