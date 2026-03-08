@@ -23,38 +23,19 @@ from credit_analyzer.processing.chunker import Chunk
 from credit_analyzer.processing.definitions import DefinitionsIndex
 from credit_analyzer.retrieval.bm25_store import BM25Store
 from credit_analyzer.retrieval.embedder import Embedder
+from credit_analyzer.retrieval.fusion import (
+    compute_term_document_frequency as _compute_term_document_frequency,
+)
+from credit_analyzer.retrieval.fusion import (
+    merge_multi_query_results,  # noqa: F401 — re-exported for backward compat
+)
+from credit_analyzer.retrieval.query_helpers import (
+    query_term_overlap as _query_term_overlap,
+)
 from credit_analyzer.retrieval.reranker import Reranker
 from credit_analyzer.retrieval.vector_store import VectorStore
 
 SourceLabel = Literal["vector", "bm25", "both", "definition", "preamble"]
-
-# ---------------------------------------------------------------------------
-# Synonym-aware sibling filter
-# ---------------------------------------------------------------------------
-
-# Synonym groups for legal/financial terms.  When a query word is a key,
-# any word in the corresponding frozenset counts as a match in sibling text.
-_LEGAL_SYNONYMS: dict[str, frozenset[str]] = {
-    "spread": frozenset({"margin", "rate", "spread", "pricing"}),
-    "margin": frozenset({"spread", "margin", "rate", "pricing"}),
-    "rate": frozenset({"spread", "margin", "rate", "interest", "pricing"}),
-    "covenant": frozenset({"covenant", "restriction", "limitation", "prohibition"}),
-    "lien": frozenset({"lien", "security", "encumbrance", "pledge", "collateral"}),
-    "debt": frozenset({"debt", "indebtedness", "borrowing", "obligation", "loan"}),
-    "payment": frozenset({"payment", "distribution", "dividend", "disbursement"}),
-    "basket": frozenset({"basket", "exception", "carve-out", "permitted"}),
-    "facility": frozenset({"facility", "commitment", "loan", "credit"}),
-    "prepayment": frozenset({"prepayment", "repayment", "amortization", "redemption"}),
-    "investment": frozenset({"investment", "acquisition", "purchase"}),
-    "default": frozenset({"default", "breach", "violation", "event"}),
-    "maturity": frozenset({"maturity", "termination", "expiration"}),
-    "leverage": frozenset({"leverage", "ratio", "coverage", "test"}),
-}
-
-_STOP_WORDS: frozenset[str] = frozenset({
-    "that", "this", "with", "from", "have", "been", "were", "shall",
-    "such", "each", "upon", "into", "under", "more", "than", "also",
-})
 
 
 @dataclass
@@ -84,112 +65,6 @@ class RetrievalResult:
 
     chunks: list[HybridChunk]
     injected_definitions: dict[str, str]
-
-
-def _query_term_overlap(query: str, text: str, min_overlap: int = 1) -> bool:
-    """Check whether *text* shares enough topical vocabulary with *query*.
-
-    Used to filter sibling chunks during expansion so that completely
-    unrelated siblings (e.g. a definitions sibling about "Tax" when the
-    query is about "liens") are excluded.
-
-    Query words are expanded with ``_LEGAL_SYNONYMS`` so that e.g.
-    "spread" also matches sibling text containing "margin".
-    """
-    raw_words = (w.strip(".,;:!?()[]{}\"'") for w in query.split())
-    query_words = {
-        w.lower() for w in raw_words
-        if len(w) >= 4 and w.lower() not in _STOP_WORDS
-    }
-    if not query_words:
-        return True  # Can't filter, allow through
-
-    # Expand query words with synonyms (try singular form too)
-    expanded_words: set[str] = set()
-    for w in query_words:
-        expanded_words.add(w)
-        if w in _LEGAL_SYNONYMS:
-            expanded_words.update(_LEGAL_SYNONYMS[w])
-        elif w.endswith("s") and w[:-1] in _LEGAL_SYNONYMS:
-            expanded_words.update(_LEGAL_SYNONYMS[w[:-1]])
-
-    text_lower = text.lower()
-    overlap = sum(1 for w in expanded_words if w in text_lower)
-    return overlap >= min_overlap
-
-
-def merge_multi_query_results(
-    per_query_results: list[list[HybridChunk]],
-    per_query_definitions: list[dict[str, str]],
-    top_k: int,
-) -> RetrievalResult:
-    """Merge results from multiple queries using round-robin interleaving.
-
-    Ensures each query contributes proportionally to the final result set,
-    preventing dominant queries from crowding out niche but important results.
-
-    Args:
-        per_query_results: Lists of HybridChunks, one list per query.
-        per_query_definitions: Injected definitions dicts, one per query.
-        top_k: Maximum number of chunks in the merged result.
-
-    Returns:
-        Merged RetrievalResult with round-robin interleaved chunks and
-        combined definitions.
-    """
-    seen_ids: set[str] = set()
-    merged: list[HybridChunk] = []
-    all_definitions: dict[str, str] = {}
-
-    for defs in per_query_definitions:
-        all_definitions.update(defs)
-
-    # Round-robin: take one chunk from each query in turn
-    max_rank = max((len(r) for r in per_query_results), default=0)
-    for rank in range(max_rank):
-        if len(merged) >= top_k:
-            break
-        for q_results in per_query_results:
-            if rank < len(q_results):
-                hc = q_results[rank]
-                if hc.chunk.chunk_id not in seen_ids:
-                    seen_ids.add(hc.chunk.chunk_id)
-                    merged.append(hc)
-                    if len(merged) >= top_k:
-                        break
-
-    return RetrievalResult(chunks=merged, injected_definitions=all_definitions)
-
-
-def _compute_term_document_frequency(
-    chunks: Sequence[Chunk],
-    definitions_index: DefinitionsIndex,
-) -> dict[str, float]:
-    """Compute fraction of chunks each defined term appears in.
-
-    Used to automatically identify ubiquitous boilerplate terms like
-    "Borrower" and "Lender" that appear in nearly every section.
-    Agreement-agnostic: adapts to whatever document is indexed.
-
-    Args:
-        chunks: All chunks in the index.
-        definitions_index: The definitions index for term matching.
-
-    Returns:
-        Mapping from term name to fraction of chunks containing it
-        (0.0 to 1.0).
-    """
-    if not chunks:
-        return {}
-
-    term_counts: Counter[str] = Counter()
-    for chunk in chunks:
-        # Use a set so each chunk only counts once per term
-        unique_terms = set(definitions_index.find_terms_in_text(chunk.text))
-        term_counts.update(unique_terms)
-
-    total = len(chunks)
-    return {term: count / total for term, count in term_counts.items()}
 
 
 class HybridRetriever:
