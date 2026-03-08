@@ -156,7 +156,6 @@ def _render_report(
             st.session_state.get("generated_reports", {}).pop(
                 document.document_id, None
             )
-            st.session_state["_show_section_picker"] = True
             st.rerun()
 
     # Two-column layout: nav + content

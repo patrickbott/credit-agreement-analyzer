@@ -10,12 +10,16 @@ import pandas as pd  # pyright: ignore[reportMissingTypeStubs]
 import streamlit as st
 import streamlit.components.v1 as components
 
+from components.chat_bar import chat_bar
 from credit_analyzer.generation.qa_engine import QAEngine, QAResponse
 from credit_analyzer.llm.base import LLMProvider
 from credit_analyzer.ui.demo_report import SUGGESTED_QUESTIONS
 from credit_analyzer.ui.guide_content import QUICK_START_STEPS
 from credit_analyzer.ui.theme import (
-    chat_chips_relocate_script,
+    CHIP_ICON_CITE,
+    CHIP_ICON_COMMENTARY,
+    CHIP_ICON_DISMISS,
+    CHIP_ICON_THINKING,
     chat_welcome,
     context_strip,
     copy_button,
@@ -29,8 +33,6 @@ from credit_analyzer.ui.theme import (
     stream_status,
 )
 from credit_analyzer.ui.workflows import ProcessedDocument
-
-_CHAT_INPUT_KEY = "main-chat-input"
 
 
 def _show_dataframe(
@@ -47,6 +49,33 @@ def _show_dataframe(
     )
 
 
+def _build_chip_list() -> list[dict[str, object]]:
+    """Build the chip descriptor list from session state."""
+    return [
+        {
+            "id": "deep_analysis",
+            "label": "Extended Thinking",
+            "icon_off": CHIP_ICON_THINKING,
+            "icon_on": CHIP_ICON_DISMISS,
+            "active": st.session_state.get("deep_analysis_enabled", False),
+        },
+        {
+            "id": "cite_sources",
+            "label": "Show Sources",
+            "icon_off": CHIP_ICON_CITE,
+            "icon_on": CHIP_ICON_DISMISS,
+            "active": st.session_state.get("cite_sources_enabled", False),
+        },
+        {
+            "id": "commentary",
+            "label": "Commentary",
+            "icon_off": CHIP_ICON_COMMENTARY,
+            "icon_on": CHIP_ICON_DISMISS,
+            "active": st.session_state.get("commentary_enabled", False),
+        },
+    ]
+
+
 def render_main(
     active_document: ProcessedDocument | None,
     provider: LLMProvider | None,
@@ -60,11 +89,7 @@ def render_main(
                 st.markdown(
                     guide_step_card(number, title, desc), unsafe_allow_html=True
                 )
-        st.chat_input(
-            "Ask about pricing, covenants, structure...",
-            disabled=True,
-            key=_CHAT_INPUT_KEY,
-        )
+        chat_bar(chips=_build_chip_list(), disabled=True)
         return
 
     if provider is None or not provider_status["ready"]:
@@ -88,61 +113,63 @@ def render_main(
             message_index=message_index,
         )
 
-    # Recover partial output from a cancelled stream
+    # Recover partial output from a cancelled stream.
+    # Gate on pending_chat_questions (popped BEFORE any yield points in the
+    # streaming function) instead of streaming_active, because with Streamlit's
+    # fastReruns the new ScriptRunner starts before the old one's finally block
+    # has set streaming_active = False.
     partial = st.session_state.partial_response
-    if partial is not None and not st.session_state.streaming_active:
-        if partial["doc_id"] == doc_id and partial["text"].strip():
+    if partial is not None and doc_id not in st.session_state.pending_chat_questions:
+        if partial.get("doc_id") == doc_id and partial.get("text", "").strip():
             st.session_state.chat_messages[doc_id].append({
                 "role": "assistant_cancelled",
                 "text": partial["text"],
                 "timestamp": datetime.now().strftime("%I:%M %p").lstrip("0"),
             })
+            # Add interrupted turn to QA history so follow-ups have context
+            last_q = next(
+                (m["question"] for m in reversed(messages) if m.get("role") == "user"),
+                None,
+            )
+            if last_q:
+                qa = get_or_create_qa_engine(active_document, provider)  # type: ignore[arg-type]
+                qa.add_history_turn(str(last_q), partial["text"])
         st.session_state.partial_response = None
         st.session_state.pending_chat_questions.pop(doc_id, None)
+        st.rerun()
 
-    # Handle pending question (synchronous streaming)
+    render_prompt_editor(active_document, provider)
+
+    # Custom chat bar: chips + input + send/stop — rendered before the
+    # pending-question handler so the stop button is visible during streaming.
+    has_pending = doc_id in st.session_state.pending_chat_questions
+    bar_result = chat_bar(
+        chips=_build_chip_list(),
+        is_streaming=has_pending,
+    )
+
+    # Process chat bar events (deduplicate via event id)
+    if bar_result is not None:
+        eid = bar_result.get("_id")
+        if eid != st.session_state.get("_chat_bar_last_eid"):
+            st.session_state["_chat_bar_last_eid"] = eid
+
+            if bar_result["type"] == "submit":
+                queue_chat_question(active_document, str(bar_result["text"]))
+                st.rerun()
+            elif bar_result["type"] == "toggle":
+                chip_key = f"{bar_result['chip']}_enabled"
+                st.session_state[chip_key] = bar_result["active"]
+                st.rerun()
+
+    # Handle pending question (synchronous streaming — blocks until done)
     pending = st.session_state.pending_chat_questions.get(doc_id)
     if pending is not None:
         run_pending_chat_question(active_document, provider, str(pending))
         st.rerun()
 
-    render_prompt_editor(active_document, provider)
-
-    # Chat option chips — single container, JS moves into stBottom.
-    deep = st.session_state.get("deep_analysis_enabled", False)
-    cite = st.session_state.get("cite_sources_enabled", False)
-    commentary = st.session_state.get("commentary_enabled", False)
-
-    with st.container(key="chat-chips"):
-        with st.container(key="chip-thinking-on" if deep else "chip-thinking-off"):
-            if st.button("Extended Thinking", key="btn-thinking"):
-                st.session_state["deep_analysis_enabled"] = not deep
-                st.rerun()
-        with st.container(key="chip-cite-on" if cite else "chip-cite-off"):
-            if st.button("Cite Sources", key="btn-cite"):
-                st.session_state["cite_sources_enabled"] = not cite
-                st.rerun()
-        with st.container(key="chip-commentary-on" if commentary else "chip-commentary-off"):
-            if st.button("Commentary", key="btn-commentary"):
-                st.session_state["commentary_enabled"] = not commentary
-                st.rerun()
-
-    # Chat input
-    user_question = st.chat_input(
-        "Ask about pricing, covenants, structure...",
-        key=_CHAT_INPUT_KEY,
-    )
-    if user_question is not None:
-        cleaned = user_question.strip()
-        if cleaned:
-            queue_chat_question(active_document, cleaned)
-            st.rerun()
-
-    # Relocate chips into the bottom bar and scroll-to-top button
-    components.html(
-        chat_chips_relocate_script() + scroll_to_top_script("section.main"),
-        height=0,
-    )
+    # Scroll-to-top button
+    components.html(scroll_to_top_script("section.main"), height=0)
 
 
 def render_suggestions(active_document: ProcessedDocument) -> None:
@@ -217,7 +244,6 @@ def run_pending_chat_question(
         with st.chat_message("assistant"):
             status_placeholder = st.empty()
             response_placeholder = st.empty()
-            stop_placeholder = st.empty()
             streamed_text = ""
             st.session_state.streaming_active = True
             st.session_state.partial_response = {"doc_id": document.document_id, "text": ""}
@@ -232,9 +258,6 @@ def run_pending_chat_question(
             status_placeholder.markdown(
                 stream_status(status_label),
                 unsafe_allow_html=True,
-            )
-            stop_placeholder.button(
-                "Stop generating", key="stop-chat-generation",
             )
             t0 = time.monotonic()
 
@@ -277,7 +300,6 @@ def run_pending_chat_question(
 
             elapsed = time.monotonic() - t0
             status_placeholder.empty()
-            stop_placeholder.empty()
 
             if final_response is not None:
                 response_placeholder.empty()
@@ -494,6 +516,11 @@ def _history_pairs_from_messages(
             response = message.get("response")
             if isinstance(response, QAResponse):
                 pairs.append((pending_question, response.answer))
+                pending_question = None
+        elif role == "assistant_cancelled" and pending_question is not None:
+            text = cast(str, message.get("text", ""))
+            if text.strip():
+                pairs.append((pending_question, text))
                 pending_question = None
 
     return pairs

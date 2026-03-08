@@ -28,7 +28,7 @@ def show_section_picker() -> None:
             st.session_state[f"{key_prefix}{t.section_number}"] = True
         st.session_state[f"{key_prefix}inited"] = True
 
-    st.caption("Choose which sections to generate. Deselecting sections saves API calls.")
+    st.caption("Choose which sections to generate.")
 
     # Select All / Deselect All
     col_all, col_none, _ = st.columns([1, 1, 3])

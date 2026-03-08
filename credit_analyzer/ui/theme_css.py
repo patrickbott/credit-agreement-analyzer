@@ -6,10 +6,6 @@ from credit_analyzer.ui.theme_constants import (
     BG,
     BORDER,
     CHAT_BG,
-    CHIP_ICON_CITE,
-    CHIP_ICON_COMMENTARY,
-    CHIP_ICON_DISMISS,
-    CHIP_ICON_THINKING,
     GOLD_BRIGHT,
     ICON_DEFS,
     ICON_DISCARD,
@@ -241,30 +237,16 @@ section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {{
   margin-top: 3px !important;
 }}
 
-/* ---- Stop-generating button — inside streaming chat message ---- */
+/* ---- Custom chat bar component — pinned to bottom ---- */
 
-.st-key-stop-chat-generation {{
-  text-align: center;
-  margin-top: 0.5rem;
+/* Ensure enough bottom padding so content isn't hidden behind it */
+.block-container {{
+  padding-bottom: 8rem !important;
 }}
 
-.st-key-stop-chat-generation button {{
-  background: {RBC_GOLD} !important;
-  color: {INK} !important;
-  border: none !important;
-  border-radius: 20px !important;
-  padding: 0.3rem 1rem !important;
-  font-size: 0.8rem !important;
-  font-weight: 500 !important;
-  min-height: unset !important;
-  height: auto !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12) !important;
-  transition: background 0.15s ease !important;
-  cursor: pointer !important;
-}}
-
-.st-key-stop-chat-generation button:hover {{
-  background: #E6BC00 !important;
+/* Hide the native stBottom (replaced by custom component) */
+[data-testid="stBottom"] {{
+  display: none !important;
 }}
 
 /* ---- Edit-prompt button — subtle inline action ---- */
@@ -2029,167 +2011,6 @@ div[data-testid="stDownloadButton"] > button:hover {{
 .scroll-top-btn:hover {{
   background: {NAVY_DEEP};
   box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-}}
-
-/* ---- Chat option chips (near chat input bar) ---- */
-/* JS moves .st-key-chips-on before the chat input and .st-key-chips-off
-   after it inside [data-testid="stBottom"] > div.  Centering, sidebar
-   offset, and max-width are inherited from stBottom automatically.
-   All inner divs are flattened with display:contents so buttons become
-   direct flex items of their container. */
-
-/* Hide leftover containers from previous code versions */
-.st-key-chips-bar,
-.st-key-chip-on, .st-key-chip-off,
-.st-key-chat-chips-on, .st-key-chat-chips-off,
-.st-key-chips-active, .st-key-chips-inactive,
-.st-key-chips-above, .st-key-chips-below,
-.st-key-chips-on, .st-key-chips-off {{
-  display: none !important;
-}}
-
-/* Hidden until JS moves it into stBottom */
-.st-key-chat-chips {{
-  display: none !important;
-}}
-
-/* Shown once inside stBottom — centered row of chips */
-[data-testid="stBottom"] .st-key-chat-chips {{
-  display: flex !important;
-  flex-direction: row !important;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: center;
-  padding: 0.0rem 0 3.6rem 0;
-}}
-
-/* Flatten ALL inner wrapper divs so buttons become flex items */
-.st-key-chat-chips div {{
-  display: contents !important;
-}}
-
-/* ---- Chip button shared base ---- */
-.st-key-chat-chips button {{
-  display: inline-flex !important;
-  align-items: center;
-  border-radius: 999px !important;
-  font-size: 0.78rem !important;
-  font-weight: 500 !important;
-  padding: 0.25rem 0.75rem !important;
-  min-height: unset !important;
-  line-height: 1.4 !important;
-  box-shadow: none !important;
-  cursor: pointer !important;
-  transition: all 0.15s ease;
-  width: auto !important;
-}}
-
-.st-key-chat-chips button p {{
-  font-size: 0.78rem !important;
-  font-weight: 500 !important;
-  margin: 0 !important;
-}}
-
-/* OFF state — outlined */
-.st-key-chat-chips [class*="st-key-chip-"][class*="-off"] button {{
-  background: {SURFACE} !important;
-  border: 1px solid {BORDER} !important;
-  color: {MUTED} !important;
-}}
-
-.st-key-chat-chips [class*="st-key-chip-"][class*="-off"] button:hover {{
-  border-color: {NAVY_DEEP} !important;
-  color: {NAVY_DEEP} !important;
-  background: rgba(0, 61, 165, 0.04) !important;
-}}
-
-.st-key-chat-chips [class*="st-key-chip-"][class*="-off"] button p {{
-  color: {MUTED} !important;
-}}
-
-.st-key-chat-chips [class*="st-key-chip-"][class*="-off"] button:hover p {{
-  color: {NAVY_DEEP} !important;
-}}
-
-/* ON state — solid blue */
-.st-key-chat-chips [class*="st-key-chip-"][class*="-on"] button {{
-  background: {NAVY_DEEP} !important;
-  border: 1px solid {NAVY_DEEP} !important;
-  color: white !important;
-}}
-
-.st-key-chat-chips [class*="st-key-chip-"][class*="-on"] button:hover {{
-  background: #002D7A !important;
-  border-color: #002D7A !important;
-}}
-
-.st-key-chat-chips [class*="st-key-chip-"][class*="-on"] button p {{
-  color: white !important;
-}}
-
-/* ---- Chip icons via CSS ::before ---- */
-
-.st-key-chat-chips button p::before {{
-  content: "";
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  margin-right: 5px;
-  vertical-align: -2px;
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-}}
-
-/* Extended Thinking — OFF */
-.st-key-chip-thinking-off button p::before {{
-  background-image: url("{CHIP_ICON_THINKING}");
-  opacity: 0.5;
-}}
-
-.st-key-chip-thinking-off button:hover p::before {{
-  opacity: 0.8;
-}}
-
-/* Extended Thinking — ON */
-.st-key-chip-thinking-on button p::before {{
-  background-image: url("{CHIP_ICON_DISMISS}");
-  opacity: 1;
-  filter: brightness(0) invert(1);
-}}
-
-/* Cite Sources — OFF */
-.st-key-chip-cite-off button p::before {{
-  background-image: url("{CHIP_ICON_CITE}");
-  opacity: 0.5;
-}}
-
-.st-key-chip-cite-off button:hover p::before {{
-  opacity: 0.8;
-}}
-
-/* Cite Sources — ON */
-.st-key-chip-cite-on button p::before {{
-  background-image: url("{CHIP_ICON_DISMISS}");
-  opacity: 1;
-  filter: brightness(0) invert(1);
-}}
-
-/* Commentary — OFF */
-.st-key-chip-commentary-off button p::before {{
-  background-image: url("{CHIP_ICON_COMMENTARY}");
-  opacity: 0.5;
-}}
-
-.st-key-chip-commentary-off button:hover p::before {{
-  opacity: 0.8;
-}}
-
-/* Commentary — ON */
-.st-key-chip-commentary-on button p::before {{
-  background-image: url("{CHIP_ICON_DISMISS}");
-  opacity: 1;
-  filter: brightness(0) invert(1);
 }}
 
 </style>

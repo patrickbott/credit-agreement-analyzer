@@ -904,34 +904,3 @@ class TestPromptAddendums:
         """Commentary should instruct the LLM that it's optional, not required."""
         lower = COMMENTARY_ADDENDUM.lower()
         assert "omit" in lower or "only when" in lower or "if relevant" in lower or "do not" in lower
-
-
-def test_compare_returns_comparison_response():
-    """compare() fans out to multiple retrievers and synthesizes a comparison."""
-    from credit_analyzer.generation.qa_engine import ComparisonResponse, compare
-
-    retriever1 = MagicMock(spec=HybridRetriever)
-    retriever2 = MagicMock(spec=HybridRetriever)
-    retriever1.retrieve.return_value = _make_retrieval_result()
-    retriever2.retrieve.return_value = _make_retrieval_result()
-
-    provider = MagicMock()
-    provider.complete.return_value = LLMResponse(
-        text="Answer text", tokens_used=100, model="test", duration_seconds=0.5,
-    )
-
-    result = compare(
-        question="What is the leverage covenant?",
-        retrievers={"doc-1": retriever1, "doc-2": retriever2},
-        document_names={"doc-1": "Agreement A.pdf", "doc-2": "Agreement B.pdf"},
-        llm=provider,
-    )
-
-    assert isinstance(result, ComparisonResponse)
-    assert len(result.per_document_answers) == 2
-    assert "doc-1" in result.per_document_answers
-    assert "doc-2" in result.per_document_answers
-    assert isinstance(result.synthesis, str)
-    assert len(result.synthesis) > 0
-    # 2 extraction + 1 synthesis = 3 calls
-    assert provider.complete.call_count == 3

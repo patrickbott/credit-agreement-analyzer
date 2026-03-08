@@ -1,3 +1,0 @@
-- figure out why commentary gets cut off
-- fix the stop generating button
-- remove / rethink the multiple documents feature and buttons and form

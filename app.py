@@ -135,35 +135,6 @@ def main() -> None:
     st.html(clipboard_js_snippet(), unsafe_allow_javascript=True)
     components.html(def_tooltip_click_script(), height=0)
 
-    # DEBUG: outline sidebar children to find spacing culprit
-    components.html("""<script>
-    setTimeout(() => {
-        const sb = parent.document.querySelector('[data-testid="stSidebarContent"]');
-        if (!sb) return;
-        const info = [];
-        function walk(el, depth) {
-            const cs = getComputedStyle(el);
-            const r = el.getBoundingClientRect();
-            if (r.height > 0 || parseFloat(cs.paddingTop) > 0 || parseFloat(cs.marginTop) > 0) {
-                info.push(
-                    '  '.repeat(depth) +
-                    (el.dataset.testid || el.tagName + '.' + el.className.slice(0,30)) +
-                    ' h=' + r.height.toFixed(0) +
-                    ' top=' + r.top.toFixed(0) +
-                    ' pt=' + cs.paddingTop +
-                    ' mt=' + cs.marginTop +
-                    ' mb=' + cs.marginBottom
-                );
-            }
-            if (depth < 6) {
-                for (const c of el.children) walk(c, depth + 1);
-            }
-        }
-        walk(sb, 0);
-        console.log('SIDEBAR DOM DEBUG:\\n' + info.join('\\n'));
-    }, 2000);
-    </script>""", height=0)
-
     provider, provider_status = load_provider_state()
     documents: dict[str, ProcessedDocument] = st.session_state.documents
     active_document = documents.get(st.session_state.active_document_id)
@@ -187,6 +158,8 @@ def _initialize_state() -> None:
     st.session_state.setdefault("generated_reports", {})
     st.session_state.setdefault("provider_status", None)
     st.session_state.setdefault("deep_analysis_enabled", False)
+    st.session_state.setdefault("cite_sources_enabled", False)
+    st.session_state.setdefault("commentary_enabled", False)
     st.session_state.setdefault("streaming_active", False)
     st.session_state.setdefault("partial_response", None)
     st.session_state.setdefault("upload_counter", 0)

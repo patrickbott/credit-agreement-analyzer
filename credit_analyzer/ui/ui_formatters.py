@@ -1097,56 +1097,6 @@ def def_tooltip_click_script() -> str:
 </script>"""
 
 
-def chat_chips_relocate_script() -> str:
-    """Move the chat-chips container into stBottom after the chat input.
-
-    Streamlit renders the container in the main content area.  This
-    script appends it to ``[data-testid="stBottom"] > div`` so it sits
-    below the chat input, inheriting centering and sidebar offset.
-    """
-    return """<script>
-(function() {
-    var doc = parent.document;
-    var bottom = doc.querySelector('[data-testid="stBottom"] > div');
-    var chips = doc.querySelector('.st-key-chat-chips');
-
-    if (bottom && chips && chips.parentNode !== bottom) {
-        bottom.appendChild(chips);
-    }
-})();
-</script>"""
-
-
-def stop_button_relocate_script() -> str:
-    """Return a JS snippet that moves the stop button inside the chat input container.
-
-    Streamlit renders the stop button as a sibling below the chat input in a
-    deeply nested DOM.  CSS alone can't reliably overlay it on the send button,
-    so this script physically relocates the element into ``[data-testid="stChatInput"]``
-    where CSS ``position: absolute`` works correctly.
-    """
-    return """<script>
-(function() {
-    var doc = parent.document;
-    function tryRelocate() {
-        var stopBtn = doc.querySelector('.st-key-stop-chat-generation');
-        var chatInput = doc.querySelector('[data-testid="stChatInput"]');
-        if (stopBtn && chatInput && !chatInput.contains(stopBtn)) {
-            chatInput.appendChild(stopBtn);
-            return true;
-        }
-        return !!(stopBtn && chatInput && chatInput.contains(stopBtn));
-    }
-    if (!tryRelocate()) {
-        var n = 0;
-        var iv = setInterval(function() {
-            if (tryRelocate() || ++n > 50) clearInterval(iv);
-        }, 100);
-    }
-})();
-</script>"""
-
-
 __all__ = [
     "metric_card",
     "panel_card",
@@ -1178,6 +1128,4 @@ __all__ = [
     "format_chat_answer",
     "highlight_defined_terms",
     "def_tooltip_click_script",
-    "chat_chips_relocate_script",
-    "stop_button_relocate_script",
 ]

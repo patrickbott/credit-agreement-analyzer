@@ -6,7 +6,6 @@ import io
 import logging
 import time
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -92,9 +91,6 @@ def _extract_tables_from_page(plumber_page: pdfplumber.page.Page) -> list[str]:
     return [_table_to_markdown(t) for t in tables if t]
 
 
-_PAGE_WORKERS = 4
-
-
 def _process_page(
     page_idx: int, fitz_doc: Any, plumber_doc: Any
 ) -> ExtractedPage:
@@ -149,16 +145,13 @@ class PDFExtractor:
         plumber_doc = pdfplumber.open(str(pdf_path))
 
         try:
+            # NOTE: PyMuPDF and pdfplumber are not thread-safe for concurrent
+            # page access on the same document, so extraction is sequential.
             num_pages = len(fitz_doc)
-            with ThreadPoolExecutor(max_workers=_PAGE_WORKERS) as pool:
-                pages = list(
-                    pool.map(
-                        _process_page,
-                        range(num_pages),
-                        [fitz_doc] * num_pages,
-                        [plumber_doc] * num_pages,
-                    )
-                )
+            pages = [
+                _process_page(i, fitz_doc, plumber_doc)
+                for i in range(num_pages)
+            ]
         finally:
             fitz_doc.close()
             plumber_doc.close()
