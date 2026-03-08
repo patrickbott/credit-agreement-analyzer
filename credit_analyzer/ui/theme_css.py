@@ -3,22 +3,22 @@
 from __future__ import annotations
 
 from credit_analyzer.ui.theme_constants import (
-    _CHIP_ICON_CITE,
-    _CHIP_ICON_COMMENTARY,
-    _CHIP_ICON_DISMISS,
-    _CHIP_ICON_THINKING,
-    _ICON_DEFS,
-    _ICON_DISCARD,
-    _ICON_GUIDE,
-    _ICON_NEW_CHAT,
-    _ICON_NEW_REPORT,
-    _ICON_REMOVE,
-    _ICON_REPORT,
-    _ICON_VIEW_REPORT,
     BG,
     BORDER,
     CHAT_BG,
+    CHIP_ICON_CITE,
+    CHIP_ICON_COMMENTARY,
+    CHIP_ICON_DISMISS,
+    CHIP_ICON_THINKING,
     GOLD_BRIGHT,
+    ICON_DEFS,
+    ICON_DISCARD,
+    ICON_GUIDE,
+    ICON_NEW_CHAT,
+    ICON_NEW_REPORT,
+    ICON_REMOVE,
+    ICON_REPORT,
+    ICON_VIEW_REPORT,
     INK,
     MUTED,
     NAVY_DEEP,
@@ -241,44 +241,23 @@ section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {{
   margin-top: 3px !important;
 }}
 
-/* ---- Stop-generating button — styled as gold send-button replacement ---- */
+/* ---- Stop-generating button — rendered inside streaming chat message ---- */
 
-/* Hide stop button in its original DOM position (JS moves it into the chat input) */
 .st-key-stop-chat-generation {{
-  display: none !important;
-}}
-
-/* When relocated inside the chat input container, show it */
-[data-testid="stChatInput"] .st-key-stop-chat-generation {{
-  display: block !important;
-  position: absolute !important;
-  right: 0.45rem !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  z-index: 10 !important;
-  width: auto !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}}
-
-[data-testid="stChatInput"] {{
-  position: relative !important;
+  text-align: center;
+  margin-top: 0.5rem;
 }}
 
 .st-key-stop-chat-generation button {{
   background: {RBC_GOLD} !important;
   color: {INK} !important;
   border: none !important;
-  border-radius: 8px !important;
-  width: 36px !important;
-  height: 36px !important;
-  min-height: 36px !important;
-  padding: 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  font-size: 14px !important;
-  line-height: 1 !important;
+  border-radius: 20px !important;
+  padding: 0.3rem 1rem !important;
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
+  min-height: unset !important;
+  height: auto !important;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12) !important;
   transition: background 0.15s ease !important;
   cursor: pointer !important;
@@ -286,20 +265,6 @@ section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {{
 
 .st-key-stop-chat-generation button:hover {{
   background: #E6BC00 !important;
-  transform: none !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
-}}
-
-.st-key-stop-chat-generation button p {{
-  font-size: 14px !important;
-  line-height: 1 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}}
-
-/* Hide the chat input's own send button when input is disabled (stop button replaces it) */
-[data-testid="stChatInput"]:has(textarea[disabled]) button[kind="primary"] {{
-  visibility: hidden !important;
 }}
 
 /* ---- Edit-prompt button — subtle inline action ---- */
@@ -461,37 +426,37 @@ div[data-testid="stDownloadButton"] > button:hover {{
 
 /* New Chat — pen-on-square icon */
 .st-key-new-chat button p::before {{
-  background-image: url("{_ICON_NEW_CHAT}");
+  background-image: url("{ICON_NEW_CHAT}");
 }}
 
 /* Definitions — book-open icon */
 .st-key-open-defs button p::before {{
-  background-image: url("{_ICON_DEFS}");
+  background-image: url("{ICON_DEFS}");
 }}
 
 /* Generate Report — file-text icon */
 .st-key-gen-report button p::before {{
-  background-image: url("{_ICON_REPORT}");
+  background-image: url("{ICON_REPORT}");
 }}
 
 /* View Report — eye icon */
 .st-key-view-report button p::before {{
-  background-image: url("{_ICON_VIEW_REPORT}");
+  background-image: url("{ICON_VIEW_REPORT}");
 }}
 
 /* New Report — file-plus icon */
 .st-key-new-report button p::before {{
-  background-image: url("{_ICON_NEW_REPORT}");
+  background-image: url("{ICON_NEW_REPORT}");
 }}
 
 /* Guide — compass icon */
 .st-key-open-guide button p::before {{
-  background-image: url("{_ICON_GUIDE}");
+  background-image: url("{ICON_GUIDE}");
 }}
 
 /* Remove Document — trash icon */
 .st-key-remove-doc button p::before {{
-  background-image: url("{_ICON_REMOVE}");
+  background-image: url("{ICON_REMOVE}");
 }}
 
 /* Discard report — small icon-only button */
@@ -514,7 +479,7 @@ div[data-testid="stDownloadButton"] > button:hover {{
   display: block;
   width: 16px;
   height: 16px;
-  background-image: url("{_ICON_DISCARD}");
+  background-image: url("{ICON_DISCARD}");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -2067,56 +2032,44 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 /* ---- Chat option chips (near chat input bar) ---- */
+/* JS moves .st-key-chips-on before the chat input and .st-key-chips-off
+   after it inside [data-testid="stBottom"] > div.  Centering, sidebar
+   offset, and max-width are inherited from stBottom automatically.
+   All inner divs are flattened with display:contents so buttons become
+   direct flex items of their container. */
 
-/* Hide chip bar in its original DOM position; JS moves it into stBottom */
-.st-key-chips-bar {{
-  display: none !important;
-}}
-
-/* Also hide leftover containers from previous code versions */
+/* Hide leftover containers from previous code versions */
+.st-key-chips-bar,
 .st-key-chip-on, .st-key-chip-off,
 .st-key-chat-chips-on, .st-key-chat-chips-off,
 .st-key-chips-active, .st-key-chips-inactive,
-.st-key-chips-above, .st-key-chips-below {{
+.st-key-chips-above, .st-key-chips-below,
+.st-key-chips-on, .st-key-chips-off {{
   display: none !important;
 }}
 
-/* JS creates two wrapper divs: chips-above-row and chips-below-row */
-[data-testid="stBottom"] .chips-above-row,
-[data-testid="stBottom"] .chips-below-row {{
-  display: block !important;
+/* Hidden until JS moves it into stBottom */
+.st-key-chat-chips {{
+  display: none !important;
 }}
 
-/* Active row: left-aligned, snug above input */
-[data-testid="stBottom"] .chips-above-row {{
-  text-align: left;
-  padding-bottom: 0.3rem;
+/* Shown once inside stBottom — centered row of chips */
+[data-testid="stBottom"] .st-key-chat-chips {{
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  padding: 0.0rem 0 3.6rem 0;
 }}
 
-/* Inactive row: centered, snug below input */
-[data-testid="stBottom"] .chips-below-row {{
-  text-align: center;
-  padding-top: 0.3rem;
-}}
-
-/* Flatten Streamlit wrapper noise inside relocated chip containers */
-[data-testid="stBottom"] .chips-above-row [class*="st-key-chip-"],
-[data-testid="stBottom"] .chips-below-row [class*="st-key-chip-"],
-[data-testid="stBottom"] .chips-above-row [class*="st-key-chip-"] > div,
-[data-testid="stBottom"] .chips-below-row [class*="st-key-chip-"] > div,
-[data-testid="stBottom"] .chips-above-row [data-testid="stVerticalBlock"],
-[data-testid="stBottom"] .chips-below-row [data-testid="stVerticalBlock"],
-[data-testid="stBottom"] .chips-above-row [data-testid="stVerticalBlock"] > div,
-[data-testid="stBottom"] .chips-below-row [data-testid="stVerticalBlock"] > div,
-[data-testid="stBottom"] .chips-above-row div[data-testid="stButton"],
-[data-testid="stBottom"] .chips-below-row div[data-testid="stButton"] {{
+/* Flatten ALL inner wrapper divs so buttons become flex items */
+.st-key-chat-chips div {{
   display: contents !important;
 }}
 
-/* Chip button — shared base (all chip buttons in stBottom) */
-[data-testid="stBottom"] [class*="st-key-chip-thinking"] button,
-[data-testid="stBottom"] [class*="st-key-chip-cite"] button,
-[data-testid="stBottom"] [class*="st-key-chip-commentary"] button {{
+/* ---- Chip button shared base ---- */
+.st-key-chat-chips button {{
   display: inline-flex !important;
   align-items: center;
   border-radius: 999px !important;
@@ -2131,71 +2084,52 @@ div[data-testid="stDownloadButton"] > button:hover {{
   width: auto !important;
 }}
 
-[data-testid="stBottom"] [class*="st-key-chip-thinking"] button p,
-[data-testid="stBottom"] [class*="st-key-chip-cite"] button p,
-[data-testid="stBottom"] [class*="st-key-chip-commentary"] button p {{
+.st-key-chat-chips button p {{
   font-size: 0.78rem !important;
   font-weight: 500 !important;
   margin: 0 !important;
 }}
 
-/* OFF state — outlined box */
-[data-testid="stBottom"] .st-key-chip-thinking-off button,
-[data-testid="stBottom"] .st-key-chip-cite-off button,
-[data-testid="stBottom"] .st-key-chip-commentary-off button {{
+/* OFF state — outlined */
+.st-key-chat-chips [class*="st-key-chip-"][class*="-off"] button {{
   background: {SURFACE} !important;
   border: 1px solid {BORDER} !important;
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-thinking-off button:hover,
-[data-testid="stBottom"] .st-key-chip-cite-off button:hover,
-[data-testid="stBottom"] .st-key-chip-commentary-off button:hover {{
+.st-key-chat-chips [class*="st-key-chip-"][class*="-off"] button:hover {{
   border-color: {NAVY_DEEP} !important;
   color: {NAVY_DEEP} !important;
   background: rgba(0, 61, 165, 0.04) !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-thinking-off button p,
-[data-testid="stBottom"] .st-key-chip-cite-off button p,
-[data-testid="stBottom"] .st-key-chip-commentary-off button p {{
+.st-key-chat-chips [class*="st-key-chip-"][class*="-off"] button p {{
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-thinking-off button:hover p,
-[data-testid="stBottom"] .st-key-chip-cite-off button:hover p,
-[data-testid="stBottom"] .st-key-chip-commentary-off button:hover p {{
+.st-key-chat-chips [class*="st-key-chip-"][class*="-off"] button:hover p {{
   color: {NAVY_DEEP} !important;
 }}
 
 /* ON state — solid blue */
-[data-testid="stBottom"] .st-key-chip-thinking-on button,
-[data-testid="stBottom"] .st-key-chip-cite-on button,
-[data-testid="stBottom"] .st-key-chip-commentary-on button {{
+.st-key-chat-chips [class*="st-key-chip-"][class*="-on"] button {{
   background: {NAVY_DEEP} !important;
   border: 1px solid {NAVY_DEEP} !important;
   color: white !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-thinking-on button:hover,
-[data-testid="stBottom"] .st-key-chip-cite-on button:hover,
-[data-testid="stBottom"] .st-key-chip-commentary-on button:hover {{
+.st-key-chat-chips [class*="st-key-chip-"][class*="-on"] button:hover {{
   background: #002D7A !important;
   border-color: #002D7A !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-thinking-on button p,
-[data-testid="stBottom"] .st-key-chip-cite-on button p,
-[data-testid="stBottom"] .st-key-chip-commentary-on button p {{
+.st-key-chat-chips [class*="st-key-chip-"][class*="-on"] button p {{
   color: white !important;
 }}
 
 /* ---- Chip icons via CSS ::before ---- */
 
-/* Shared icon base */
-[data-testid="stBottom"] [class*="st-key-chip-thinking"] button p::before,
-[data-testid="stBottom"] [class*="st-key-chip-cite"] button p::before,
-[data-testid="stBottom"] [class*="st-key-chip-commentary"] button p::before {{
+.st-key-chat-chips button p::before {{
   content: "";
   display: inline-block;
   width: 14px;
@@ -2207,53 +2141,53 @@ div[data-testid="stDownloadButton"] > button:hover {{
   background-position: center;
 }}
 
-/* Extended Thinking — OFF icon */
-[data-testid="stBottom"] .st-key-chip-thinking-off button p::before {{
-  background-image: url("{_CHIP_ICON_THINKING}");
+/* Extended Thinking — OFF */
+.st-key-chip-thinking-off button p::before {{
+  background-image: url("{CHIP_ICON_THINKING}");
   opacity: 0.5;
 }}
 
-[data-testid="stBottom"] .st-key-chip-thinking-off button:hover p::before {{
+.st-key-chip-thinking-off button:hover p::before {{
   opacity: 0.8;
 }}
 
-/* Extended Thinking — ON icon */
-[data-testid="stBottom"] .st-key-chip-thinking-on button p::before {{
-  background-image: url("{_CHIP_ICON_DISMISS}");
+/* Extended Thinking — ON */
+.st-key-chip-thinking-on button p::before {{
+  background-image: url("{CHIP_ICON_DISMISS}");
   opacity: 1;
   filter: brightness(0) invert(1);
 }}
 
-/* Cite Sources — OFF icon */
-[data-testid="stBottom"] .st-key-chip-cite-off button p::before {{
-  background-image: url("{_CHIP_ICON_CITE}");
+/* Cite Sources — OFF */
+.st-key-chip-cite-off button p::before {{
+  background-image: url("{CHIP_ICON_CITE}");
   opacity: 0.5;
 }}
 
-[data-testid="stBottom"] .st-key-chip-cite-off button:hover p::before {{
+.st-key-chip-cite-off button:hover p::before {{
   opacity: 0.8;
 }}
 
-/* Cite Sources — ON icon */
-[data-testid="stBottom"] .st-key-chip-cite-on button p::before {{
-  background-image: url("{_CHIP_ICON_DISMISS}");
+/* Cite Sources — ON */
+.st-key-chip-cite-on button p::before {{
+  background-image: url("{CHIP_ICON_DISMISS}");
   opacity: 1;
   filter: brightness(0) invert(1);
 }}
 
-/* Commentary — OFF icon */
-[data-testid="stBottom"] .st-key-chip-commentary-off button p::before {{
-  background-image: url("{_CHIP_ICON_COMMENTARY}");
+/* Commentary — OFF */
+.st-key-chip-commentary-off button p::before {{
+  background-image: url("{CHIP_ICON_COMMENTARY}");
   opacity: 0.5;
 }}
 
-[data-testid="stBottom"] .st-key-chip-commentary-off button:hover p::before {{
+.st-key-chip-commentary-off button:hover p::before {{
   opacity: 0.8;
 }}
 
-/* Commentary — ON icon */
-[data-testid="stBottom"] .st-key-chip-commentary-on button p::before {{
-  background-image: url("{_CHIP_ICON_DISMISS}");
+/* Commentary — ON */
+.st-key-chip-commentary-on button p::before {{
+  background-image: url("{CHIP_ICON_DISMISS}");
   opacity: 1;
   filter: brightness(0) invert(1);
 }}

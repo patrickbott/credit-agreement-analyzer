@@ -25,9 +25,7 @@ if TYPE_CHECKING:
     from credit_analyzer.generation.report_generator import (
         GeneratedReport,
         GeneratedSection,
-        ReportGenerator,
     )
-    from credit_analyzer.llm.base import LLMProvider
     from credit_analyzer.processing.definitions import DefinitionsIndex
     from credit_analyzer.ui.workflows import ProcessedDocument
 
@@ -85,10 +83,9 @@ def _regenerate_section(
     document: ProcessedDocument,
 ) -> None:
     """Regenerate a single section in-place."""
-    from credit_analyzer.generation.report_template import ALL_REPORT_SECTIONS
-    from credit_analyzer.generation.report_template import get_extraction_system_prompt
-    from credit_analyzer.llm.factory import get_provider
     from credit_analyzer.config import LLM_PROVIDER
+    from credit_analyzer.generation.report_template import ALL_REPORT_SECTIONS, get_extraction_system_prompt
+    from credit_analyzer.llm.factory import get_provider
 
     template = None
     for t in ALL_REPORT_SECTIONS:

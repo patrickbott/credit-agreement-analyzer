@@ -211,7 +211,7 @@ class QAEngine:
         if deep_analysis:
             raw_text = llm_response.text
             while retrieval_rounds < _DEEP_ANALYSIS_MAX_ROUNDS:
-                cleaned, follow_up = _extract_needs_context(raw_text)
+                _, follow_up = _extract_needs_context(raw_text)
                 if follow_up is None:
                     break
                 logger.info(
@@ -526,7 +526,7 @@ def compare(
 
     with ThreadPoolExecutor(max_workers=len(retrievers)) as pool:
         for doc_id, result in pool.map(
-            lambda did: _retrieve_for_doc(did), list(retrievers.keys()),
+            _retrieve_for_doc, list(retrievers.keys()),
         ):
             per_doc_results[doc_id] = result
 
@@ -561,7 +561,7 @@ def compare(
 
     with ThreadPoolExecutor(max_workers=len(per_doc_results)) as pool:
         for doc_id, answer, chunks in pool.map(
-            lambda did: _extract_for_doc(did), list(per_doc_results.keys()),
+            _extract_for_doc, list(per_doc_results.keys()),
         ):
             per_doc_answers[doc_id] = answer
             per_doc_chunks[doc_id] = chunks

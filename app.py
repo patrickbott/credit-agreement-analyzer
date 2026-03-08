@@ -7,7 +7,7 @@ from collections import defaultdict
 import streamlit as st
 import streamlit.components.v1 as components
 
-from credit_analyzer.config import LLM_PROVIDER, validate_config
+from credit_analyzer.config import validate_config
 from credit_analyzer.llm.base import LLMProvider
 from credit_analyzer.llm.factory import get_provider
 from credit_analyzer.retrieval.embedder import Embedder

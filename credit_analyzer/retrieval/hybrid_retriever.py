@@ -27,7 +27,7 @@ from credit_analyzer.retrieval.fusion import (
     compute_term_document_frequency as _compute_term_document_frequency,
 )
 from credit_analyzer.retrieval.fusion import (
-    merge_multi_query_results,  # noqa: F401 — re-exported for backward compat
+    merge_multi_query_results as merge_multi_query_results,
 )
 from credit_analyzer.retrieval.query_helpers import (
     query_term_overlap as _query_term_overlap,

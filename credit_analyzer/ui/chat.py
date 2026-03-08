@@ -26,7 +26,6 @@ from credit_analyzer.ui.theme import (
     render_inline_citations,
     render_source_footnotes,
     scroll_to_top_script,
-    stop_button_relocate_script,
     stream_status,
 )
 from credit_analyzer.ui.workflows import ProcessedDocument
@@ -102,57 +101,35 @@ def render_main(
         st.session_state.pending_chat_questions.pop(doc_id, None)
 
     # Handle pending question (synchronous streaming)
-    pending = st.session_state.pending_chat_questions.get(doc_id)
+    pending: dict[str, object] | str | None = st.session_state.pending_chat_questions.get(doc_id)
     if pending is not None:
         if isinstance(pending, dict) and pending.get("is_comparison"):
-            _run_pending_comparison(provider, pending["question"])
+            _run_pending_comparison(provider, str(pending["question"]))
         else:
-            question_text = pending if isinstance(pending, str) else pending.get("question", "")
+            question_text: str = pending if isinstance(pending, str) else str(pending.get("question", ""))
             run_pending_chat_question(active_document, provider, question_text)
         st.rerun()
 
     render_prompt_editor(active_document, provider)
 
-    # Chat option chips — two CSS-fixed containers (no JS DOM moves).
-    # Python splits enabled chips into chips-on (above input) and
-    # disabled chips into chips-off (below input).
+    # Chat option chips — single container, JS moves into stBottom.
     deep = st.session_state.get("deep_analysis_enabled", False)
     cite = st.session_state.get("cite_sources_enabled", False)
     commentary = st.session_state.get("commentary_enabled", False)
 
-    with st.container(key="chips-on"):
-        if deep:
-            with st.container(key="chip-thinking-on"):
-                if st.button("Extended Thinking", key="btn-thinking"):
-                    st.session_state["deep_analysis_enabled"] = not deep
-                    st.rerun()
-        if cite:
-            with st.container(key="chip-cite-on"):
-                if st.button("Cite Sources", key="btn-cite"):
-                    st.session_state["cite_sources_enabled"] = not cite
-                    st.rerun()
-        if commentary:
-            with st.container(key="chip-commentary-on"):
-                if st.button("Commentary", key="btn-commentary"):
-                    st.session_state["commentary_enabled"] = not commentary
-                    st.rerun()
-
-    with st.container(key="chips-off"):
-        if not deep:
-            with st.container(key="chip-thinking-off"):
-                if st.button("Extended Thinking", key="btn-thinking"):
-                    st.session_state["deep_analysis_enabled"] = not deep
-                    st.rerun()
-        if not cite:
-            with st.container(key="chip-cite-off"):
-                if st.button("Cite Sources", key="btn-cite"):
-                    st.session_state["cite_sources_enabled"] = not cite
-                    st.rerun()
-        if not commentary:
-            with st.container(key="chip-commentary-off"):
-                if st.button("Commentary", key="btn-commentary"):
-                    st.session_state["commentary_enabled"] = not commentary
-                    st.rerun()
+    with st.container(key="chat-chips"):
+        with st.container(key="chip-thinking-on" if deep else "chip-thinking-off"):
+            if st.button("Extended Thinking", key="btn-thinking"):
+                st.session_state["deep_analysis_enabled"] = not deep
+                st.rerun()
+        with st.container(key="chip-cite-on" if cite else "chip-cite-off"):
+            if st.button("Cite Sources", key="btn-cite"):
+                st.session_state["cite_sources_enabled"] = not cite
+                st.rerun()
+        with st.container(key="chip-commentary-on" if commentary else "chip-commentary-off"):
+            if st.button("Commentary", key="btn-commentary"):
+                st.session_state["commentary_enabled"] = not commentary
+                st.rerun()
 
     # Comparison mode toggle
     all_documents = st.session_state.documents
@@ -183,15 +160,11 @@ def render_main(
                 queue_chat_question(active_document, cleaned)
             st.rerun()
 
-    # Stop button (visible during streaming; clicking interrupts the run)
-    if st.session_state.streaming_active:
-        st.button("■", key="stop-chat-generation")
-
     # Relocate chips into the bottom bar and scroll-to-top button
-    scripts = chat_chips_relocate_script() + scroll_to_top_script("section.main")
-    if st.session_state.streaming_active:
-        scripts += stop_button_relocate_script()
-    components.html(scripts, height=0)
+    components.html(
+        chat_chips_relocate_script() + scroll_to_top_script("section.main"),
+        height=0,
+    )
 
 
 def render_suggestions(active_document: ProcessedDocument) -> None:
@@ -266,6 +239,7 @@ def run_pending_chat_question(
         with st.chat_message("assistant"):
             status_placeholder = st.empty()
             response_placeholder = st.empty()
+            stop_placeholder = st.empty()
             streamed_text = ""
             st.session_state.streaming_active = True
             st.session_state.partial_response = {"doc_id": document.document_id, "text": ""}
@@ -280,6 +254,9 @@ def run_pending_chat_question(
             status_placeholder.markdown(
                 stream_status(status_label),
                 unsafe_allow_html=True,
+            )
+            stop_placeholder.button(
+                "Stop generating", key="stop-chat-generation",
             )
             t0 = time.monotonic()
 
@@ -322,6 +299,7 @@ def run_pending_chat_question(
 
             elapsed = time.monotonic() - t0
             status_placeholder.empty()
+            stop_placeholder.empty()
 
             if final_response is not None:
                 response_placeholder.empty()

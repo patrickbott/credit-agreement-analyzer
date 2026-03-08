@@ -7,17 +7,17 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from credit_analyzer.ui.theme_constants import (
-    _BULLET_RE,
-    _CHECK_ICON_SVG,
-    _CLIPBOARD_ICON_SVG,
-    _EMPTY_ICONS,
-    _FIELD_RE,
-    _HEADING_RE,
-    _INLINE_MARKER_RE,
-    _NUMBERED_RE,
-    _TABLE_ROW_RE,
-    _TABLE_SEP_RE,
-    _safe,
+    BULLET_RE,
+    CHECK_ICON_SVG,
+    CLIPBOARD_ICON_SVG,
+    EMPTY_ICONS,
+    FIELD_RE,
+    HEADING_RE,
+    INLINE_MARKER_RE,
+    NUMBERED_RE,
+    TABLE_ROW_RE,
+    TABLE_SEP_RE,
+    safe_html,
 )
 
 if TYPE_CHECKING:
@@ -42,9 +42,9 @@ def metric_card(label: str, value: str, caption: str, accent: str = "") -> str:
     style_attr = f' style="border-left-color: {accent};"' if accent else ""
     return (
         f'<section class="metric-card"{style_attr}>'
-        f'<div class="metric-label">{_safe(label)}</div>'
-        f'<div class="metric-value">{_safe(value)}</div>'
-        f'<div class="metric-caption">{_safe(caption)}</div>'
+        f'<div class="metric-label">{safe_html(label)}</div>'
+        f'<div class="metric-value">{safe_html(value)}</div>'
+        f'<div class="metric-caption">{safe_html(caption)}</div>'
         "</section>"
     )
 
@@ -53,8 +53,8 @@ def panel_card(title: str, copy: str | None = None) -> str:
     """Render a lightweight informational panel."""
     return (
         '<section class="panel-card">'
-        f'<h3 class="panel-title">{_safe(title)}</h3>'
-        f'<p class="panel-copy">{_safe(copy or "")}</p>'
+        f'<h3 class="panel-title">{safe_html(title)}</h3>'
+        f'<p class="panel-copy">{safe_html(copy or "")}</p>'
         "</section>"
     )
 
@@ -64,9 +64,9 @@ def rail_card(label: str, value: str, meta: str | None = None, tone: str = "read
     safe_tone = "warning" if tone == "warning" else "ready"
     return (
         f'<section class="rail-card is-{safe_tone}">'
-        f'<div class="rail-label">{_safe(label)}</div>'
-        f'<div class="rail-value">{_safe(value)}</div>'
-        f'<div class="rail-meta">{_safe(meta or "")}</div>'
+        f'<div class="rail-label">{safe_html(label)}</div>'
+        f'<div class="rail-value">{safe_html(value)}</div>'
+        f'<div class="rail-meta">{safe_html(meta or "")}</div>'
         "</section>"
     )
 
@@ -79,7 +79,7 @@ def confidence_pill(confidence: str) -> str:
         tone = "high"
     elif lowered == "low":
         tone = "low"
-    return f'<span class="pill pill-{tone}">{_safe(confidence.upper())}</span>'
+    return f'<span class="pill pill-{tone}">{safe_html(confidence.upper())}</span>'
 
 
 # ---------------------------------------------------------------------------
@@ -94,9 +94,9 @@ def copy_button(target_id: str) -> str:
         target_id: DOM id of the element whose text to copy.
     """
     return (
-        f'<button class="copy-btn" data-copy-target="{_safe(target_id)}" '
+        f'<button class="copy-btn" data-copy-target="{safe_html(target_id)}" '
         f'title="Copy to clipboard">'
-        f"{_CLIPBOARD_ICON_SVG}"
+        f"{CLIPBOARD_ICON_SVG}"
         "</button>"
     )
 
@@ -109,11 +109,11 @@ def nav_item(section_number: int, title: str, anchor: str) -> str:
         title: Section title text.
         anchor: The HTML anchor id to link to.
     """
-    safe_anchor = _safe(anchor)
+    safe_anchor = safe_html(anchor)
     return (
         f'<a class="quick-nav-item" data-scroll-target="{safe_anchor}">'
         f'<span class="nav-num">{section_number}</span>'
-        f"<span>{_safe(title)}</span>"
+        f"<span>{safe_html(title)}</span>"
         "</a>"
     )
 
@@ -202,8 +202,8 @@ def definition_card(term: str, definition_text: str) -> str:
     """
     return (
         '<div class="def-card">'
-        f'<div class="def-term">{_safe(term)}</div>'
-        f'<div class="def-text">{_safe(definition_text)}</div>'
+        f'<div class="def-term">{safe_html(term)}</div>'
+        f'<div class="def-text">{safe_html(definition_text)}</div>'
         "</div>"
     )
 
@@ -216,12 +216,12 @@ def empty_state(title: str, description: str, icon: str = "document") -> str:
         description: Explanatory text beneath the heading.
         icon: One of "document", "search", "report".
     """
-    icon_svg = _EMPTY_ICONS.get(icon, _EMPTY_ICONS["document"])
+    icon_svg = EMPTY_ICONS.get(icon, EMPTY_ICONS["document"])
     return (
         '<div class="empty-state">'
         f"{icon_svg}"
-        f'<div class="empty-title">{_safe(title)}</div>'
-        f'<div class="empty-desc">{_safe(description)}</div>'
+        f'<div class="empty-title">{safe_html(title)}</div>'
+        f'<div class="empty-desc">{safe_html(description)}</div>'
         "</div>"
     )
 
@@ -256,8 +256,8 @@ def guide_step_card(number: str, title: str, description: str) -> str:
     """Render a numbered quick-start card for the welcome area."""
     return (
         '<div class="quick-start-card">'
-        f'<div class="quick-start-number">{_safe(number)}</div>'
-        f'<div class="quick-start-title">{_safe(title)}</div>'
+        f'<div class="quick-start-number">{safe_html(number)}</div>'
+        f'<div class="quick-start-title">{safe_html(title)}</div>'
         f'<div class="quick-start-desc">{description}</div>'
         '</div>'
     )
@@ -267,7 +267,7 @@ def guide_section_block(title: str, body_html: str) -> str:
     """Render a section block for the full guide dialog."""
     return (
         '<div class="guide-section">'
-        f'<div class="guide-section-title">{_safe(title)}</div>'
+        f'<div class="guide-section-title">{safe_html(title)}</div>'
         f'<div class="guide-section-body">{body_html}</div>'
         '</div>'
     )
@@ -292,7 +292,7 @@ def context_strip(
         f'{rounds_html}'
         f'<span>{chunk_count} chunks</span>'
         f'<span>&middot;</span>'
-        f'<span>{_safe(sections_used)}</span>'
+        f'<span>{safe_html(sections_used)}</span>'
         f'<span>&middot;</span>'
         f'<span>{duration_seconds:.1f}s</span>'
         '</div>'
@@ -304,14 +304,14 @@ def stream_status(label: str) -> str:
     return (
         '<div class="stream-status">'
         '<span class="pulse-dot"></span>'
-        f'<span>{_safe(label)}</span>'
+        f'<span>{safe_html(label)}</span>'
         '</div>'
     )
 
 
 def message_timestamp(time_str: str) -> str:
     """Render a subtle timestamp below a chat message."""
-    return f'<div class="msg-timestamp">{_safe(time_str)}</div>'
+    return f'<div class="msg-timestamp">{safe_html(time_str)}</div>'
 
 
 def indexing_step(label: str, status: str, count: str = "") -> str:
@@ -323,7 +323,7 @@ def indexing_step(label: str, status: str, count: str = "") -> str:
         count: Optional result count (e.g. "42 pages").
     """
     if status == "complete":
-        icon_html = f'<span class="step-icon">{_CHECK_ICON_SVG}</span>'
+        icon_html = f'<span class="step-icon">{CHECK_ICON_SVG}</span>'
         cls = "step-complete"
     elif status == "active":
         icon_html = '<span class="step-icon"><span class="pulse-dot"></span></span>'
@@ -332,11 +332,11 @@ def indexing_step(label: str, status: str, count: str = "") -> str:
         icon_html = '<span class="step-icon" style="color:var(--muted);">&#9675;</span>'
         cls = "step-pending"
 
-    count_html = f'<span class="step-count">{_safe(count)}</span>' if count else ""
+    count_html = f'<span class="step-count">{safe_html(count)}</span>' if count else ""
     return (
         f'<div class="step-item {cls}">'
         f'{icon_html}'
-        f'<span class="step-label">{_safe(label)}</span>'
+        f'<span class="step-label">{safe_html(label)}</span>'
         f'{count_html}'
         '</div>'
     )
@@ -378,9 +378,9 @@ def document_card(
     )
     return (
         '<div class="doc-card">'
-        f'<div class="doc-card-name">{_safe(filename)}</div>'
+        f'<div class="doc-card-name">{safe_html(filename)}</div>'
         f'<div class="doc-card-stats">{stats_line}</div>'
-        f'<div class="doc-card-source">{_safe(source_path)}</div>'
+        f'<div class="doc-card-source">{safe_html(source_path)}</div>'
         '</div>'
     )
 
@@ -401,10 +401,10 @@ def document_card_compact(
         f'<div class="doc-card-compact" style="'
         f'border:1.5px solid {border_color};background:{bg};'
         f'border-radius:6px;padding:0.35rem 0.5rem;margin-bottom:0.3rem;'
-        f'cursor:pointer;" data-doc-id="{_safe(doc_id)}">'
+        f'cursor:pointer;" data-doc-id="{safe_html(doc_id)}">'
         f'<div style="font-size:0.78rem;font-weight:{weight};'
         f'color:var(--ink);white-space:nowrap;overflow:hidden;'
-        f'text-overflow:ellipsis;">{_safe(truncated)}</div>'
+        f'text-overflow:ellipsis;">{safe_html(truncated)}</div>'
         f'<div style="font-size:0.65rem;color:var(--muted);">'
         f'{pages} pp &middot; {chunks} chunks</div>'
         f'</div>'
@@ -443,16 +443,16 @@ def render_citation_markers(body: str, citations: list[InlineCitation]) -> str:
     separately at the section level.
     """
     if not citations:
-        return _safe(body)
+        return safe_html(body)
 
     parts: list[str] = []
     last_end = 0
-    for m in _INLINE_MARKER_RE.finditer(body):
-        parts.append(_safe(body[last_end:m.start()]))
+    for m in INLINE_MARKER_RE.finditer(body):
+        parts.append(safe_html(body[last_end:m.start()]))
         num = int(m.group(1))
         parts.append(f'<span class="cite-marker">[{num}]</span>')
         last_end = m.end()
-    parts.append(_safe(body[last_end:]))
+    parts.append(safe_html(body[last_end:]))
     return "".join(parts)
 
 
@@ -464,23 +464,23 @@ def render_citation_footnotes(citations: list[InlineCitation]) -> str:
     parts = ['<div class="cite-footnotes">']
     parts.append('<div class="cite-footnotes-title">Sources</div>')
     for cite in sorted(citations, key=lambda c: c.marker_number):
-        title = _safe(f"Section {cite.section_id}")
+        title = safe_html(f"Section {cite.section_id}")
         if cite.section_title:
-            title = _safe(f"Section {cite.section_id} | {cite.section_title}")
+            title = safe_html(f"Section {cite.section_id} | {cite.section_title}")
         pages_str = (
             ", ".join(str(p) for p in cite.page_numbers)
             if cite.page_numbers
             else ""
         )
         pages_html = (
-            f' <span class="cite-fn-pages">pp. {_safe(pages_str)}</span>'
+            f' <span class="cite-fn-pages">pp. {safe_html(pages_str)}</span>'
             if pages_str
             else ""
         )
         snippet_html = ""
         if cite.snippet:
             snippet_html = (
-                f'<div class="cite-fn-snippet">{_safe(cite.snippet)}</div>'
+                f'<div class="cite-fn-snippet">{safe_html(cite.snippet)}</div>'
             )
         parts.append(
             f'<div class="cite-fn">'
@@ -534,7 +534,7 @@ def _render_body_with_tables_and_citations(
             return
         rows: list[list[str]] = []
         for row_line in table_buffer:
-            if _TABLE_SEP_RE.match(row_line):
+            if TABLE_SEP_RE.match(row_line):
                 continue
             cells = [c.strip() for c in row_line.strip().strip("|").split("|")]
             rows.append(cells)
@@ -544,14 +544,14 @@ def _render_body_with_tables_and_citations(
         parts.append('<table class="rb-table">')
         parts.append("<thead><tr>")
         for cell in rows[0]:
-            parts.append(f"<th>{_safe(cell)}</th>")
+            parts.append(f"<th>{safe_html(cell)}</th>")
         parts.append("</tr></thead>")
         if len(rows) > 1:
             parts.append("<tbody>")
             for row in rows[1:]:
                 parts.append("<tr>")
                 for cell in row:
-                    parts.append(f"<td>{_safe(cell)}</td>")
+                    parts.append(f"<td>{safe_html(cell)}</td>")
                 parts.append("</tr>")
             parts.append("</tbody>")
         parts.append("</table>")
@@ -577,7 +577,7 @@ def _render_body_with_tables_and_citations(
 
     for line in lines:
         stripped = line.strip()
-        if _TABLE_ROW_RE.match(stripped) or _TABLE_SEP_RE.match(stripped):
+        if TABLE_ROW_RE.match(stripped) or TABLE_SEP_RE.match(stripped):
             flush_bullets()
             flush_numbered()
             table_buffer.append(stripped)
@@ -591,15 +591,15 @@ def _render_body_with_tables_and_citations(
             continue
 
         # Bullet item
-        bullet_match = _BULLET_RE.match(stripped)
+        bullet_match = BULLET_RE.match(stripped)
         if bullet_match:
             flush_numbered()
             bullet_buffer.append(bullet_match.group(1))
             continue
 
         # Numbered item
-        num_match = _NUMBERED_RE.match(stripped)
-        if num_match and not _HEADING_RE.match(stripped):
+        num_match = NUMBERED_RE.match(stripped)
+        if num_match and not HEADING_RE.match(stripped):
             flush_bullets()
             numbered_buffer.append(num_match.group(2))
             continue
@@ -607,8 +607,8 @@ def _render_body_with_tables_and_citations(
         flush_bullets()
         flush_numbered()
 
-        if _HEADING_RE.match(stripped) and len(stripped) > 3:
-            parts.append(f'<div class="rb-heading">{_safe(stripped)}</div>')
+        if HEADING_RE.match(stripped) and len(stripped) > 3:
+            parts.append(f'<div class="rb-heading">{safe_html(stripped)}</div>')
         else:
             parts.append(render_citation_markers(stripped, citations))
 
@@ -630,16 +630,16 @@ def render_source_footnotes(sources: list[SourceCitation]) -> str:
     parts = ['<div class="cite-footnotes">']
     parts.append('<div class="cite-footnotes-title">Sources</div>')
     for i, src in enumerate(sources, 1):
-        title = _safe(f"Section {src.section_id}")
+        title = safe_html(f"Section {src.section_id}")
         if src.section_title:
-            title = _safe(f"Section {src.section_id} | {src.section_title}")
+            title = safe_html(f"Section {src.section_id} | {src.section_title}")
         pages_str = (
             ", ".join(str(p) for p in src.page_numbers)
             if src.page_numbers
             else ""
         )
         pages_html = (
-            f' <span class="cite-fn-pages">pp. {_safe(pages_str)}</span>'
+            f' <span class="cite-fn-pages">pp. {safe_html(pages_str)}</span>'
             if pages_str
             else ""
         )
@@ -647,7 +647,7 @@ def render_source_footnotes(sources: list[SourceCitation]) -> str:
         if src.relevant_text_snippet:
             snippet_html = (
                 f'<div class="cite-fn-snippet">'
-                f"{_safe(src.relevant_text_snippet)}</div>"
+                f"{safe_html(src.relevant_text_snippet)}</div>"
             )
         parts.append(
             f'<div class="cite-fn">'
@@ -701,7 +701,7 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
         # Parse table rows, skip separator rows
         rows: list[list[str]] = []
         for row_line in table_buffer:
-            if _TABLE_SEP_RE.match(row_line):
+            if TABLE_SEP_RE.match(row_line):
                 continue
             cells = [c.strip() for c in row_line.strip().strip("|").split("|")]
             rows.append(cells)
@@ -753,10 +753,10 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
         """Wrap NOT FOUND in muted style."""
         stripped_val = val.strip()
         if stripped_val.upper() == "NOT FOUND" or stripped_val.upper().startswith("NOT FOUND"):
-            return f'<span class="rb-not-found">{_safe(stripped_val)}</span>'
+            return f'<span class="rb-not-found">{safe_html(stripped_val)}</span>'
         if inline_citations:
             return render_citation_markers(stripped_val, inline_citations)
-        return _safe(stripped_val)
+        return safe_html(stripped_val)
 
     for line in lines:
         stripped = line.strip()
@@ -768,7 +768,7 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
             continue
 
         # Table row detection
-        if _TABLE_ROW_RE.match(stripped) or _TABLE_SEP_RE.match(stripped):
+        if TABLE_ROW_RE.match(stripped) or TABLE_SEP_RE.match(stripped):
             flush_bullets()
             flush_numbered()
             table_buffer.append(stripped)
@@ -781,21 +781,21 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
         # Check for sub-bullets (indented bullets under a main bullet)
         is_indented = line.startswith("    ") or line.startswith("\t")
         if is_indented:
-            sub_match = _BULLET_RE.match(stripped)
+            sub_match = BULLET_RE.match(stripped)
             if sub_match and bullet_buffer:
                 # Attach to the last main bullet
                 bullet_buffer[-1][1].append(style_value(sub_match.group(1)))
                 continue
 
         # Top-level bullet item
-        bullet_match = _BULLET_RE.match(stripped)
+        bullet_match = BULLET_RE.match(stripped)
         if bullet_match:
             flush_numbered()
             bullet_buffer.append((style_value(bullet_match.group(1)), []))
             continue
 
         # Numbered item
-        num_match = _NUMBERED_RE.match(stripped)
+        num_match = NUMBERED_RE.match(stripped)
         if num_match:
             flush_bullets()
             numbered_buffer.append(style_value(num_match.group(2)))
@@ -806,22 +806,22 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
         flush_numbered()
 
         # Standalone heading (all-caps, no colon, no value)
-        heading_match = _HEADING_RE.match(stripped)
+        heading_match = HEADING_RE.match(stripped)
         if heading_match and len(stripped) > 3:
             parts.append(
-                f'<div class="rb-heading">{_safe(stripped)}</div>'
+                f'<div class="rb-heading">{safe_html(stripped)}</div>'
             )
             continue
 
         # Field label: value
-        field_match = _FIELD_RE.match(stripped)
+        field_match = FIELD_RE.match(stripped)
         if field_match:
             label = field_match.group(1)
             value = field_match.group(2)
             if value:
                 parts.append(
                     f'<div class="rb-field">'
-                    f'<span class="rb-field-label">{_safe(label)}</span> '
+                    f'<span class="rb-field-label">{safe_html(label)}</span> '
                     f'<span class="rb-field-value">{style_value(value)}</span>'
                     f"</div>"
                 )
@@ -829,7 +829,7 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
                 # Label only, value on next lines (e.g. "MANDATORY PREPAYMENT:")
                 parts.append(
                     f'<div class="rb-field">'
-                    f'<span class="rb-field-label">{_safe(label)}</span>'
+                    f'<span class="rb-field-label">{safe_html(label)}</span>'
                     f"</div>"
                 )
             continue
@@ -871,7 +871,7 @@ def format_chat_answer(body: str) -> str:
             return
         rows: list[list[str]] = []
         for row_line in table_buffer:
-            if _TABLE_SEP_RE.match(row_line):
+            if TABLE_SEP_RE.match(row_line):
                 continue
             cells = [c.strip() for c in row_line.strip().strip("|").split("|")]
             rows.append(cells)
@@ -881,14 +881,14 @@ def format_chat_answer(body: str) -> str:
         parts.append('<table class="rb-table">')
         parts.append("<thead><tr>")
         for cell in rows[0]:
-            parts.append(f"<th>{_safe(cell)}</th>")
+            parts.append(f"<th>{safe_html(cell)}</th>")
         parts.append("</tr></thead>")
         if len(rows) > 1:
             parts.append("<tbody>")
             for row in rows[1:]:
                 parts.append("<tr>")
                 for cell in row:
-                    parts.append(f"<td>{_safe(cell)}</td>")
+                    parts.append(f"<td>{safe_html(cell)}</td>")
                 parts.append("</tr>")
             parts.append("</tbody>")
         parts.append("</table>")
@@ -898,7 +898,7 @@ def format_chat_answer(body: str) -> str:
         if bullet_buffer:
             parts.append('<ul class="rb-list">')
             for text in bullet_buffer:
-                parts.append(f"<li>{_safe(text)}</li>")
+                parts.append(f"<li>{safe_html(text)}</li>")
             parts.append("</ul>")
             bullet_buffer.clear()
 
@@ -906,7 +906,7 @@ def format_chat_answer(body: str) -> str:
         if numbered_buffer:
             parts.append('<ol class="rb-list">')
             for text in numbered_buffer:
-                parts.append(f"<li>{_safe(text)}</li>")
+                parts.append(f"<li>{safe_html(text)}</li>")
             parts.append("</ol>")
             numbered_buffer.clear()
 
@@ -919,7 +919,7 @@ def format_chat_answer(body: str) -> str:
             flush_table()
             continue
 
-        if _TABLE_ROW_RE.match(stripped) or _TABLE_SEP_RE.match(stripped):
+        if TABLE_ROW_RE.match(stripped) or TABLE_SEP_RE.match(stripped):
             flush_bullets()
             flush_numbered()
             table_buffer.append(stripped)
@@ -928,15 +928,15 @@ def format_chat_answer(body: str) -> str:
             flush_table()
 
         # Bullet item
-        bullet_match = _BULLET_RE.match(stripped)
+        bullet_match = BULLET_RE.match(stripped)
         if bullet_match:
             flush_numbered()
             bullet_buffer.append(bullet_match.group(1))
             continue
 
         # Numbered item — but NOT all-caps numbered headings like "1. OVERVIEW"
-        num_match = _NUMBERED_RE.match(stripped)
-        if num_match and not _HEADING_RE.match(stripped):
+        num_match = NUMBERED_RE.match(stripped)
+        if num_match and not HEADING_RE.match(stripped):
             flush_bullets()
             numbered_buffer.append(num_match.group(2))
             continue
@@ -944,10 +944,10 @@ def format_chat_answer(body: str) -> str:
         flush_bullets()
         flush_numbered()
 
-        if _HEADING_RE.match(stripped) and len(stripped) > 3:
-            parts.append(f'<div class="rb-heading">{_safe(stripped)}</div>')
+        if HEADING_RE.match(stripped) and len(stripped) > 3:
+            parts.append(f'<div class="rb-heading">{safe_html(stripped)}</div>')
         else:
-            parts.append(f'<div class="rb-para">{_safe(stripped)}</div>')
+            parts.append(f'<div class="rb-para">{safe_html(stripped)}</div>')
 
     flush_bullets()
     flush_numbered()
@@ -994,7 +994,7 @@ def highlight_defined_terms(
         # Strip HTML tags and collapse newlines so markdown-it doesn't create
         # paragraph breaks inside the <span>, which would break DOM nesting
         # and cause subsequent response content to be swallowed by the tooltip.
-        plain_def_text = re.sub(r"<[^>]+>", "", _safe(entry.text))
+        plain_def_text = re.sub(r"<[^>]+>", "", safe_html(entry.text))
         plain_def_text = re.sub(r"\s*\n\s*", " ", plain_def_text)
         tip_html = (
             f'<span class="def-tip">'
@@ -1098,87 +1098,21 @@ def def_tooltip_click_script() -> str:
 
 
 def chat_chips_relocate_script() -> str:
-    """Return a JS snippet that moves the chip container into stBottom.
+    """Move the chat-chips container into stBottom after the chat input.
 
-    Streamlit renders elements in DOM order in the main area.  The chip
-    container needs to live inside ``[data-testid="stBottom"]`` so it
-    sits visually adjacent to the chat input bar.
-
-    A persistent ``MutationObserver`` watches for Streamlit re-renders
-    (new chip nodes appearing in the bar) and re-runs the relocation so
-    that chips move between the above/below rows when toggled.  We move
-    the *original* nodes (not clones) to preserve click handlers.
+    Streamlit renders the container in the main content area.  This
+    script appends it to ``[data-testid="stBottom"] > div`` so it sits
+    below the chat input, inheriting centering and sidebar offset.
     """
     return """<script>
 (function() {
     var doc = parent.document;
+    var bottom = doc.querySelector('[data-testid="stBottom"] > div');
+    var chips = doc.querySelector('.st-key-chat-chips');
 
-    // Install the observer only once across iframes / re-runs.
-    if (doc._chipsRelocator) return;
-    doc._chipsRelocator = true;
-
-    var pending = null;
-
-    function doRelocate() {
-        var chatInput = doc.querySelector('[data-testid="stChatInput"]');
-        var bottom = doc.querySelector('[data-testid="stBottom"] > div');
-        var bar = doc.querySelector('.st-key-chips-bar');
-        if (!chatInput || !bottom || !bar) return;
-
-        // Only act when the bar has chip children to relocate.
-        var chips = bar.querySelectorAll('[class*="st-key-chip-"]');
-        if (chips.length === 0) return;
-
-        // Find the direct child of bottom that wraps the chat input.
-        var inputWrapper = null;
-        for (var i = 0; i < bottom.children.length; i++) {
-            if (bottom.children[i].contains(chatInput)) {
-                inputWrapper = bottom.children[i];
-                break;
-            }
-        }
-        if (!inputWrapper) return;
-
-        // Clean up rows from a prior run.
-        doc.querySelectorAll('.chips-above-row, .chips-below-row')
-           .forEach(function(el) { el.remove(); });
-
-        var aboveRow = doc.createElement('div');
-        aboveRow.className = 'chips-above-row';
-        var belowRow = doc.createElement('div');
-        belowRow.className = 'chips-below-row';
-
-        // Move original chip nodes (preserves Streamlit click handlers).
-        chips.forEach(function(chip) {
-            var cl = chip.className || '';
-            if (cl.indexOf('-on') !== -1) {
-                aboveRow.appendChild(chip);
-            } else if (cl.indexOf('-off') !== -1) {
-                belowRow.appendChild(chip);
-            }
-        });
-
-        if (aboveRow.children.length) bottom.insertBefore(aboveRow, inputWrapper);
-        if (belowRow.children.length) inputWrapper.insertAdjacentElement('afterend', belowRow);
+    if (bottom && chips && chips.parentNode !== bottom) {
+        bottom.appendChild(chips);
     }
-
-    // Debounced callback — requestAnimationFrame collapses rapid DOM
-    // mutations into a single relocation pass and avoids infinite loops
-    // (moving chips triggers a mutation, but the next pass sees an empty
-    // bar and returns immediately).
-    function scheduleRelocate() {
-        if (pending) cancelAnimationFrame(pending);
-        pending = requestAnimationFrame(function() {
-            pending = null;
-            doRelocate();
-        });
-    }
-
-    new MutationObserver(scheduleRelocate)
-        .observe(doc.body, { childList: true, subtree: true });
-
-    // Initial relocation.
-    scheduleRelocate();
 })();
 </script>"""
 

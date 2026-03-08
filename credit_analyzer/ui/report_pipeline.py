@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
 
 import streamlit as st
 
@@ -12,7 +11,6 @@ from credit_analyzer.generation.report_template import ALL_REPORT_SECTIONS, Repo
 from credit_analyzer.llm.base import LLMProvider
 from credit_analyzer.ui.theme import indexing_step
 from credit_analyzer.ui.workflows import ProcessedDocument
-
 
 # ---------------------------------------------------------------------------
 # Report section picker
