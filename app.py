@@ -772,15 +772,32 @@ def _render_main(
 
     _render_prompt_editor(active_document, provider)
 
-    # Extended Thinking chip — rendered in a keyed container that JS
-    # relocates into stBottom so it sits below the chat input bar.
+    # Chat option chips — rendered in keyed containers that JS
+    # relocates into stBottom so they sit near the chat input bar.
     deep = st.session_state.get("deep_analysis_enabled", False)
-    chip_label = "Extended Thinking"
-    chip_container_key = "chip-on" if deep else "chip-off"
-    with st.container(key=chip_container_key):
-        if st.button(chip_label, key="chip-extended-thinking"):
-            st.session_state["deep_analysis_enabled"] = not deep
-            st.rerun()
+    cite = st.session_state.get("cite_sources_enabled", False)
+    commentary = st.session_state.get("commentary_enabled", False)
+
+    any_chip_active = deep or cite or commentary
+    row_key = "chips-active" if any_chip_active else "chips-inactive"
+    with st.container(key=row_key):
+        chip_key = "chip-thinking-on" if deep else "chip-thinking-off"
+        with st.container(key=chip_key):
+            if st.button("Extended Thinking", key="chip-extended-thinking"):
+                st.session_state["deep_analysis_enabled"] = not deep
+                st.rerun()
+
+        chip_key2 = "chip-cite-on" if cite else "chip-cite-off"
+        with st.container(key=chip_key2):
+            if st.button("Cite Sources", key="chip-cite-sources"):
+                st.session_state["cite_sources_enabled"] = not cite
+                st.rerun()
+
+        chip_key3 = "chip-commentary-on" if commentary else "chip-commentary-off"
+        with st.container(key=chip_key3):
+            if st.button("Commentary", key="chip-commentary"):
+                st.session_state["commentary_enabled"] = not commentary
+                st.rerun()
 
     # Chat input
     user_question = st.chat_input(
@@ -887,9 +904,18 @@ def _run_pending_chat_question(
             )
             t0 = time.monotonic()
 
+            _STREAM_FLUSH_INTERVAL = 0.045  # seconds between UI updates
+            _last_flush = time.monotonic()
+            _pending = ""
+
+            cite = st.session_state.get("cite_sources_enabled", False)
+            commentary = st.session_state.get("commentary_enabled", False)
+
             for item in qa_engine.ask_stream(
                 question, document.document_id,
                 deep_analysis=deep,
+                cite_sources=cite,
+                commentary=commentary,
             ):
                 if isinstance(item, QAResponse):
                     final_response = item
@@ -900,8 +926,18 @@ def _run_pending_chat_question(
                             unsafe_allow_html=True,
                         )
                         first_token = False
-                    streamed_text += item
-                    response_placeholder.markdown(streamed_text + "\u258c")
+                    _pending += item
+                    now = time.monotonic()
+                    if now - _last_flush >= _STREAM_FLUSH_INTERVAL:
+                        streamed_text += _pending
+                        _pending = ""
+                        _last_flush = now
+                        response_placeholder.markdown(streamed_text + "\u258c")
+
+            # Flush any remaining buffered tokens
+            if _pending:
+                streamed_text += _pending
+                response_placeholder.markdown(streamed_text + "\u258c")
 
             elapsed = time.monotonic() - t0
             status_placeholder.empty()

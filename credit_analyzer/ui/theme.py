@@ -2186,45 +2186,75 @@ div[data-testid="stDownloadButton"] > button:hover {{
   box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }}
 
-/* ---- Extended Thinking chip (near chat input bar) ---- */
+/* ---- Chat option chips (near chat input bar) ---- */
 
-/* Hide chip in its original DOM position; JS moves it into stBottom */
-.st-key-chip-on,
-.st-key-chip-off {{
+/* Hide chip row in its original DOM position; JS moves it into stBottom */
+.st-key-chips-active,
+.st-key-chips-inactive {{
   display: none !important;
 }}
 
 /* Also hide leftover containers from previous code versions */
+.st-key-chip-on,
+.st-key-chip-off,
 .st-key-chat-chips-on,
 .st-key-chat-chips-off {{
   display: none !important;
 }}
 
 /* When relocated inside stBottom, show it */
-[data-testid="stBottom"] .st-key-chip-on,
-[data-testid="stBottom"] .st-key-chip-off {{
+[data-testid="stBottom"] .st-key-chips-active,
+[data-testid="stBottom"] .st-key-chips-inactive {{
   display: block !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off {{
+[data-testid="stBottom"] .st-key-chips-inactive {{
   text-align: center;
   padding-top: 0.3rem;
 }}
 
-[data-testid="stBottom"] .st-key-chip-on {{
+[data-testid="stBottom"] .st-key-chips-active {{
   text-align: left;
   padding-bottom: 0.3rem;
 }}
 
-/* Flatten all Streamlit wrapper divs so the button responds to text-align */
-[data-testid="stBottom"] .st-key-chip-on > div,
-[data-testid="stBottom"] .st-key-chip-off > div,
-[data-testid="stBottom"] .st-key-chip-on [data-testid="stVerticalBlock"],
-[data-testid="stBottom"] .st-key-chip-off [data-testid="stVerticalBlock"],
-[data-testid="stBottom"] .st-key-chip-on [data-testid="stVerticalBlock"] > div,
-[data-testid="stBottom"] .st-key-chip-off [data-testid="stVerticalBlock"] > div,
-[data-testid="stBottom"] .st-key-chip-on div[data-testid="stButton"],
-[data-testid="stBottom"] .st-key-chip-off div[data-testid="stButton"] {{
+/* Flatten all Streamlit wrapper divs so the buttons respond to text-align */
+[data-testid="stBottom"] .st-key-chips-active > div,
+[data-testid="stBottom"] .st-key-chips-inactive > div,
+[data-testid="stBottom"] .st-key-chips-active [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chips-inactive [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chips-active [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chips-inactive [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chips-active div[data-testid="stButton"],
+[data-testid="stBottom"] .st-key-chips-inactive div[data-testid="stButton"] {{
+  display: contents !important;
+}}
+
+/* Flatten per-chip inner containers */
+[data-testid="stBottom"] .st-key-chip-thinking-on > div,
+[data-testid="stBottom"] .st-key-chip-thinking-off > div,
+[data-testid="stBottom"] .st-key-chip-cite-on > div,
+[data-testid="stBottom"] .st-key-chip-cite-off > div,
+[data-testid="stBottom"] .st-key-chip-commentary-on > div,
+[data-testid="stBottom"] .st-key-chip-commentary-off > div,
+[data-testid="stBottom"] .st-key-chip-thinking-on [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chip-thinking-off [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chip-cite-on [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chip-cite-off [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chip-commentary-on [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chip-commentary-off [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chip-thinking-on [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chip-thinking-off [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chip-cite-on [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chip-cite-off [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chip-commentary-on [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chip-commentary-off [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chip-thinking-on div[data-testid="stButton"],
+[data-testid="stBottom"] .st-key-chip-thinking-off div[data-testid="stButton"],
+[data-testid="stBottom"] .st-key-chip-cite-on div[data-testid="stButton"],
+[data-testid="stBottom"] .st-key-chip-cite-off div[data-testid="stButton"],
+[data-testid="stBottom"] .st-key-chip-commentary-on div[data-testid="stButton"],
+[data-testid="stBottom"] .st-key-chip-commentary-off div[data-testid="stButton"] {{
   display: contents !important;
 }}
 
@@ -2251,39 +2281,39 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 /* OFF state — outlined box */
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button {{
+[data-testid="stBottom"] .st-key-chip-thinking-off .st-key-chip-extended-thinking button {{
   background: {SURFACE} !important;
   border: 1px solid {BORDER} !important;
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button:hover {{
+[data-testid="stBottom"] .st-key-chip-thinking-off .st-key-chip-extended-thinking button:hover {{
   border-color: {NAVY_DEEP} !important;
   color: {NAVY_DEEP} !important;
   background: rgba(0, 61, 165, 0.04) !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button p {{
+[data-testid="stBottom"] .st-key-chip-thinking-off .st-key-chip-extended-thinking button p {{
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button:hover p {{
+[data-testid="stBottom"] .st-key-chip-thinking-off .st-key-chip-extended-thinking button:hover p {{
   color: {NAVY_DEEP} !important;
 }}
 
 /* ON state — solid blue */
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button {{
+[data-testid="stBottom"] .st-key-chip-thinking-on .st-key-chip-extended-thinking button {{
   background: {NAVY_DEEP} !important;
   border: 1px solid {NAVY_DEEP} !important;
   color: white !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button:hover {{
+[data-testid="stBottom"] .st-key-chip-thinking-on .st-key-chip-extended-thinking button:hover {{
   background: #002D7A !important;
   border-color: #002D7A !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button p {{
+[data-testid="stBottom"] .st-key-chip-thinking-on .st-key-chip-extended-thinking button p {{
   color: white !important;
 }}
 
@@ -2301,17 +2331,17 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 /* OFF — stopwatch icon, muted */
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button p::before {{
+[data-testid="stBottom"] .st-key-chip-thinking-off .st-key-chip-extended-thinking button p::before {{
   background-image: url("{_CHIP_ICON_THINKING}");
   opacity: 0.5;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button:hover p::before {{
+[data-testid="stBottom"] .st-key-chip-thinking-off .st-key-chip-extended-thinking button:hover p::before {{
   opacity: 0.8;
 }}
 
 /* ON — X dismiss icon, white */
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button p::before {{
+[data-testid="stBottom"] .st-key-chip-thinking-on .st-key-chip-extended-thinking button p::before {{
   background-image: url("{_CHIP_ICON_DISMISS}");
   opacity: 1;
   filter: brightness(0) invert(1);
@@ -2342,39 +2372,39 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 /* OFF state — outlined box */
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button {{
+[data-testid="stBottom"] .st-key-chip-cite-off .st-key-chip-cite-sources button {{
   background: {SURFACE} !important;
   border: 1px solid {BORDER} !important;
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button:hover {{
+[data-testid="stBottom"] .st-key-chip-cite-off .st-key-chip-cite-sources button:hover {{
   border-color: {NAVY_DEEP} !important;
   color: {NAVY_DEEP} !important;
   background: rgba(0, 61, 165, 0.04) !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button p {{
+[data-testid="stBottom"] .st-key-chip-cite-off .st-key-chip-cite-sources button p {{
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button:hover p {{
+[data-testid="stBottom"] .st-key-chip-cite-off .st-key-chip-cite-sources button:hover p {{
   color: {NAVY_DEEP} !important;
 }}
 
 /* ON state — solid blue */
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-cite-sources button {{
+[data-testid="stBottom"] .st-key-chip-cite-on .st-key-chip-cite-sources button {{
   background: {NAVY_DEEP} !important;
   border: 1px solid {NAVY_DEEP} !important;
   color: white !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-cite-sources button:hover {{
+[data-testid="stBottom"] .st-key-chip-cite-on .st-key-chip-cite-sources button:hover {{
   background: #002D7A !important;
   border-color: #002D7A !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-cite-sources button p {{
+[data-testid="stBottom"] .st-key-chip-cite-on .st-key-chip-cite-sources button p {{
   color: white !important;
 }}
 
@@ -2392,17 +2422,17 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 /* OFF — bookmark icon, muted */
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button p::before {{
+[data-testid="stBottom"] .st-key-chip-cite-off .st-key-chip-cite-sources button p::before {{
   background-image: url("{_CHIP_ICON_CITE}");
   opacity: 0.5;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-cite-sources button:hover p::before {{
+[data-testid="stBottom"] .st-key-chip-cite-off .st-key-chip-cite-sources button:hover p::before {{
   opacity: 0.8;
 }}
 
 /* ON — X dismiss icon, white */
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-cite-sources button p::before {{
+[data-testid="stBottom"] .st-key-chip-cite-on .st-key-chip-cite-sources button p::before {{
   background-image: url("{_CHIP_ICON_DISMISS}");
   opacity: 1;
   filter: brightness(0) invert(1);
@@ -2433,39 +2463,39 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 /* OFF state — outlined box */
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button {{
+[data-testid="stBottom"] .st-key-chip-commentary-off .st-key-chip-commentary button {{
   background: {SURFACE} !important;
   border: 1px solid {BORDER} !important;
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button:hover {{
+[data-testid="stBottom"] .st-key-chip-commentary-off .st-key-chip-commentary button:hover {{
   border-color: {NAVY_DEEP} !important;
   color: {NAVY_DEEP} !important;
   background: rgba(0, 61, 165, 0.04) !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button p {{
+[data-testid="stBottom"] .st-key-chip-commentary-off .st-key-chip-commentary button p {{
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button:hover p {{
+[data-testid="stBottom"] .st-key-chip-commentary-off .st-key-chip-commentary button:hover p {{
   color: {NAVY_DEEP} !important;
 }}
 
 /* ON state — solid blue */
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-commentary button {{
+[data-testid="stBottom"] .st-key-chip-commentary-on .st-key-chip-commentary button {{
   background: {NAVY_DEEP} !important;
   border: 1px solid {NAVY_DEEP} !important;
   color: white !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-commentary button:hover {{
+[data-testid="stBottom"] .st-key-chip-commentary-on .st-key-chip-commentary button:hover {{
   background: #002D7A !important;
   border-color: #002D7A !important;
 }}
 
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-commentary button p {{
+[data-testid="stBottom"] .st-key-chip-commentary-on .st-key-chip-commentary button p {{
   color: white !important;
 }}
 
@@ -2483,17 +2513,17 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 /* OFF — lightbulb icon, muted */
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button p::before {{
+[data-testid="stBottom"] .st-key-chip-commentary-off .st-key-chip-commentary button p::before {{
   background-image: url("{_CHIP_ICON_COMMENTARY}");
   opacity: 0.5;
 }}
 
-[data-testid="stBottom"] .st-key-chip-off .st-key-chip-commentary button:hover p::before {{
+[data-testid="stBottom"] .st-key-chip-commentary-off .st-key-chip-commentary button:hover p::before {{
   opacity: 0.8;
 }}
 
 /* ON — X dismiss icon, white */
-[data-testid="stBottom"] .st-key-chip-on .st-key-chip-commentary button p::before {{
+[data-testid="stBottom"] .st-key-chip-commentary-on .st-key-chip-commentary button p::before {{
   background-image: url("{_CHIP_ICON_DISMISS}");
   opacity: 1;
   filter: brightness(0) invert(1);
@@ -3623,28 +3653,29 @@ def chat_chips_relocate_script() -> str:
     var chatInput = doc.querySelector('[data-testid="stChatInput"]');
     var bottom = doc.querySelector('[data-testid="stBottom"] > div');
     if (!chatInput || !bottom) {
-        // DOM not ready yet — retry once after a short delay
         setTimeout(relocateChip, 100);
         return;
     }
-    // Find the direct child of bottom that contains the chat input
-    var inputWrapper = chatInput;
-    while (inputWrapper && inputWrapper.parentElement !== bottom) {
-        inputWrapper = inputWrapper.parentElement;
+    // Find which direct child of bottom contains the chat input
+    var inputWrapper = null;
+    for (var i = 0; i < bottom.children.length; i++) {
+        if (bottom.children[i].contains(chatInput)) {
+            inputWrapper = bottom.children[i];
+            break;
+        }
     }
     if (!inputWrapper) return;
-    // Always force correct position (no contains guard — element may
-    // already be in bottom but in the wrong spot after a rerun)
-    var onEl = doc.querySelector('.st-key-chip-on');
-    var offEl = doc.querySelector('.st-key-chip-off');
-    if (onEl) {
-        bottom.insertBefore(onEl, inputWrapper);
+    // Active chips go BEFORE the input wrapper (above); inactive go AFTER (below)
+    var activeEl = doc.querySelector('.st-key-chips-active');
+    var inactiveEl = doc.querySelector('.st-key-chips-inactive');
+    if (activeEl) {
+        bottom.insertBefore(activeEl, inputWrapper);
     }
-    if (offEl) {
-        inputWrapper.insertAdjacentElement('afterend', offEl);
+    if (inactiveEl) {
+        inputWrapper.insertAdjacentElement('afterend', inactiveEl);
     }
     // Clean up old containers from previous versions
-    doc.querySelectorAll('.st-key-chat-chips-on, .st-key-chat-chips-off')
+    doc.querySelectorAll('.st-key-chip-on, .st-key-chip-off, .st-key-chat-chips-on, .st-key-chat-chips-off')
        .forEach(function(el) { el.style.display = 'none'; });
 })();
 </script>"""
