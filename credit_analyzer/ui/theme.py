@@ -111,16 +111,24 @@ _ICON_DISCARD = (
     "%3C/svg%3E"
 )
 
-# Chat chip icons (14px, lighter stroke for smaller context)
+# Chat chip icons (14px)
 _CIC = (
     "%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' "
     "viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' "
     "stroke-linecap='round' stroke-linejoin='round'%3E"
 )
-# Extended Thinking — zap icon
+# Extended Thinking — clock/stopwatch icon
 _CHIP_ICON_THINKING = (
     f"data:image/svg+xml,{_CIC}"
-    "%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/%3E"
+    "%3Ccircle cx='12' cy='12' r='10'/%3E"
+    "%3Cpolyline points='12 6 12 12 16 14'/%3E"
+    "%3C/svg%3E"
+)
+# X icon for dismissing active chip
+_CHIP_ICON_DISMISS = (
+    f"data:image/svg+xml,{_CIC}"
+    "%3Cline x1='18' y1='6' x2='6' y2='18'/%3E"
+    "%3Cline x1='6' y1='6' x2='18' y2='18'/%3E"
     "%3C/svg%3E"
 )
 
@@ -2172,20 +2180,25 @@ div[data-testid="stDownloadButton"] > button:hover {{
   display: none !important;
 }}
 
+/* Also hide leftover containers from previous code versions */
+.st-key-chat-chips-on,
+.st-key-chat-chips-off {{
+  display: none !important;
+}}
+
 /* When relocated inside stBottom, show it */
 [data-testid="stBottom"] .st-key-chip-on,
 [data-testid="stBottom"] .st-key-chip-off {{
   display: block !important;
+}}
+
+[data-testid="stBottom"] .st-key-chip-off {{
   text-align: center;
-  order: 10;
   padding-top: 0.3rem;
 }}
 
-/* ON state renders above the input */
 [data-testid="stBottom"] .st-key-chip-on {{
-  order: -1;
   text-align: left;
-  padding-top: 0;
   padding-bottom: 0.3rem;
 }}
 
@@ -2271,11 +2284,11 @@ div[data-testid="stDownloadButton"] > button:hover {{
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-  background-image: url("{_CHIP_ICON_THINKING}");
 }}
 
-/* OFF icon — muted */
+/* OFF — stopwatch icon, muted */
 [data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button p::before {{
+  background-image: url("{_CHIP_ICON_THINKING}");
   opacity: 0.5;
 }}
 
@@ -2283,16 +2296,11 @@ div[data-testid="stDownloadButton"] > button:hover {{
   opacity: 0.8;
 }}
 
-/* ON icon — white */
+/* ON — X dismiss icon, white */
 [data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button p::before {{
+  background-image: url("{_CHIP_ICON_DISMISS}");
   opacity: 1;
   filter: brightness(0) invert(1);
-}}
-
-/* Force stBottom to use flex column so order works */
-[data-testid="stBottom"] > div {{
-  display: flex !important;
-  flex-direction: column !important;
 }}
 
 </style>
@@ -3410,19 +3418,29 @@ def chat_chips_relocate_script() -> str:
 
     Streamlit renders elements in DOM order in the main area.  The chip
     container needs to live inside ``[data-testid="stBottom"]`` so it
-    sits visually adjacent to the chat input bar.  CSS ``order`` then
-    controls whether it appears above (ON) or below (OFF) the input.
+    sits visually adjacent to the chat input bar.  The JS inserts it
+    directly before or after the chat input element for correct ordering.
     """
     return """<script>
 (function() {
     var doc = parent.document;
-    var bottom = doc.querySelector('[data-testid="stBottom"] > div');
-    if (!bottom) return;
-    ['chip-on', 'chip-off'].forEach(function(id) {
-        var el = doc.querySelector('.st-key-' + id);
-        if (el && !bottom.contains(el)) {
-            bottom.appendChild(el);
-        }
+    var chatInput = doc.querySelector('[data-testid="stChatInput"]');
+    if (!chatInput) return;
+    var parent_el = chatInput.parentElement;
+    if (!parent_el) return;
+    // chip-on goes BEFORE the chat input, chip-off goes AFTER
+    var onEl = doc.querySelector('.st-key-chip-on');
+    var offEl = doc.querySelector('.st-key-chip-off');
+    if (onEl && !parent_el.contains(onEl)) {
+        parent_el.insertBefore(onEl, chatInput);
+    }
+    if (offEl && !parent_el.contains(offEl)) {
+        chatInput.insertAdjacentElement('afterend', offEl);
+    }
+    // Clean up old containers from previous versions
+    ['chat-chips-on', 'chat-chips-off'].forEach(function(id) {
+        var old = doc.querySelector('.st-key-' + id);
+        if (old) old.style.display = 'none';
     });
 })();
 </script>"""

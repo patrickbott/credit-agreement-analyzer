@@ -775,7 +775,7 @@ def _render_main(
     # Extended Thinking chip — rendered in a keyed container that JS
     # relocates into stBottom so it sits below the chat input bar.
     deep = st.session_state.get("deep_analysis_enabled", False)
-    chip_label = "\u2715 Extended Thinking" if deep else "Extended Thinking"
+    chip_label = "Extended Thinking"
     chip_container_key = "chip-on" if deep else "chip-off"
     with st.container(key=chip_container_key):
         if st.button(chip_label, key="chip-extended-thinking"):
