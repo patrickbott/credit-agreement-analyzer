@@ -87,8 +87,9 @@ Aim for the shortest output that captures all material economics.
 
 7. USE TABLES where data has a natural tabular structure (e.g. pricing \
 grids, amortization schedules, covenant step-downs, basket lists with \
-dollar amounts). Format tables as: header row, dash separator, data rows, \
-with columns separated by " | ". Keep tables compact.
+dollar amounts). Format tables as: "| Header 1 | Header 2 |" on the \
+first row, "| --- | --- |" separator row, then data rows with "| val | \
+val |". Always leave a blank line before and after the table.
 
 INLINE CITATIONS:
 Each context excerpt is labeled [Source 1], [Source 2], etc. When you make \

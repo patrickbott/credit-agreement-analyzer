@@ -8,6 +8,7 @@ professional PDF with RBC-style branding.
 from __future__ import annotations
 
 import re
+from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -54,6 +55,16 @@ _FIELD_LABEL_RE = re.compile(r"^([A-Z][A-Z0-9 /\-&().,]+?:)", re.MULTILINE)
 # Matches standalone section headings: all-caps lines with no colon
 # e.g. "BORROWER INFORMATION", "PRICING TERMS", "INVESTMENTS"
 _SECTION_HEADING_RE = re.compile(r"^[A-Z][A-Z0-9 /&,\-()]{3,}$")
+
+# Matches citation markers like [1], [2], [1, 3]
+_CITE_MARKER_RE = re.compile(r'\[(\d+(?:,\s*\d+)*)\]')
+
+# Matches pipe-delimited table rows (with or without leading/trailing pipes)
+# e.g. "| A | B |" or "A | B | C" or "Level | Ratio | Spread"
+_TABLE_ROW_RE = re.compile(r'^\|.+\|$|^[^|]+\|.+$')
+
+# Matches table separator rows like "---|---", "|---|---|", "--- | --- | ---"
+_TABLE_SEP_RE = re.compile(r'^\|?[\s:]*-{2,}[\s:]*(\|[\s:]*-{2,}[\s:]*)+\|?\s*$')
 
 
 # ---------------------------------------------------------------------------
@@ -148,12 +159,49 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
         """Reset cursor x to left margin to prevent drift."""
         self.set_x(_MARGIN_L)  # pyright: ignore[reportUnknownMemberType]
 
+    def _reset_body_font(self) -> None:
+        """Reset font and text color to default body text state."""
+        self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
+        self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
+
+    def _multi_cell_with_refs(self, w: float, h: float, text: str,
+                              font_size: float = 9, font_style: str = "") -> None:
+        """Like multi_cell but renders [N] citation markers as superscript.
+
+        If no citation markers are found, falls back to plain multi_cell.
+        Uses fpdf2's write_html() to handle <sup> tags for citations.
+        """
+        if not _CITE_MARKER_RE.search(text):
+            self.multi_cell(w=w, h=h, text=text)  # pyright: ignore[reportUnknownMemberType]
+            return
+
+        # Build HTML string with superscript citations
+        safe = html_escape(text)
+        safe = safe.replace('\n', '<br/>')
+
+        r, g, b = _MUTED
+        sup_color = f"#{r:02x}{g:02x}{b:02x}"
+        sup_pt = max(int(font_size * 0.65), 5)
+
+        def _sup_repl(m: re.Match[str]) -> str:
+            return f'<sup><font color="{sup_color}" size="{sup_pt}">{html_escape(m.group(0))}</font></sup>'
+
+        safe = _CITE_MARKER_RE.sub(_sup_repl, safe)
+
+        # Wrap in font tag to maintain current style
+        r2, g2, b2 = _INK
+        body_color = f"#{r2:02x}{g2:02x}{b2:02x}"
+        html_str = f'<font color="{body_color}" size="{int(font_size)}" face="{_FONT_FAMILY}">{safe}</font>'
+
+        self.write_html(html_str)  # pyright: ignore[reportUnknownMemberType]
+        self.ln(h)  # pyright: ignore[reportUnknownMemberType]
+
     def render_table(self, table_lines: list[str]) -> None:
         """Render a pipe-delimited markdown table."""
         rows: list[list[str]] = []
         for row_line in table_lines:
-            # Skip separator rows like |---|---|
-            if re.match(r"^\|[\s:]*-{2,}", row_line):
+            # Skip separator rows like |---|---| or --- | --- | ---
+            if _TABLE_SEP_RE.match(row_line):
                 continue
             cells = [c.strip() for c in row_line.strip().strip("|").split("|")]
             rows.append(cells)
@@ -179,6 +227,8 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
                 self.cell(w=col_w, h=5, text=cell if i < num_cols else "", border=1)  # pyright: ignore[reportUnknownMemberType]
             self.ln()  # pyright: ignore[reportUnknownMemberType]
         self.ln(2)  # pyright: ignore[reportUnknownMemberType]
+        # Reset font state after table rendering
+        self._reset_body_font()
 
     def render_body_text(self, text: str) -> None:
         """Render section body with headings, field labels, and lists."""
@@ -188,18 +238,22 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
         while i < len(lines):
             line = lines[i]
             stripped = line.strip()
-            # Detect table rows
-            if re.match(r"^\|.+\|", stripped):
+            # Detect table rows: lines with pipe delimiters or separator rows
+            if _TABLE_ROW_RE.match(stripped) or _TABLE_SEP_RE.match(stripped):
                 table_buf.append(stripped)
                 i += 1
                 continue
             if table_buf:
                 self.render_table(table_buf)
                 table_buf.clear()
+                # Reset font state after table
+                self._reset_body_font()
             self._render_body_line(line, stripped)
             i += 1
         if table_buf:
             self.render_table(table_buf)
+            # Reset font state after table
+            self._reset_body_font()
 
     def _render_body_line(self, line: str, stripped: str) -> None:
         """Render a single body line."""
@@ -241,7 +295,7 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
                     self.set_font(_FONT_FAMILY, "I", 9)  # pyright: ignore[reportUnknownMemberType]
                 else:
                     self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
-                self.multi_cell(w=_CONTENT_W, h=5, text=rest)  # pyright: ignore[reportUnknownMemberType]
+                self._multi_cell_with_refs(w=_CONTENT_W, h=5, text=rest)
             return
 
         # Bullet point
@@ -251,7 +305,8 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
             self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
             self.set_x(_MARGIN_L + indent)  # pyright: ignore[reportUnknownMemberType]
             bullet_text = f"\u2022  {stripped[2:]}"
-            self.multi_cell(w=_CONTENT_W - indent, h=5, text=bullet_text)  # pyright: ignore[reportUnknownMemberType]
+            self._multi_cell_with_refs(w=_CONTENT_W - indent, h=5, text=bullet_text,
+                                       font_size=8.5)
             return
 
         # Numbered item
@@ -259,13 +314,14 @@ class _ReportPDF(FPDF):  # pyright: ignore[reportMissingTypeStubs]
             self.set_font(_FONT_FAMILY, "", 8.5)  # pyright: ignore[reportUnknownMemberType]
             self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
             self.set_x(_MARGIN_L + 4.0)  # pyright: ignore[reportUnknownMemberType]
-            self.multi_cell(w=_CONTENT_W - 4.0, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
+            self._multi_cell_with_refs(w=_CONTENT_W - 4.0, h=5, text=stripped,
+                                       font_size=8.5)
             return
 
         # Regular paragraph
         self.set_font(_FONT_FAMILY, "", 9)  # pyright: ignore[reportUnknownMemberType]
         self.set_text_color(*_INK)  # pyright: ignore[reportUnknownMemberType]
-        self.multi_cell(w=_CONTENT_W, h=5, text=stripped)  # pyright: ignore[reportUnknownMemberType]
+        self._multi_cell_with_refs(w=_CONTENT_W, h=5, text=stripped)
 
     def render_inline_references(self, citations: list[InlineCitation]) -> None:
         """Render a numbered reference list below the section body."""

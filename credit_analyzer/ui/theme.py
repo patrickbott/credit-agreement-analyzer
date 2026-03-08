@@ -1684,18 +1684,49 @@ div[data-testid="stDownloadButton"] > button:hover {{
   box-shadow: 0 2px 8px rgba(0, 81, 165, 0.08);
 }}
 
+.def-card .def-header {{
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}}
+
 .def-card .def-term {{
   font-family: 'DM Sans', system-ui, sans-serif;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   color: var(--rbc-blue);
-  margin-bottom: 0.2rem;
+  margin-bottom: 0;
+}}
+
+.def-card .def-page {{
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--ghost);
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  white-space: nowrap;
 }}
 
 .def-card .def-text {{
   font-size: 0.85rem;
   line-height: 1.5;
   color: var(--ink);
+}}
+
+.def-card .def-text .rb-para {{
+  margin-bottom: 0.3rem;
+}}
+
+.def-card .def-text ul.rb-list,
+.def-card .def-text ol.rb-list {{
+  margin: 0.25rem 0 0.25rem 1.2rem;
+  padding: 0;
+}}
+
+.def-card .def-text ul.rb-list li,
+.def-card .def-text ol.rb-list li {{
+  margin-bottom: 0.15rem;
 }}
 
 /* ---- Definition term highlights ---- */
@@ -2579,8 +2610,13 @@ def _render_body_with_tables_and_citations(
     body: str, citations: list[InlineCitation]
 ) -> str:
     """Render body text with both table detection and citation markers."""
+    from credit_analyzer.utils.text_cleaning import normalize_tables
+
+    body = normalize_tables(body)
     lines = body.split("\n")
     table_buffer: list[str] = []
+    bullet_buffer: list[str] = []
+    numbered_buffer: list[str] = []
     parts: list[str] = []
 
     def flush_table() -> None:
@@ -2611,20 +2647,63 @@ def _render_body_with_tables_and_citations(
         parts.append("</table>")
         table_buffer.clear()
 
+    def flush_bullets() -> None:
+        if not bullet_buffer:
+            return
+        parts.append('<ul class="rb-list">')
+        for text in bullet_buffer:
+            parts.append(f"<li>{render_citation_markers(text, citations)}</li>")
+        parts.append("</ul>")
+        bullet_buffer.clear()
+
+    def flush_numbered() -> None:
+        if not numbered_buffer:
+            return
+        parts.append('<ol class="rb-list">')
+        for text in numbered_buffer:
+            parts.append(f"<li>{render_citation_markers(text, citations)}</li>")
+        parts.append("</ol>")
+        numbered_buffer.clear()
+
     for line in lines:
         stripped = line.strip()
         if _TABLE_ROW_RE.match(stripped) or _TABLE_SEP_RE.match(stripped):
+            flush_bullets()
+            flush_numbered()
             table_buffer.append(stripped)
             continue
         if table_buffer:
             flush_table()
         if not stripped:
+            flush_bullets()
+            flush_numbered()
             parts.append("<br/>")
-        elif _HEADING_RE.match(stripped) and len(stripped) > 3:
+            continue
+
+        # Bullet item
+        bullet_match = _BULLET_RE.match(stripped)
+        if bullet_match:
+            flush_numbered()
+            bullet_buffer.append(bullet_match.group(1))
+            continue
+
+        # Numbered item
+        num_match = _NUMBERED_RE.match(stripped)
+        if num_match and not _HEADING_RE.match(stripped):
+            flush_bullets()
+            numbered_buffer.append(num_match.group(2))
+            continue
+
+        flush_bullets()
+        flush_numbered()
+
+        if _HEADING_RE.match(stripped) and len(stripped) > 3:
             parts.append(f'<div class="rb-heading">{_safe(stripped)}</div>')
         else:
             parts.append(render_citation_markers(stripped, citations))
 
+    flush_bullets()
+    flush_numbered()
     flush_table()
     return "\n".join(parts)
 
@@ -2701,7 +2780,9 @@ _BULLET_RE = re.compile(r"^[-*]\s+(.+)")
 _TABLE_ROW_RE = re.compile(
     r"^\|[^|]+\|.+"           # starts with |  e.g. "| A | B |"
     r"|"
-    r"^[^|\n]+\|[^|\n]+\|"   # no leading |   e.g. "A | B | C"
+    r"^[^|\n]+\|[^|\n]+\|"   # no leading |, 2+ pipes  e.g. "A | B | C"
+    r"|"
+    r"^[^|\n]+\s\|\s[^|\n]+" # no leading |, 1 pipe with spaces  e.g. "A | B"
 )
 
 # Table separator row: "| --- | --- |" or "|---|---|" or "--- | --- | ---"
@@ -2721,10 +2802,13 @@ def format_report_body(body: str, inline_citations: list[InlineCitation] | None 
     Returns:
         HTML string to render inside a report-body div.
     """
+    from credit_analyzer.utils.text_cleaning import normalize_tables
+
     # Strip markdown backticks the LLM sometimes emits despite instructions.
     # Remove fenced code blocks (```...```) first, then inline backticks.
     body = re.sub(r"```[^\n]*\n?", "", body)
     body = body.replace("`", "")
+    body = normalize_tables(body)
 
     lines = body.split("\n")
     # Each item in bullet_buffer is (html_text, list[sub_bullet_html])
@@ -2891,9 +2975,12 @@ def format_chat_answer(body: str) -> str:
     become ``<ol>`` lists. ALL-CAPS lines become styled headings.
     Other lines are wrapped in ``<div>`` for proper paragraph spacing.
     """
+    from credit_analyzer.utils.text_cleaning import normalize_tables
+
     # Strip markdown backticks the LLM sometimes emits despite instructions.
     body = re.sub(r"```[^\n]*\n?", "", body)
     body = body.replace("`", "")
+    body = normalize_tables(body)
 
     lines = body.split("\n")
     table_buffer: list[str] = []

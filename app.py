@@ -285,6 +285,19 @@ def _render_sidebar(
             disabled=active_document is None or not provider_status["ready"],
             use_container_width=True,
         )
+        reports_cache = st.session_state.get("generated_reports", {})
+        has_report = bool(
+            active_document and active_document.document_id in reports_cache
+        )
+        if has_report and st.button(
+            "Clear Report",
+            key="clear-report",
+            use_container_width=True,
+        ):
+            st.session_state.generated_reports.pop(
+                active_document.document_id, None  # type: ignore[union-attr]
+            )
+            st.rerun()
         guide_clicked = st.button(
             "Guide",
             key="open-guide",
@@ -303,16 +316,29 @@ def _render_sidebar(
             if active_document.document_id in reports:
                 show_report_dialog(active_document)
             else:
-                _show_section_picker()
+                st.session_state["_show_section_picker"] = True
         if guide_clicked:
             show_guide_dialog()
 
-        # Handle pending report generation (from section picker dialog)
+        # Handle pending report generation (from section picker dialog).
+        # Two-step approach: first rerun closes the dialog cleanly, second
+        # rerun starts the (slow) generation so the dialog backdrop is gone.
         pending_sections: list[ReportSectionTemplate] | None = (
             st.session_state.pop("_pending_report_sections", None)
         )
         if pending_sections and active_document and provider:
-            _generate_report(active_document, provider, sections=pending_sections)
+            st.session_state["_deferred_report_sections"] = pending_sections
+            st.rerun()
+
+        deferred_sections: list[ReportSectionTemplate] | None = (
+            st.session_state.pop("_deferred_report_sections", None)
+        )
+        if deferred_sections and active_document and provider:
+            _generate_report(active_document, provider, sections=deferred_sections)
+
+        # Show section picker dialog if flagged
+        if st.session_state.pop("_show_section_picker", None) and active_document:
+            _show_section_picker()
 
         # Auto-open report dialog after background generation completes
         show_doc_id = st.session_state.pop("_show_report_dialog", None)
@@ -546,7 +572,8 @@ def _show_section_picker() -> None:
         for t in ALL_REPORT_SECTIONS:
             st.session_state.pop(f"{key_prefix}{t.section_number}", None)
         st.session_state.pop(f"{key_prefix}inited", None)
-        st.rerun(scope="app")
+        st.session_state.pop("_show_section_picker", None)
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -858,7 +885,7 @@ def _run_pending_chat_question(
                         answer_html = highlight_defined_terms(answer_html, defs_idx)
                     response_placeholder.markdown(
                         f'<div style="position:relative;">'
-                        f'<div id="{answer_id}">{answer_html}</div>'
+                        f'<div id="{answer_id}" class="section-answer">{answer_html}</div>'
                         f"{copy_button(answer_id)}"
                         f"</div>",
                         unsafe_allow_html=True,
@@ -1109,7 +1136,7 @@ def _render_chat_message(
                 answer_html = highlight_defined_terms(answer_html, defs_index)
             st.markdown(
                 f'<div style="position:relative;">'
-                f'<div id="{answer_id}">{answer_html}</div>'
+                f'<div id="{answer_id}" class="section-answer">{answer_html}</div>'
                 f"{copy_button(answer_id)}"
                 f"</div>",
                 unsafe_allow_html=True,

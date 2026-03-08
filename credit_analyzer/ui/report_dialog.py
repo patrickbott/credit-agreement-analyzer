@@ -141,14 +141,22 @@ def _render_report(
         unsafe_allow_html=True,
     )
 
-    # PDF download
+    # PDF download & clear report
     pdf_bytes = report_to_pdf_bytes(report)
-    st.download_button(
-        "Download PDF",
-        data=pdf_bytes,
-        file_name=f"credit_report_{report.generated_at.strftime('%Y%m%d_%H%M')}.pdf",
-        mime="application/pdf",
-    )
+    dl_col, clear_col = st.columns([1, 1])
+    with dl_col:
+        st.download_button(
+            "Download PDF",
+            data=pdf_bytes,
+            file_name=f"credit_report_{report.generated_at.strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+        )
+    with clear_col:
+        if document is not None and st.button("Clear Report", key="clear-report-dialog"):
+            st.session_state.get("generated_reports", {}).pop(
+                document.document_id, None
+            )
+            st.rerun()
 
     # Two-column layout: nav + content
     nav_col, content_col = st.columns([0.22, 0.78], gap="medium")
