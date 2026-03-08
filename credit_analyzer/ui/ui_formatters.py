@@ -385,6 +385,32 @@ def document_card(
     )
 
 
+def document_card_compact(
+    filename: str,
+    pages: int,
+    chunks: int,
+    is_active: bool = False,
+    doc_id: str = "",
+) -> str:
+    """Render a compact document card for the multi-document sidebar list."""
+    border_color = "var(--rbc-gold)" if is_active else "var(--border)"
+    bg = "var(--surface)" if is_active else "var(--surface-alt)"
+    weight = "600" if is_active else "400"
+    truncated = (filename[:28] + "...") if len(filename) > 31 else filename
+    return (
+        f'<div class="doc-card-compact" style="'
+        f'border:1.5px solid {border_color};background:{bg};'
+        f'border-radius:6px;padding:0.35rem 0.5rem;margin-bottom:0.3rem;'
+        f'cursor:pointer;" data-doc-id="{_safe(doc_id)}">'
+        f'<div style="font-size:0.78rem;font-weight:{weight};'
+        f'color:var(--ink);white-space:nowrap;overflow:hidden;'
+        f'text-overflow:ellipsis;">{_safe(truncated)}</div>'
+        f'<div style="font-size:0.65rem;color:var(--muted);">'
+        f'{pages} pp &middot; {chunks} chunks</div>'
+        f'</div>'
+    )
+
+
 def skeleton_lines(count: int = 4) -> str:
     """Render placeholder skeleton lines for loading states."""
     lines = ''.join('<div class="skeleton-line"></div>' for _ in range(count))
@@ -1197,6 +1223,7 @@ __all__ = [
     "indexing_step",
     "compact_stats_grid",
     "document_card",
+    "document_card_compact",
     "skeleton_lines",
     "report_nav_dot",
     "render_citation_markers",

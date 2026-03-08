@@ -129,6 +129,7 @@ def _initialize_state() -> None:
     st.session_state.setdefault("generated_reports", {})
     st.session_state.setdefault("provider_status", None)
     st.session_state.setdefault("deep_analysis_enabled", False)
+    st.session_state.setdefault("upload_counter", 0)
 
 
 if __name__ == "__main__":
