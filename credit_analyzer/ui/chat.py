@@ -113,31 +113,46 @@ def render_main(
 
     render_prompt_editor(active_document, provider)
 
-    # Chat option chips — single container relocated by JS into stBottom.
-    # Each chip renders in a keyed wrapper (on/off) so CSS can style them.
-    # JS splits active chips above the input and inactive chips below it.
+    # Chat option chips — two CSS-fixed containers (no JS DOM moves).
+    # Python splits enabled chips into chips-on (above input) and
+    # disabled chips into chips-off (below input).
     deep = st.session_state.get("deep_analysis_enabled", False)
     cite = st.session_state.get("cite_sources_enabled", False)
     commentary = st.session_state.get("commentary_enabled", False)
 
-    with st.container(key="chips-bar"):
-        chip_key = "chip-thinking-on" if deep else "chip-thinking-off"
-        with st.container(key=chip_key):
-            if st.button("Extended Thinking", key="btn-thinking"):
-                st.session_state["deep_analysis_enabled"] = not deep
-                st.rerun()
+    with st.container(key="chips-on"):
+        if deep:
+            with st.container(key="chip-thinking-on"):
+                if st.button("Extended Thinking", key="btn-thinking"):
+                    st.session_state["deep_analysis_enabled"] = not deep
+                    st.rerun()
+        if cite:
+            with st.container(key="chip-cite-on"):
+                if st.button("Cite Sources", key="btn-cite"):
+                    st.session_state["cite_sources_enabled"] = not cite
+                    st.rerun()
+        if commentary:
+            with st.container(key="chip-commentary-on"):
+                if st.button("Commentary", key="btn-commentary"):
+                    st.session_state["commentary_enabled"] = not commentary
+                    st.rerun()
 
-        chip_key2 = "chip-cite-on" if cite else "chip-cite-off"
-        with st.container(key=chip_key2):
-            if st.button("Cite Sources", key="btn-cite"):
-                st.session_state["cite_sources_enabled"] = not cite
-                st.rerun()
-
-        chip_key3 = "chip-commentary-on" if commentary else "chip-commentary-off"
-        with st.container(key=chip_key3):
-            if st.button("Commentary", key="btn-commentary"):
-                st.session_state["commentary_enabled"] = not commentary
-                st.rerun()
+    with st.container(key="chips-off"):
+        if not deep:
+            with st.container(key="chip-thinking-off"):
+                if st.button("Extended Thinking", key="btn-thinking"):
+                    st.session_state["deep_analysis_enabled"] = not deep
+                    st.rerun()
+        if not cite:
+            with st.container(key="chip-cite-off"):
+                if st.button("Cite Sources", key="btn-cite"):
+                    st.session_state["cite_sources_enabled"] = not cite
+                    st.rerun()
+        if not commentary:
+            with st.container(key="chip-commentary-off"):
+                if st.button("Commentary", key="btn-commentary"):
+                    st.session_state["commentary_enabled"] = not commentary
+                    st.rerun()
 
     # Comparison mode toggle
     all_documents = st.session_state.documents
