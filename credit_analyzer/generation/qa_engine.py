@@ -19,6 +19,7 @@ from credit_analyzer.config import (
     QA_SECTION_TYPES_EXCLUDE,
 )
 from credit_analyzer.generation.prompts import (
+    DEEP_ANALYSIS_ADDENDUM,
     QA_SYSTEM_PROMPT,
     REFORMULATION_SYSTEM_PROMPT,
     ConversationTurn,
@@ -69,6 +70,42 @@ class QAResponse:
     retrieved_chunks: list[HybridChunk]
     llm_response: LLMResponse
     inline_citations: list[InlineCitation] = field(default_factory=lambda: list[InlineCitation]())
+    retrieval_rounds: int = 1
+
+
+_DEEP_ANALYSIS_MAX_ROUNDS = 3
+_NEEDS_CONTEXT_RE = re.compile(
+    r"<needs_context>(.*?)</needs_context>", re.DOTALL,
+)
+
+
+def _extract_needs_context(text: str) -> tuple[str, str | None]:
+    """Strip any <needs_context> tag and return (cleaned_text, follow_up_query).
+
+    Returns the text with the tag removed and the follow-up query if found,
+    or None if no tag is present.
+    """
+    match = _NEEDS_CONTEXT_RE.search(text)
+    if match is None:
+        return text, None
+    cleaned = text[:match.start()].rstrip() + text[match.end():]
+    return cleaned.strip(), match.group(1).strip()
+
+
+def _merge_retrieval_results(
+    existing: RetrievalResult,
+    new: RetrievalResult,
+    top_k: int,
+) -> RetrievalResult:
+    """Merge new retrieval results into existing, deduplicating by chunk ID."""
+    seen_ids = {hc.chunk.chunk_id for hc in existing.chunks}
+    merged_chunks = list(existing.chunks)
+    for hc in new.chunks:
+        if hc.chunk.chunk_id not in seen_ids and len(merged_chunks) < top_k:
+            seen_ids.add(hc.chunk.chunk_id)
+            merged_chunks.append(hc)
+    merged_defs = {**existing.injected_definitions, **new.injected_definitions}
+    return RetrievalResult(chunks=merged_chunks, injected_definitions=merged_defs)
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +281,13 @@ class QAEngine:
         self._preamble_text = text.strip() if text.strip() else None
         self._preamble_page_numbers = list(page_numbers) if page_numbers else None
 
-    def ask(self, question: str, document_id: str) -> QAResponse:
+    def ask(
+        self,
+        question: str,
+        document_id: str,
+        *,
+        deep_analysis: bool = False,
+    ) -> QAResponse:
         """Ask a question about a specific credit agreement.
 
         If conversation history exists, the question may be reformulated
@@ -254,6 +297,8 @@ class QAEngine:
         Args:
             question: The user's question.
             document_id: The document collection to query against.
+            deep_analysis: When True, perform up to 3 retrieval rounds,
+                re-retrieving when the LLM signals insufficient context.
 
         Returns:
             A QAResponse with the answer, citations, and confidence.
@@ -269,7 +314,12 @@ class QAEngine:
             section_types_exclude=self._section_types_exclude,
         )
 
+        system_prompt = QA_SYSTEM_PROMPT
+        if deep_analysis:
+            system_prompt += DEEP_ANALYSIS_ADDENDUM
+
         recent_history = self._history[-self._max_history :]
+        retrieval_rounds = 1
 
         user_prompt, numbered_chunks = build_context_prompt(
             chunks=result.chunks,
@@ -281,13 +331,59 @@ class QAEngine:
         )
 
         llm_response: LLMResponse = self._llm.complete(
-            system_prompt=QA_SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.0,
             max_tokens=self._max_gen_tokens,
         )
 
+        # Deep analysis: check for <needs_context> and re-retrieve
+        if deep_analysis:
+            raw_text = llm_response.text
+            while retrieval_rounds < _DEEP_ANALYSIS_MAX_ROUNDS:
+                cleaned, follow_up = _extract_needs_context(raw_text)
+                if follow_up is None:
+                    break
+                logger.info(
+                    "Deep analysis round %d: re-retrieving for '%s'",
+                    retrieval_rounds + 1, follow_up,
+                )
+                follow_up_queries = _expand_query(follow_up)
+                new_result = _retrieve_multi_query(
+                    self._retriever,
+                    follow_up_queries,
+                    document_id,
+                    top_k=self._max_chunks,
+                    section_types_exclude=self._section_types_exclude,
+                )
+                result = _merge_retrieval_results(
+                    result, new_result, self._max_chunks * 2,
+                )
+                retrieval_rounds += 1
+                user_prompt, numbered_chunks = build_context_prompt(
+                    chunks=result.chunks,
+                    definitions=result.injected_definitions,
+                    history=recent_history,
+                    question=question,
+                    preamble_text=self._preamble_text,
+                    preamble_page_numbers=self._preamble_page_numbers,
+                )
+                # On the final allowed round, drop the addendum to force a
+                # complete answer without another <needs_context> tag.
+                final_prompt = system_prompt
+                if retrieval_rounds >= _DEEP_ANALYSIS_MAX_ROUNDS:
+                    final_prompt = QA_SYSTEM_PROMPT
+                llm_response = self._llm.complete(
+                    system_prompt=final_prompt,
+                    user_prompt=user_prompt,
+                    temperature=0.0,
+                    max_tokens=self._max_gen_tokens,
+                )
+                raw_text = llm_response.text
+
         raw_text = llm_response.text
+        # Strip any remaining <needs_context> tag from the final response
+        raw_text, _ = _extract_needs_context(raw_text)
         answer_body = _strip_markdown(extract_answer_body(raw_text))
         confidence = parse_confidence(raw_text)
         citations = citations_from_chunks(result.chunks)
@@ -306,12 +402,15 @@ class QAEngine:
             retrieved_chunks=result.chunks,
             llm_response=llm_response,
             inline_citations=inline_citations,
+            retrieval_rounds=retrieval_rounds,
         )
 
     def ask_stream(
         self,
         question: str,
         document_id: str,
+        *,
+        deep_analysis: bool = False,
     ) -> Generator[str | QAResponse, None, None]:
         """Stream an answer, yielding tokens then the final QAResponse.
 
@@ -319,6 +418,9 @@ class QAEngine:
         final QAResponse object with parsed citations and confidence.
         Callers should check isinstance() to distinguish tokens from
         the final response.
+
+        When ``deep_analysis`` is True, preliminary retrieval rounds run
+        synchronously (non-streamed) before the final answer is streamed.
         """
         retrieval_query = self._maybe_reformulate(question)
 
@@ -331,8 +433,53 @@ class QAEngine:
             section_types_exclude=self._section_types_exclude,
         )
 
-        recent_history = self._history[-self._max_history:]
+        system_prompt = QA_SYSTEM_PROMPT
+        if deep_analysis:
+            system_prompt += DEEP_ANALYSIS_ADDENDUM
 
+        recent_history = self._history[-self._max_history:]
+        retrieval_rounds = 1
+
+        # Deep analysis: run non-streamed preliminary rounds to gather context
+        if deep_analysis:
+            while retrieval_rounds < _DEEP_ANALYSIS_MAX_ROUNDS:
+                user_prompt, _numbered = build_context_prompt(
+                    chunks=result.chunks,
+                    definitions=result.injected_definitions,
+                    history=recent_history,
+                    question=question,
+                    preamble_text=self._preamble_text,
+                    preamble_page_numbers=self._preamble_page_numbers,
+                )
+                preliminary = self._llm.complete(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=0.0,
+                    max_tokens=self._max_gen_tokens,
+                )
+                _, follow_up = _extract_needs_context(preliminary.text)
+                if follow_up is None:
+                    # First round was sufficient — stream the final answer
+                    # with the same context (no addendum needed).
+                    break
+                logger.info(
+                    "Deep analysis round %d: re-retrieving for '%s'",
+                    retrieval_rounds + 1, follow_up,
+                )
+                follow_up_queries = _expand_query(follow_up)
+                new_result = _retrieve_multi_query(
+                    self._retriever,
+                    follow_up_queries,
+                    document_id,
+                    top_k=self._max_chunks,
+                    section_types_exclude=self._section_types_exclude,
+                )
+                result = _merge_retrieval_results(
+                    result, new_result, self._max_chunks * 2,
+                )
+                retrieval_rounds += 1
+
+        # Build final prompt (without addendum so the answer is clean)
         user_prompt, numbered_chunks = build_context_prompt(
             chunks=result.chunks,
             definitions=result.injected_definitions,
@@ -355,6 +502,8 @@ class QAEngine:
         duration = __import__("time").perf_counter() - start
 
         raw_text = "".join(full_text_parts)
+        # Strip any lingering <needs_context> tag
+        raw_text, _ = _extract_needs_context(raw_text)
         answer_body = _strip_markdown(extract_answer_body(raw_text))
         confidence = parse_confidence(raw_text)
         citations = citations_from_chunks(result.chunks)
@@ -378,6 +527,7 @@ class QAEngine:
                 duration_seconds=duration,
             ),
             inline_citations=inline_citations,
+            retrieval_rounds=retrieval_rounds,
         )
 
     def add_history_turn(self, question: str, answer: str) -> None:
