@@ -143,8 +143,12 @@ _PARAGRAPH_SPLIT_DOUBLE = re.compile(r"\n\s*\n|\n\s*(?=\([a-z]\)|\([ivx]+\))")
 _PARAGRAPH_SPLIT_SINGLE = re.compile(r"\n")
 
 
-def _count_tokens(text: str, encoding: tiktoken.Encoding) -> int:
+def _count_tokens(text: str, encoding: tiktoken.Encoding, _cache: dict[str, int] = {}) -> int:  # noqa: B006
     """Count tokens in text using the given tiktoken encoding.
+
+    Results are cached in a mutable default dict so that repeated calls on
+    overlapping text (common during paragraph splitting with overlap) avoid
+    redundant tokenization.
 
     Args:
         text: The text to tokenize.
@@ -153,7 +157,12 @@ def _count_tokens(text: str, encoding: tiktoken.Encoding) -> int:
     Returns:
         Number of tokens.
     """
-    return len(encoding.encode(text))
+    cached = _cache.get(text)
+    if cached is not None:
+        return cached
+    count = len(encoding.encode(text))
+    _cache[text] = count
+    return count
 
 
 def _generate_chunk_id() -> str:

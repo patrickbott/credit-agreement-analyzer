@@ -113,6 +113,12 @@ class HybridRetriever:
             section_chunks[section_id].sort(key=lambda c: c.chunk_index)
         self._section_chunks: dict[str, list[Chunk]] = section_chunks
 
+        # Cache for find_terms_in_text results keyed by chunk_id.
+        # Avoids redundant regex scans when the same chunk text is
+        # inspected during retrieval, sibling expansion, and definition
+        # injection within the same query.
+        self._chunk_terms_cache: dict[str, list[str]] = {}
+
         # Compute corpus-level term frequency for ubiquity detection.
         self._term_doc_freq = _compute_term_document_frequency(
             list(bm25_store.chunks), definitions_index,
@@ -122,6 +128,15 @@ class HybridRetriever:
             for term, freq in self._term_doc_freq.items()
             if freq > DEFINITION_UBIQUITY_THRESHOLD
         )
+
+    def _find_chunk_terms(self, chunk: Chunk) -> list[str]:
+        """Return defined terms in *chunk*, using a per-instance cache."""
+        cached = self._chunk_terms_cache.get(chunk.chunk_id)
+        if cached is not None:
+            return cached
+        terms = self._definitions_index.find_terms_in_text(chunk.text)
+        self._chunk_terms_cache[chunk.chunk_id] = terms
+        return terms
 
     def retrieve(
         self,
@@ -395,7 +410,7 @@ class HybridRetriever:
         # not just incidentally containing a common word.
         metadata_terms: set[str] = set()
         for hc in chunks:
-            terms = self._definitions_index.find_terms_in_text(hc.chunk.text)
+            terms = self._find_chunk_terms(hc.chunk)
             chunk_term_counts.update(terms)
             metadata_terms.update(hc.chunk.defined_terms_present)
 

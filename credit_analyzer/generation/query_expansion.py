@@ -66,6 +66,33 @@ def merge_retrieval_results(
 # ---------------------------------------------------------------------------
 
 
+# Common credit agreement terms in lowercase mapped to their canonical
+# defined-term form.  Module-level constant to avoid rebuilding on every call.
+_TERM_ALIASES: dict[str, str] = {
+    "applicable margin": "Applicable Margin",
+    "applicable rate": "Applicable Rate",
+    "sofr spread": "Applicable Margin SOFR spread",
+    "interest rate": "Applicable Rate interest rate",
+    "pricing grid": "Applicable Rate pricing grid",
+    "base rate": "Alternate Base Rate",
+    "abr": "Alternate Base Rate ABR",
+    "commitment fee": "Commitment Fee",
+    "lc fee": "Letter of Credit Fee",
+    "leverage ratio": "Total Net Leverage Ratio",
+    "coverage ratio": "Fixed Charge Coverage Ratio",
+    "ebitda": "Consolidated EBITDA",
+    "consolidated ebitda": "Consolidated EBITDA",
+    "available amount": "Available Amount",
+    "permitted investments": "Permitted Investments",
+    "permitted liens": "Permitted Liens",
+    "permitted indebtedness": "Permitted Indebtedness",
+    "change of control": "Change of Control",
+    "required lenders": "Required Lenders",
+    "net income": "Consolidated Net Income",
+    "excess cash flow": "Excess Cash Flow",
+}
+
+
 def expand_query(question: str) -> list[str]:
     """Generate additional retrieval queries from a question.
 
@@ -89,31 +116,6 @@ def expand_query(question: str) -> list[str]:
     # Also catch fully capitalized terms like "SOFR" or "ABR"
     upper_terms = re.findall(r'\b([A-Z]{2,})\b', question)
 
-    # Also detect common credit agreement terms in lowercase questions.
-    # Maps lowercase phrases to their canonical defined-term form.
-    _TERM_ALIASES: dict[str, str] = {
-        "applicable margin": "Applicable Margin",
-        "applicable rate": "Applicable Rate",
-        "sofr spread": "Applicable Margin SOFR spread",
-        "interest rate": "Applicable Rate interest rate",
-        "pricing grid": "Applicable Rate pricing grid",
-        "base rate": "Alternate Base Rate",
-        "abr": "Alternate Base Rate ABR",
-        "commitment fee": "Commitment Fee",
-        "lc fee": "Letter of Credit Fee",
-        "leverage ratio": "Total Net Leverage Ratio",
-        "coverage ratio": "Fixed Charge Coverage Ratio",
-        "ebitda": "Consolidated EBITDA",
-        "consolidated ebitda": "Consolidated EBITDA",
-        "available amount": "Available Amount",
-        "permitted investments": "Permitted Investments",
-        "permitted liens": "Permitted Liens",
-        "permitted indebtedness": "Permitted Indebtedness",
-        "change of control": "Change of Control",
-        "required lenders": "Required Lenders",
-        "net income": "Consolidated Net Income",
-        "excess cash flow": "Excess Cash Flow",
-    }
     alias_terms: list[str] = []
     for alias, canonical in _TERM_ALIASES.items():
         if alias in question_lower:

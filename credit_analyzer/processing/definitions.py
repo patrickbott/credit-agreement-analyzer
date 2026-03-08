@@ -63,6 +63,10 @@ class DefinitionsIndex:
 
     definitions: dict[str, DefinitionEntry]
     _terms_pattern: re.Pattern[str] | None = field(default=None, init=False, repr=False, compare=False)
+    _sub_terms: dict[str, list[str]] = field(
+        default_factory=lambda: dict[str, list[str]](),
+        init=False, repr=False, compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.definitions:
@@ -71,6 +75,20 @@ class DefinitionsIndex:
             pattern = r"\b(?:" + "|".join(re.escape(t) for t in sorted_terms) + r")\b"
             # frozen=True requires object.__setattr__ for post_init
             object.__setattr__(self, "_terms_pattern", re.compile(pattern))
+
+            # Pre-compute sub-term relationships: for each term, find all
+            # shorter defined terms that are substrings of it.  This avoids
+            # the O(n*m) loop in find_terms_in_text at query time.
+            sub_terms: dict[str, list[str]] = {}
+            for term in sorted_terms:
+                subs = [
+                    other
+                    for other in sorted_terms
+                    if other != term and other in term
+                ]
+                if subs:
+                    sub_terms[term] = subs
+            object.__setattr__(self, "_sub_terms", sub_terms)
 
     def lookup(self, term: str) -> str | None:
         """Look up a defined term by exact name.
@@ -112,15 +130,15 @@ class DefinitionsIndex:
             return []
         direct_matches = set(self._terms_pattern.findall(text))
         # Also find sub-terms that are wholly contained within longer matches
-        # (regex alternation consumes the longest match, hiding sub-terms)
+        # (regex alternation consumes the longest match, hiding sub-terms).
+        # Uses pre-computed _sub_terms mapping instead of O(n*m) scan.
         found: set[str] = set()
         for m in direct_matches:
             if m in self.definitions:
                 found.add(m)
-            # Check if any shorter defined terms are sub-terms of this match
-            for term in self.definitions:
-                if term != m and term in m:
-                    found.add(term)
+            # Add pre-computed sub-terms for this match
+            for sub in self._sub_terms.get(m, ()):
+                found.add(sub)
         result = list(found)
         result.sort(key=len, reverse=True)
         return result
