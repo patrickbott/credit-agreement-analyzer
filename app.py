@@ -268,31 +268,32 @@ def _render_sidebar(
         )
 
         # -- Action buttons --
-        new_chat_clicked = st.button(
-            "New Chat",
-            key="new-chat",
-            disabled=active_document is None,
-            use_container_width=True,
-        )
-        defs_clicked = st.button(
-            "Definitions",
-            key="open-defs",
-            disabled=active_document is None,
-            use_container_width=True,
-        )
-        # -- Report feature group --
         reports_cache = st.session_state.get("generated_reports", {})
         has_report = bool(
             active_document and active_document.document_id in reports_cache
         )
         report_disabled = active_document is None or not provider_status["ready"]
+        picking_sections = st.session_state.get("_show_section_picker", False)
 
+        new_chat_clicked = st.button(
+            "New Chat",
+            key="new-chat",
+            disabled=active_document is None or picking_sections,
+            use_container_width=True,
+        )
+        defs_clicked = st.button(
+            "Definitions",
+            key="open-defs",
+            disabled=active_document is None or picking_sections,
+            use_container_width=True,
+        )
+
+        # -- Report feature group --
         if has_report:
             view_report_clicked = st.button(
                 "View Report",
                 key="view-report",
-                type="primary",
-                disabled=active_document is None,
+                disabled=active_document is None or picking_sections,
                 use_container_width=True,
             )
             new_rpt_col, discard_col = st.columns([5, 1])
@@ -300,14 +301,14 @@ def _render_sidebar(
                 new_report_clicked = st.button(
                     "New Report",
                     key="new-report",
-                    disabled=report_disabled,
+                    disabled=report_disabled or picking_sections,
                     use_container_width=True,
                 )
             with discard_col:
                 discard_clicked = st.button(
-                    "",
+                    "\u200b",
                     key="discard-report",
-                    icon=":material/cancel:",  # pyright: ignore[reportCallIssue]
+                    disabled=picking_sections,
                     help="Discard current report",
                 )
             generate_clicked = False
@@ -315,7 +316,7 @@ def _render_sidebar(
             generate_clicked = st.button(
                 "Generate Report",
                 key="gen-report",
-                disabled=report_disabled,
+                disabled=report_disabled or picking_sections,
                 use_container_width=True,
             )
             view_report_clicked = False
@@ -325,8 +326,13 @@ def _render_sidebar(
         guide_clicked = st.button(
             "Guide",
             key="open-guide",
+            disabled=picking_sections,
             use_container_width=True,
         )
+
+        # -- Inline section picker --
+        if picking_sections and active_document:
+            _render_section_picker(active_document, provider)
 
         if new_chat_clicked and active_document:
             _clear_chat(active_document.document_id)
@@ -337,6 +343,7 @@ def _render_sidebar(
             show_report_dialog(active_document)
         if (generate_clicked or new_report_clicked) and active_document and provider:
             st.session_state["_show_section_picker"] = True
+            st.rerun()
         if discard_clicked and active_document:
             st.session_state.get("generated_reports", {}).pop(
                 active_document.document_id, None
@@ -345,27 +352,7 @@ def _render_sidebar(
         if guide_clicked:
             show_guide_dialog()
 
-        # Handle pending report generation (from section picker dialog).
-        # Two-step approach: first rerun closes the dialog cleanly, second
-        # rerun picks up deferred sections so generation starts backdrop-free.
-        pending_sections: list[ReportSectionTemplate] | None = (
-            st.session_state.pop("_pending_report_sections", None)
-        )
-        if pending_sections and active_document and provider:
-            st.session_state["_deferred_report_sections"] = pending_sections
-            st.rerun()
-
-        deferred_sections: list[ReportSectionTemplate] | None = (
-            st.session_state.pop("_deferred_report_sections", None)
-        )
-        if deferred_sections and active_document and provider:
-            _generate_report(active_document, provider, sections=deferred_sections)
-
-        # Show section picker dialog if flagged
-        if st.session_state.pop("_show_section_picker", None) and active_document:
-            _show_section_picker()
-
-        # Auto-open report dialog after background generation completes
+        # Auto-open report dialog after generation completes
         show_doc_id = st.session_state.pop("_show_report_dialog", None)
         if show_doc_id and show_doc_id in st.session_state.get("generated_reports", {}):
             doc = st.session_state.documents.get(show_doc_id)
@@ -547,9 +534,11 @@ def _process_document(pdf_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@st.dialog("Select Report Sections", width="large")
-def _show_section_picker() -> None:
-    """Dialog for choosing which sections to include in report generation."""
+def _render_section_picker(
+    document: ProcessedDocument,
+    provider: LLMProvider | None,
+) -> None:
+    """Render an inline section picker in the sidebar."""
     key_prefix = "_section_picker_"
 
     # Initialize checkbox state on first render
@@ -558,20 +547,25 @@ def _show_section_picker() -> None:
             st.session_state[f"{key_prefix}{t.section_number}"] = True
         st.session_state[f"{key_prefix}inited"] = True
 
-    st.caption("Choose which sections to generate. Deselecting sections saves API calls.")
+    st.markdown(
+        '<div class="section-picker-container">'
+        '<div class="section-picker-header">Select Sections</div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     # Select All / Deselect All
-    col_all, col_none, _ = st.columns([1, 1, 3])
+    col_all, col_none = st.columns(2)
     with col_all:
-        if st.button("Select All", use_container_width=True):
+        if st.button("All", key="sp-select-all", use_container_width=True):
             for t in ALL_REPORT_SECTIONS:
                 st.session_state[f"{key_prefix}{t.section_number}"] = True
-            st.rerun(scope="fragment")
+            st.rerun()
     with col_none:
-        if st.button("Deselect All", use_container_width=True):
+        if st.button("None", key="sp-select-none", use_container_width=True):
             for t in ALL_REPORT_SECTIONS:
                 st.session_state[f"{key_prefix}{t.section_number}"] = False
-            st.rerun(scope="fragment")
+            st.rerun()
 
     # Individual section checkboxes
     for t in ALL_REPORT_SECTIONS:
@@ -580,25 +574,33 @@ def _show_section_picker() -> None:
             key=f"{key_prefix}{t.section_number}",
         )
 
-    # Generate button
     selected = [
         t for t in ALL_REPORT_SECTIONS
         if st.session_state.get(f"{key_prefix}{t.section_number}", True)
     ]
 
-    if st.button(
-        f"Generate ({len(selected)} section{'s' if len(selected) != 1 else ''})",
-        disabled=len(selected) == 0,
-        type="primary",
-        use_container_width=True,
-    ):
-        st.session_state["_pending_report_sections"] = selected
-        # Clean up picker state
-        for t in ALL_REPORT_SECTIONS:
-            st.session_state.pop(f"{key_prefix}{t.section_number}", None)
-        st.session_state.pop(f"{key_prefix}inited", None)
-        st.session_state.pop("_show_section_picker", None)
-        st.rerun()
+    gen_col, cancel_col = st.columns(2)
+    with gen_col:
+        if st.button(
+            f"Generate ({len(selected)})",
+            disabled=len(selected) == 0 or provider is None,
+            type="primary",
+            key="sp-generate",
+            use_container_width=True,
+        ):
+            # Clean up picker state and start generation
+            for t in ALL_REPORT_SECTIONS:
+                st.session_state.pop(f"{key_prefix}{t.section_number}", None)
+            st.session_state.pop(f"{key_prefix}inited", None)
+            st.session_state.pop("_show_section_picker", None)
+            _generate_report(document, provider, sections=selected)  # type: ignore[arg-type]
+    with cancel_col:
+        if st.button("Cancel", key="sp-cancel", use_container_width=True):
+            for t in ALL_REPORT_SECTIONS:
+                st.session_state.pop(f"{key_prefix}{t.section_number}", None)
+            st.session_state.pop(f"{key_prefix}inited", None)
+            st.session_state.pop("_show_section_picker", None)
+            st.rerun()
 
 
 # ---------------------------------------------------------------------------

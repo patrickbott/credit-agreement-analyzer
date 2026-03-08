@@ -86,6 +86,30 @@ _ICON_REMOVE = (
     "a2 2 0 012-2h4a2 2 0 012 2v2'/%3E"
     "%3C/svg%3E"
 )
+# View Report — eye icon
+_ICON_VIEW_REPORT = (
+    f"data:image/svg+xml,{_IC}"
+    "%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E"
+    "%3Ccircle cx='12' cy='12' r='3'/%3E"
+    "%3C/svg%3E"
+)
+# New Report — file-plus icon
+_ICON_NEW_REPORT = (
+    f"data:image/svg+xml,{_IC}"
+    "%3Cpath d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/%3E"
+    "%3Cpolyline points='14 2 14 8 20 8'/%3E"
+    "%3Cline x1='12' y1='18' x2='12' y2='12'/%3E"
+    "%3Cline x1='9' y1='15' x2='15' y2='15'/%3E"
+    "%3C/svg%3E"
+)
+# Discard — X-circle icon
+_ICON_DISCARD = (
+    f"data:image/svg+xml,{_IC}"
+    "%3Ccircle cx='12' cy='12' r='10'/%3E"
+    "%3Cline x1='15' y1='9' x2='9' y2='15'/%3E"
+    "%3Cline x1='9' y1='9' x2='15' y2='15'/%3E"
+    "%3C/svg%3E"
+)
 
 APP_CSS = f"""
 <style>
@@ -498,6 +522,8 @@ div[data-testid="stDownloadButton"] > button:hover {{
 .st-key-new-chat button p::before,
 .st-key-open-defs button p::before,
 .st-key-gen-report button p::before,
+.st-key-view-report button p::before,
+.st-key-new-report button p::before,
 .st-key-open-guide button p::before,
 .st-key-remove-doc button p::before {{
   content: "";
@@ -527,6 +553,16 @@ div[data-testid="stDownloadButton"] > button:hover {{
   background-image: url("{_ICON_REPORT}");
 }}
 
+/* View Report — eye icon */
+.st-key-view-report button p::before {{
+  background-image: url("{_ICON_VIEW_REPORT}");
+}}
+
+/* New Report — file-plus icon */
+.st-key-new-report button p::before {{
+  background-image: url("{_ICON_NEW_REPORT}");
+}}
+
 /* Guide — compass icon */
 .st-key-open-guide button p::before {{
   background-image: url("{_ICON_GUIDE}");
@@ -535,6 +571,56 @@ div[data-testid="stDownloadButton"] > button:hover {{
 /* Remove Document — trash icon */
 .st-key-remove-doc button p::before {{
   background-image: url("{_ICON_REMOVE}");
+}}
+
+/* Discard report — small icon-only button */
+.st-key-discard-report button {{
+  padding: 0.25rem 0.4rem !important;
+  min-height: 2rem !important;
+  min-width: 2rem !important;
+  width: 2rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}}
+
+.st-key-discard-report button p {{
+  display: none !important;
+}}
+
+.st-key-discard-report button::after {{
+  content: "";
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-image: url("{_ICON_DISCARD}");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.5;
+}}
+
+.st-key-discard-report button:hover::after {{
+  opacity: 0.85;
+}}
+
+/* ---- Inline section picker (sidebar) ---- */
+
+.section-picker-container {{
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem 0.3rem;
+  margin: 0.15rem 0;
+}}
+
+.section-picker-header {{
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: {MUTED};
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
 }}
 
 /* Disabled sidebar buttons — fade icons too */
