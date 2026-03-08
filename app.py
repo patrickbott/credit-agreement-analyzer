@@ -175,8 +175,8 @@ def _initialize_state() -> None:
     st.session_state.setdefault("generated_reports", {})
     st.session_state.setdefault("provider_status", None)
     st.session_state.setdefault("deep_analysis_enabled", False)
-    st.session_state.setdefault("verbose_answers", False)
-    st.session_state.setdefault("show_definitions", True)
+    st.session_state.setdefault("cross_reference_mode", False)
+    st.session_state.setdefault("concise_mode", False)
 
 
 def _clear_prompt_edit(document_id: str) -> None:
@@ -298,20 +298,12 @@ def _render_sidebar(
                 disabled=active_document is None,
                 use_container_width=True,
             )
-            new_rpt_col, discard_col = st.columns([5, 1])
-            with new_rpt_col:
-                new_report_clicked = st.button(
-                    "New Report",
-                    key="new-report",
-                    disabled=report_disabled,
-                    use_container_width=True,
-                )
-            with discard_col:
-                discard_clicked = st.button(
-                    "\u200b",
-                    key="discard-report",
-                    help="Discard current report",
-                )
+            new_report_clicked = st.button(
+                "New Report",
+                key="new-report",
+                disabled=report_disabled,
+                use_container_width=True,
+            )
             generate_clicked = False
         else:
             generate_clicked = st.button(
@@ -322,7 +314,6 @@ def _render_sidebar(
             )
             view_report_clicked = False
             new_report_clicked = False
-            discard_clicked = False
 
         guide_clicked = st.button(
             "Guide",
@@ -339,11 +330,6 @@ def _render_sidebar(
             show_report_dialog(active_document)
         if (generate_clicked or new_report_clicked) and active_document and provider:
             _show_section_picker()
-        if discard_clicked and active_document:
-            st.session_state.get("generated_reports", {}).pop(
-                active_document.document_id, None
-            )
-            st.rerun()
         if guide_clicked:
             show_guide_dialog()
 
@@ -789,30 +775,33 @@ def _render_main(
     _render_prompt_editor(active_document, provider)
 
     # Chat input chips — toggleable options
+    # (state_key, off_label, on_label)
     _CHAT_CHIPS: list[tuple[str, str, str]] = [
         ("deep_analysis_enabled", "Extended Thinking", "\u2715 Extended Thinking"),
-        ("verbose_answers", "Verbose", "\u2715 Verbose"),
-        ("show_definitions", "Definitions", "\u2715 Definitions"),
+        ("cross_reference_mode", "Cross-Reference", "\u2715 Cross-Reference"),
+        ("concise_mode", "Concise", "\u2715 Concise"),
     ]
 
-    active_chips = [c for c in _CHAT_CHIPS if st.session_state.get(c[0], False)]
-    inactive_chips = [c for c in _CHAT_CHIPS if not st.session_state.get(c[0], False)]
-
     # Active chips — blue pills above the input (CSS order: -1)
-    if active_chips:
-        with st.container(key="chat-chips-on"):
-            for state_key, _off_label, on_label in active_chips:
-                if st.button(on_label, key=f"chip-on-{state_key}"):
-                    st.session_state[state_key] = False
-                    st.rerun()
+    # Always render the container to keep keys stable across reruns.
+    # Each chip key is stable regardless of on/off state to avoid
+    # Streamlit widget-key errors on rerun.
+    with st.container(key="chat-chips-on"):
+        for state_key, _off_label, on_label in _CHAT_CHIPS:
+            if st.session_state.get(state_key, False) and st.button(
+                on_label, key=f"chip-{state_key}",
+            ):
+                st.session_state[state_key] = False
+                st.rerun()
 
     # Inactive chips — outlined pills below the input (CSS order: 10)
-    if inactive_chips:
-        with st.container(key="chat-chips-off"):
-            for state_key, off_label, _on_label in inactive_chips:
-                if st.button(off_label, key=f"chip-off-{state_key}"):
-                    st.session_state[state_key] = True
-                    st.rerun()
+    with st.container(key="chat-chips-off"):
+        for state_key, off_label, _on_label in _CHAT_CHIPS:
+            if not st.session_state.get(state_key, False) and st.button(
+                off_label, key=f"chip-{state_key}",
+            ):
+                st.session_state[state_key] = True
+                st.rerun()
 
     # Chat input
     user_question = st.chat_input(
@@ -909,11 +898,14 @@ def _run_pending_chat_question(
             first_token = True
 
             deep = st.session_state.get("deep_analysis_enabled", False)
-            verbose = st.session_state.get("verbose_answers", False)
-            status_label = (
-                "Deep analysis: searching relevant sections..."
-                if deep else "Searching relevant sections..."
-            )
+            concise = st.session_state.get("concise_mode", False)
+            cross_ref = st.session_state.get("cross_reference_mode", False)
+            if deep:
+                status_label = "Deep analysis: searching relevant sections..."
+            elif cross_ref:
+                status_label = "Cross-referencing provisions..."
+            else:
+                status_label = "Searching relevant sections..."
             status_placeholder.markdown(
                 stream_status(status_label),
                 unsafe_allow_html=True,
@@ -922,7 +914,8 @@ def _run_pending_chat_question(
 
             for item in qa_engine.ask_stream(
                 question, document.document_id,
-                deep_analysis=deep, verbose=verbose,
+                deep_analysis=deep or cross_ref,
+                concise=concise,
             ):
                 if isinstance(item, QAResponse):
                     final_response = item
@@ -947,7 +940,7 @@ def _run_pending_chat_question(
                     cited_html = render_inline_citations(
                         final_response.answer, final_response.inline_citations
                     )
-                    if defs_idx and defs_idx.definitions and st.session_state.get("show_definitions", True):
+                    if defs_idx and defs_idx.definitions:
                         footnote_marker = '<div class="cite-footnotes">'
                         fn_pos = cited_html.find(footnote_marker)
                         if fn_pos >= 0:
@@ -964,7 +957,7 @@ def _run_pending_chat_question(
                     )
                 elif final_response.sources:
                     answer_html = format_chat_answer(final_response.answer)
-                    if defs_idx and defs_idx.definitions and st.session_state.get("show_definitions", True):
+                    if defs_idx and defs_idx.definitions:
                         answer_html = highlight_defined_terms(answer_html, defs_idx)
                     footnotes_html = render_source_footnotes(final_response.sources)
                     response_placeholder.markdown(
@@ -976,7 +969,7 @@ def _run_pending_chat_question(
                     )
                 else:
                     answer_html = format_chat_answer(final_response.answer)
-                    if defs_idx and defs_idx.definitions and st.session_state.get("show_definitions", True):
+                    if defs_idx and defs_idx.definitions:
                         answer_html = highlight_defined_terms(answer_html, defs_idx)
                     response_placeholder.markdown(
                         f'<div style="position:relative;">'
@@ -1203,7 +1196,7 @@ def _render_chat_message(
             cited_html = render_inline_citations(
                 response.answer, response.inline_citations
             )
-            if defs_index and defs_index.definitions and st.session_state.get("show_definitions", True):
+            if defs_index and defs_index.definitions:
                 footnote_marker = '<div class="cite-footnotes">'
                 fn_pos = cited_html.find(footnote_marker)
                 if fn_pos >= 0:
@@ -1220,7 +1213,7 @@ def _render_chat_message(
             )
         elif response.sources:
             answer_html = format_chat_answer(response.answer)
-            if defs_index and defs_index.definitions and st.session_state.get("show_definitions", True):
+            if defs_index and defs_index.definitions:
                 answer_html = highlight_defined_terms(answer_html, defs_index)
             footnotes_html = render_source_footnotes(response.sources)
             st.markdown(
@@ -1232,7 +1225,7 @@ def _render_chat_message(
             )
         else:
             answer_html = format_chat_answer(response.answer)
-            if defs_index and defs_index.definitions and st.session_state.get("show_definitions", True):
+            if defs_index and defs_index.definitions:
                 answer_html = highlight_defined_terms(answer_html, defs_index)
             st.markdown(
                 f'<div style="position:relative;">'

@@ -19,10 +19,10 @@ from credit_analyzer.config import (
     QA_SECTION_TYPES_EXCLUDE,
 )
 from credit_analyzer.generation.prompts import (
+    CONCISE_ADDENDUM,
     DEEP_ANALYSIS_ADDENDUM,
     QA_SYSTEM_PROMPT,
     REFORMULATION_SYSTEM_PROMPT,
-    VERBOSE_ADDENDUM,
     ConversationTurn,
     build_context_prompt,
     build_reformulation_prompt,
@@ -288,7 +288,7 @@ class QAEngine:
         document_id: str,
         *,
         deep_analysis: bool = False,
-        verbose: bool = False,
+        concise: bool = False,
     ) -> QAResponse:
         """Ask a question about a specific credit agreement.
 
@@ -301,8 +301,8 @@ class QAEngine:
             document_id: The document collection to query against.
             deep_analysis: When True, perform up to 3 retrieval rounds,
                 re-retrieving when the LLM signals insufficient context.
-            verbose: When True, instruct the LLM to give longer, more
-                detailed answers.
+            concise: When True, instruct the LLM to give shorter, more
+                focused answers.
 
         Returns:
             A QAResponse with the answer, citations, and confidence.
@@ -319,8 +319,8 @@ class QAEngine:
         )
 
         system_prompt = QA_SYSTEM_PROMPT
-        if verbose:
-            system_prompt += VERBOSE_ADDENDUM
+        if concise:
+            system_prompt += CONCISE_ADDENDUM
         if deep_analysis:
             system_prompt += DEEP_ANALYSIS_ADDENDUM
 
@@ -417,7 +417,7 @@ class QAEngine:
         document_id: str,
         *,
         deep_analysis: bool = False,
-        verbose: bool = False,
+        concise: bool = False,
     ) -> Generator[str | QAResponse, None, None]:
         """Stream an answer, yielding tokens then the final QAResponse.
 
@@ -441,8 +441,8 @@ class QAEngine:
         )
 
         system_prompt = QA_SYSTEM_PROMPT
-        if verbose:
-            system_prompt += VERBOSE_ADDENDUM
+        if concise:
+            system_prompt += CONCISE_ADDENDUM
         if deep_analysis:
             system_prompt += DEEP_ANALYSIS_ADDENDUM
 

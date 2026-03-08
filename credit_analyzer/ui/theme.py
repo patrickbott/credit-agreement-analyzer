@@ -123,20 +123,20 @@ _CHIP_ICON_THINKING = (
     "%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/%3E"
     "%3C/svg%3E"
 )
-# Verbose — align-left icon
-_CHIP_ICON_VERBOSE = (
+# Cross-Reference — git-merge / link icon
+_CHIP_ICON_CROSSREF = (
+    f"data:image/svg+xml,{_CIC}"
+    "%3Ccircle cx='18' cy='18' r='3'/%3E"
+    "%3Ccircle cx='6' cy='6' r='3'/%3E"
+    "%3Cpath d='M6 21V9a9 9 0 009 9'/%3E"
+    "%3C/svg%3E"
+)
+# Concise — minimize / compress icon
+_CHIP_ICON_CONCISE = (
     f"data:image/svg+xml,{_CIC}"
     "%3Cline x1='17' y1='10' x2='3' y2='10'/%3E"
     "%3Cline x1='21' y1='6' x2='3' y2='6'/%3E"
-    "%3Cline x1='21' y1='14' x2='3' y2='14'/%3E"
-    "%3Cline x1='17' y1='18' x2='3' y2='18'/%3E"
-    "%3C/svg%3E"
-)
-# Definitions — book-open icon
-_CHIP_ICON_DEFS = (
-    f"data:image/svg+xml,{_CIC}"
-    "%3Cpath d='M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z'/%3E"
-    "%3Cpath d='M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z'/%3E"
+    "%3Cline x1='12' y1='14' x2='3' y2='14'/%3E"
     "%3C/svg%3E"
 )
 
@@ -2191,29 +2191,43 @@ div[data-testid="stDownloadButton"] > button:hover {{
 /* When relocated inside stBottom, show them */
 [data-testid="stBottom"] .st-key-chat-chips-off,
 [data-testid="stBottom"] .st-key-chat-chips-on {{
-  display: flex !important;
-  gap: 0.4rem;
-  align-items: center;
-  flex-wrap: wrap;
+  display: block !important;
+  order: 10;
 }}
 
-/* OFF chips — centered below the input */
-[data-testid="stBottom"] .st-key-chat-chips-off {{
-  justify-content: center;
-  padding-top: 0.35rem;
-  order: 10;  /* render after the chat input */
-}}
-
-/* ON chips — left-aligned above the input */
 [data-testid="stBottom"] .st-key-chat-chips-on {{
-  justify-content: flex-start;
+  order: -1;
   padding-bottom: 0.35rem;
-  order: -1;  /* render before the chat input */
+}}
+
+[data-testid="stBottom"] .st-key-chat-chips-off {{
+  padding-top: 0.35rem;
+}}
+
+/* Make the inner vertical-block lay out horizontally */
+[data-testid="stBottom"] .st-key-chat-chips-off > div > [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chat-chips-on > div > [data-testid="stVerticalBlock"] {{
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: center;
+  gap: 0.5rem;
+}}
+
+/* ON chips left-align instead of center */
+[data-testid="stBottom"] .st-key-chat-chips-on > div > [data-testid="stVerticalBlock"] {{
+  justify-content: flex-start;
+}}
+
+/* Collapse Streamlit's per-element wrappers so they don't force full-width */
+[data-testid="stBottom"] .st-key-chat-chips-off [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chat-chips-on [data-testid="stVerticalBlock"] > div {{
+  width: auto !important;
+  flex: none !important;
 }}
 
 /* Shared chip button base */
-[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button,
-[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button {{
+[data-testid="stBottom"] .st-key-chat-chips-off button,
+[data-testid="stBottom"] .st-key-chat-chips-on button {{
   border-radius: 999px !important;
   font-size: 0.78rem !important;
   font-weight: 500 !important;
@@ -2226,47 +2240,47 @@ div[data-testid="stDownloadButton"] > button:hover {{
   width: auto !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button p,
-[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button p {{
+[data-testid="stBottom"] .st-key-chat-chips-off button p,
+[data-testid="stBottom"] .st-key-chat-chips-on button p {{
   font-size: 0.78rem !important;
   font-weight: 500 !important;
   margin: 0 !important;
 }}
 
-/* OFF state — outlined with muted text */
-[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button {{
+/* OFF state — outlined box with muted text */
+[data-testid="stBottom"] .st-key-chat-chips-off button {{
   background: {SURFACE} !important;
   border: 1px solid {BORDER} !important;
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button:hover {{
+[data-testid="stBottom"] .st-key-chat-chips-off button:hover {{
   border-color: {NAVY_DEEP} !important;
   color: {NAVY_DEEP} !important;
   background: rgba(0, 61, 165, 0.04) !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button p {{
+[data-testid="stBottom"] .st-key-chat-chips-off button p {{
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button:hover p {{
+[data-testid="stBottom"] .st-key-chat-chips-off button:hover p {{
   color: {NAVY_DEEP} !important;
 }}
 
 /* ON state — solid blue with white text */
-[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button {{
+[data-testid="stBottom"] .st-key-chat-chips-on button {{
   background: {NAVY_DEEP} !important;
   border: 1px solid {NAVY_DEEP} !important;
   color: white !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button:hover {{
+[data-testid="stBottom"] .st-key-chat-chips-on button:hover {{
   background: #002D7A !important;
   border-color: #002D7A !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button p {{
+[data-testid="stBottom"] .st-key-chat-chips-on button p {{
   color: white !important;
 }}
 
@@ -2283,10 +2297,9 @@ div[data-testid="stDownloadButton"] > button:hover {{
   background-position: center;
 }}
 
-/* OFF chip icons — use muted stroke */
+/* OFF chip icons — muted */
 [data-testid="stBottom"] .st-key-chat-chips-off [class*="st-key-chip-"] button p::before {{
   opacity: 0.6;
-  filter: none;
 }}
 
 [data-testid="stBottom"] .st-key-chat-chips-off [class*="st-key-chip-"] button:hover p::before {{
@@ -2300,19 +2313,16 @@ div[data-testid="stDownloadButton"] > button:hover {{
 }}
 
 /* Individual chip icon assignments */
-[data-testid="stBottom"] .st-key-chip-on-deep_analysis_enabled button p::before,
-[data-testid="stBottom"] .st-key-chip-off-deep_analysis_enabled button p::before {{
+[data-testid="stBottom"] .st-key-chip-deep_analysis_enabled button p::before {{
   background-image: url("{_CHIP_ICON_THINKING}");
 }}
 
-[data-testid="stBottom"] .st-key-chip-on-verbose_answers button p::before,
-[data-testid="stBottom"] .st-key-chip-off-verbose_answers button p::before {{
-  background-image: url("{_CHIP_ICON_VERBOSE}");
+[data-testid="stBottom"] .st-key-chip-cross_reference_mode button p::before {{
+  background-image: url("{_CHIP_ICON_CROSSREF}");
 }}
 
-[data-testid="stBottom"] .st-key-chip-on-show_definitions button p::before,
-[data-testid="stBottom"] .st-key-chip-off-show_definitions button p::before {{
-  background-image: url("{_CHIP_ICON_DEFS}");
+[data-testid="stBottom"] .st-key-chip-concise_mode button p::before {{
+  background-image: url("{_CHIP_ICON_CONCISE}");
 }}
 
 /* Force stBottom to use flex column so order works */
