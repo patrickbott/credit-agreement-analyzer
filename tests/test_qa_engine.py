@@ -596,7 +596,7 @@ class TestQAEngine:
         engine.ask("Q?", "doc1", cite_sources=True)
 
         system_prompt: str = llm.complete.call_args.kwargs["system_prompt"]
-        assert "CITE SOURCES MODE" in system_prompt
+        assert "INLINE CITATIONS" in system_prompt
 
     def test_commentary_adds_addendum(self) -> None:
         """commentary=True appends the commentary addendum to the system prompt."""
@@ -624,7 +624,7 @@ class TestQAEngine:
         engine.ask("Q?", "doc1", deep_analysis=True, cite_sources=True, commentary=True)
 
         system_prompt: str = llm.complete.call_args.kwargs["system_prompt"]
-        assert "CITE SOURCES MODE" in system_prompt
+        assert "INLINE CITATIONS" in system_prompt
         assert "COMMENTARY MODE" in system_prompt
         assert "ADDITIONAL CONTEXT RETRIEVAL" in system_prompt
 
