@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import logging
+import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -16,6 +18,8 @@ import pytesseract  # pyright: ignore[reportMissingTypeStubs]
 from PIL import Image
 
 from credit_analyzer.config import OCR_TEXT_LENGTH_THRESHOLD, TESSERACT_CMD
+
+logger = logging.getLogger(__name__)
 
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
@@ -102,6 +106,7 @@ def _process_page(
     is_ocr = False
 
     if len(raw_text.strip()) < OCR_TEXT_LENGTH_THRESHOLD:
+        logger.debug("Page %d: text too short (%d chars), falling back to OCR", page_idx + 1, len(raw_text.strip()))
         raw_text = _ocr_page(fitz_page)
         is_ocr = True
 
@@ -137,6 +142,9 @@ class PDFExtractor:
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
+        logger.info("Starting PDF extraction: %s", pdf_path.name)
+        extraction_start = time.perf_counter()
+
         fitz_doc: Any = fitz.open(str(pdf_path))
         plumber_doc = pdfplumber.open(str(pdf_path))
 
@@ -164,6 +172,12 @@ class PDFExtractor:
             extraction_method = "ocr"
         else:
             extraction_method = "mixed"
+
+        extraction_duration = time.perf_counter() - extraction_start
+        logger.info(
+            "PDF extraction complete: pages=%d, method=%s, ocr_pages=%d, time=%.2fs",
+            len(pages), extraction_method, ocr_count, extraction_duration,
+        )
 
         return ExtractedDocument(
             pages=pages,

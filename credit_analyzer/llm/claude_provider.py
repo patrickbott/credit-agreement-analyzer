@@ -42,6 +42,7 @@ class ClaudeProvider(LLMProvider):
         max_tokens: int = 2048,
     ) -> LLMResponse:
         """Send a completion request to the Anthropic Messages API."""
+        logger.debug("Claude request: model=%s, max_tokens=%d", self._model, max_tokens)
         start = time.perf_counter()
 
         response: Any = self._client.messages.create(
@@ -74,6 +75,11 @@ class ClaudeProvider(LLMProvider):
 
         usage: Any = response.usage
         tokens_used = cast(int, getattr(usage, "output_tokens", 0))
+
+        logger.info(
+            "Claude response: model=%s, tokens=%d, time=%.2fs",
+            self._model, tokens_used, duration,
+        )
 
         return LLMResponse(
             text=text,

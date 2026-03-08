@@ -112,6 +112,8 @@ class ReportGenerator:
         Returns:
             A GeneratedReport with all sections.
         """
+        logger.info("Starting report generation: %d sections", len(sections))
+
         report = GeneratedReport(
             borrower_name="(Unknown Borrower)",
             generated_at=datetime.now(),
@@ -213,6 +215,10 @@ class ReportGenerator:
         # Track wall-clock time instead of sum of section times
         report.total_duration_seconds = time.monotonic() - wall_clock_start
 
+        logger.info(
+            "Report generation complete: sections=%d, total_time=%.2fs",
+            len(report.sections), report.total_duration_seconds or 0.0,
+        )
         _notify(progress_callback, "Report complete.", 1.0)
         return report
 
@@ -232,6 +238,12 @@ class ReportGenerator:
         Returns:
             A completed GeneratedSection.
         """
+        logger.info(
+            "Generating section %d: %s",
+            template.section_number, template.title,
+        )
+        section_start = time.monotonic()
+
         # Retrieve context via multi-query
         result = retrieve_for_section(
             self._retriever,
@@ -264,6 +276,13 @@ class ReportGenerator:
         confidence = parse_confidence(raw_text)
         sources = citations_from_chunks(result.chunks)
         inline_cites, body = build_citations_from_chunks(body, numbered_chunks)
+
+        section_duration = time.monotonic() - section_start
+        logger.info(
+            "Section %d (%s) complete: confidence=%s, chunks=%d, time=%.2fs",
+            template.section_number, template.title, confidence,
+            len(result.chunks), section_duration,
+        )
 
         return GeneratedSection(
             section_number=template.section_number,

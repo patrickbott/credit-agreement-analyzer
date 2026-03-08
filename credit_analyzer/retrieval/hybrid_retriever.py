@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import re
+import time
 from collections import Counter
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -34,6 +36,8 @@ from credit_analyzer.retrieval.query_helpers import (
 )
 from credit_analyzer.retrieval.reranker import Reranker
 from credit_analyzer.retrieval.vector_store import VectorStore
+
+logger = logging.getLogger(__name__)
 
 SourceLabel = Literal["vector", "bm25", "both", "definition", "preamble"]
 
@@ -163,6 +167,9 @@ class HybridRetriever:
         Returns:
             RetrievalResult with ranked chunks and optional definitions.
         """
+        logger.info("Hybrid retrieval: query=%r, top_k=%d", query[:120], top_k)
+        retrieval_start = time.perf_counter()
+
         # Over-fetch candidates for reranking when a reranker is available.
         rerank_k = top_k * RERANK_CANDIDATES_MULTIPLIER if self._reranker else top_k
         fetch_k = rerank_k
@@ -186,6 +193,11 @@ class HybridRetriever:
             top_k=fetch_k,
             section_filter=section_filter,
             section_types_exclude=section_types_exclude,
+        )
+
+        logger.debug(
+            "Retrieval sources: vector_hits=%d, bm25_hits=%d",
+            len(vector_results), len(bm25_results),
         )
 
         # --- Reciprocal Rank Fusion (RRF) ---
@@ -227,7 +239,9 @@ class HybridRetriever:
 
         # --- Cross-encoder reranking ---
         if self._reranker and hybrid_chunks:
+            rerank_start = time.perf_counter()
             hybrid_chunks = self._reranker.rerank(query, hybrid_chunks, top_k)
+            logger.debug("Reranking took %.2fs", time.perf_counter() - rerank_start)
         else:
             hybrid_chunks = hybrid_chunks[:top_k]
 
@@ -254,6 +268,12 @@ class HybridRetriever:
             hybrid_chunks, injected = self._inject_and_expand_definitions(
                 query, hybrid_chunks, top_k,
             )
+
+        retrieval_duration = time.perf_counter() - retrieval_start
+        logger.info(
+            "Hybrid retrieval complete: chunks=%d, injected_defs=%d, time=%.2fs",
+            len(hybrid_chunks), len(injected), retrieval_duration,
+        )
 
         return RetrievalResult(chunks=hybrid_chunks, injected_definitions=injected)
 

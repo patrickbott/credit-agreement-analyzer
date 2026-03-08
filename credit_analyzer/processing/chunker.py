@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -17,6 +18,8 @@ from credit_analyzer.config import (
 )
 from credit_analyzer.processing.definitions import DefinitionsIndex
 from credit_analyzer.processing.section_detector import DocumentSection
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_for_search(text: str) -> str:
@@ -202,6 +205,7 @@ class Chunker:
         """
         all_chunks: list[Chunk] = []
 
+        logger.info("Chunking %d sections", len(sections))
         definitions_chunked = False
 
         for section in sections:
@@ -215,6 +219,21 @@ class Chunker:
             else:
                 chunks = self._chunk_section(section, definitions_index)
             all_chunks.extend(chunks)
+
+        token_counts = [c.token_count for c in all_chunks]
+        oversized = [c for c in all_chunks if c.token_count > CHUNK_MAX_TOKENS]
+        logger.info(
+            "Chunking complete: chunks=%d, min_tokens=%d, max_tokens=%d, avg_tokens=%d",
+            len(all_chunks),
+            min(token_counts) if token_counts else 0,
+            max(token_counts) if token_counts else 0,
+            sum(token_counts) // max(len(token_counts), 1),
+        )
+        if oversized:
+            logger.debug(
+                "Oversized chunks (>%d tokens): %d",
+                CHUNK_MAX_TOKENS, len(oversized),
+            )
 
         return all_chunks
 

@@ -168,6 +168,9 @@ class QAEngine:
         Returns:
             A QAResponse with the answer, citations, and confidence.
         """
+        logger.info("QA ask: question=%r, deep_analysis=%s", question[:120], deep_analysis)
+        ask_start = time.perf_counter()
+
         retrieval_query = self._maybe_reformulate(question)
 
         queries = _expand_query(retrieval_query)
@@ -178,6 +181,7 @@ class QAEngine:
             top_k=self._max_chunks,
             section_types_exclude=self._section_types_exclude,
         )
+        logger.debug("Retrieved %d chunks for QA", len(result.chunks))
 
         system_prompt = QA_SYSTEM_PROMPT
         if concise:
@@ -201,12 +205,14 @@ class QAEngine:
             preamble_page_numbers=self._preamble_page_numbers,
         )
 
+        llm_start = time.perf_counter()
         llm_response: LLMResponse = self._llm.complete(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.0,
             max_tokens=self._max_gen_tokens,
         )
+        logger.debug("LLM response time: %.2fs", time.perf_counter() - llm_start)
 
         # Deep analysis: check for <needs_context> and re-retrieve
         if deep_analysis:
@@ -264,6 +270,12 @@ class QAEngine:
 
         self._history.append(
             ConversationTurn(question=question, answer=answer_body)
+        )
+
+        logger.info(
+            "QA complete: confidence=%s, retrieval_rounds=%d, chunks=%d, time=%.2fs",
+            confidence, retrieval_rounds, len(result.chunks),
+            time.perf_counter() - ask_start,
         )
 
         return QAResponse(
