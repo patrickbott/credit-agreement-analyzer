@@ -71,6 +71,15 @@ Given the conversation history below, reformulate the latest question into a \
 standalone search query that captures the full intent. Respond with ONLY the \
 search query, nothing else."""
 
+DEEP_ANALYSIS_ADDENDUM: str = """
+
+ADDITIONAL CONTEXT RETRIEVAL:
+If the provided context is insufficient to fully and accurately answer the \
+question, output <needs_context>your follow-up search query</needs_context> \
+at the END of your response. The system will retrieve additional context and \
+ask you again with the expanded context. Only request additional context if \
+you genuinely need it — do not request context speculatively."""
+
 
 # ---------------------------------------------------------------------------
 # Conversation history

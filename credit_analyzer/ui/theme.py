@@ -2399,10 +2399,18 @@ def context_strip(
     chunk_count: int,
     sections_used: str,
     duration_seconds: float,
+    *,
+    retrieval_rounds: int = 1,
 ) -> str:
     """Render the compact context indicator below an assistant message."""
+    rounds_html = (
+        f'<span>{retrieval_rounds} retrieval rounds</span>'
+        f'<span>&middot;</span>'
+        if retrieval_rounds > 1 else ""
+    )
     return (
         '<div class="context-strip">'
+        f'{rounds_html}'
         f'<span>{chunk_count} chunks</span>'
         f'<span>&middot;</span>'
         f'<span>{_safe(sections_used)}</span>'

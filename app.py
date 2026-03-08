@@ -173,6 +173,7 @@ def _initialize_state() -> None:
     st.session_state.setdefault("prompt_edit_draft", {})
     st.session_state.setdefault("generated_reports", {})
     st.session_state.setdefault("provider_status", None)
+    st.session_state.setdefault("deep_analysis_enabled", False)
 
 
 def _clear_prompt_edit(document_id: str) -> None:
@@ -755,6 +756,13 @@ def _render_main(
 
     _render_prompt_editor(active_document, provider)
 
+    # Deep analysis toggle
+    st.toggle(
+        "Deep Analysis",
+        key="deep_analysis_enabled",
+        help="Multi-round retrieval for complex cross-reference questions (slower, more thorough)",
+    )
+
     # Chat input
     user_question = st.chat_input(
         "Ask about pricing, covenants, structure...",
@@ -846,13 +854,20 @@ def _run_pending_chat_question(
             final_response = None
             first_token = True
 
+            deep = st.session_state.get("deep_analysis_enabled", False)
+            status_label = (
+                "Deep analysis: searching relevant sections..."
+                if deep else "Searching relevant sections..."
+            )
             status_placeholder.markdown(
-                stream_status("Searching relevant sections..."),
+                stream_status(status_label),
                 unsafe_allow_html=True,
             )
             t0 = time.monotonic()
 
-            for item in qa_engine.ask_stream(question, document.document_id):
+            for item in qa_engine.ask_stream(
+                question, document.document_id, deep_analysis=deep,
+            ):
                 if isinstance(item, QAResponse):
                     final_response = item
                 else:
@@ -919,8 +934,13 @@ def _run_pending_chat_question(
                 sections_used = _extract_sections_used(final_response)
                 chunk_count = len(final_response.retrieved_chunks) if final_response.retrieved_chunks else 0
                 duration = final_response.llm_response.duration_seconds if final_response.llm_response else elapsed
+                rounds = final_response.retrieval_rounds
                 st.markdown(
-                    context_strip(final_response.confidence, chunk_count, sections_used, duration),
+                    context_strip(
+                        final_response.confidence, chunk_count,
+                        sections_used, duration,
+                        retrieval_rounds=rounds,
+                    ),
                     unsafe_allow_html=True,
                 )
 
@@ -1170,8 +1190,12 @@ def _render_chat_message(
         sections_used = _extract_sections_used(response)
         chunk_count = len(response.retrieved_chunks) if response.retrieved_chunks else 0
         duration = response.llm_response.duration_seconds if response.llm_response else 0.0
+        rounds = response.retrieval_rounds
         st.markdown(
-            context_strip(response.confidence, chunk_count, sections_used, duration),
+            context_strip(
+                response.confidence, chunk_count, sections_used, duration,
+                retrieval_rounds=rounds,
+            ),
             unsafe_allow_html=True,
         )
 
