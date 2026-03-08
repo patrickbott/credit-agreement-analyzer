@@ -26,6 +26,7 @@ from credit_analyzer.ui.theme import (
     render_inline_citations,
     render_source_footnotes,
     scroll_to_top_script,
+    stop_button_relocate_script,
     stream_status,
 )
 from credit_analyzer.ui.workflows import ProcessedDocument
@@ -88,6 +89,18 @@ def render_main(
             message_index=message_index,
         )
 
+    # Recover partial output from a cancelled stream
+    partial = st.session_state.partial_response
+    if partial is not None and not st.session_state.streaming_active:
+        if partial["doc_id"] == doc_id and partial["text"].strip():
+            st.session_state.chat_messages[doc_id].append({
+                "role": "assistant_cancelled",
+                "text": partial["text"],
+                "timestamp": datetime.now().strftime("%I:%M %p").lstrip("0"),
+            })
+        st.session_state.partial_response = None
+        st.session_state.pending_chat_questions.pop(doc_id, None)
+
     # Handle pending question (synchronous streaming)
     pending = st.session_state.pending_chat_questions.get(doc_id)
     if pending is not None:
@@ -133,11 +146,15 @@ def render_main(
             queue_chat_question(active_document, cleaned)
             st.rerun()
 
-    # Relocate chip into the bottom bar and scroll-to-top button
-    components.html(
-        chat_chips_relocate_script() + scroll_to_top_script("section.main"),
-        height=0,
-    )
+    # Stop button (visible during streaming; clicking interrupts the run)
+    if st.session_state.streaming_active:
+        st.button("■", key="stop-chat-generation")
+
+    # Relocate chips into the bottom bar and scroll-to-top button
+    scripts = chat_chips_relocate_script() + scroll_to_top_script("section.main")
+    if st.session_state.streaming_active:
+        scripts += stop_button_relocate_script()
+    components.html(scripts, height=0)
 
 
 def render_suggestions(active_document: ProcessedDocument) -> None:
@@ -213,6 +230,8 @@ def run_pending_chat_question(
             status_placeholder = st.empty()
             response_placeholder = st.empty()
             streamed_text = ""
+            st.session_state.streaming_active = True
+            st.session_state.partial_response = {"doc_id": document.document_id, "text": ""}
             final_response = None
             first_token = True
 
@@ -255,11 +274,13 @@ def run_pending_chat_question(
                         streamed_text += _pending
                         _pending = ""
                         _last_flush = now
+                        st.session_state.partial_response["text"] = streamed_text
                         response_placeholder.markdown(streamed_text + "\u258c")
 
             # Flush any remaining buffered tokens
             if _pending:
                 streamed_text += _pending
+                st.session_state.partial_response["text"] = streamed_text
                 response_placeholder.markdown(streamed_text + "\u258c")
 
             elapsed = time.monotonic() - t0
@@ -362,8 +383,11 @@ def run_pending_chat_question(
                     "timestamp": datetime.now().strftime("%I:%M %p").lstrip("0"),
                 }
             )
+            st.session_state.partial_response = None
     except Exception as exc:
         st.error(f"Could not generate an answer: {exc}")
+    finally:
+        st.session_state.streaming_active = False
 
 
 def render_prompt_editor(document: ProcessedDocument, provider: LLMProvider) -> None:
@@ -528,6 +552,22 @@ def render_chat_message(
         with st.chat_message("assistant"):
             notice_text = cast(str, message.get("text", ""))
             st.markdown(format_chat_answer(notice_text), unsafe_allow_html=True)
+            ts = message.get("timestamp")
+            if ts:
+                st.markdown(message_timestamp(ts), unsafe_allow_html=True)
+        return
+
+    if message["role"] == "assistant_cancelled":
+        with st.chat_message("assistant"):
+            answer_html = format_chat_answer(cast(str, message.get("text", "")))
+            if defs_index and defs_index.definitions:
+                answer_html = highlight_defined_terms(answer_html, defs_index)
+            st.markdown(
+                f'<div class="section-answer">{answer_html}'
+                f'<span style="color:#999;font-size:0.8rem;font-style:italic;">'
+                f' (generation stopped)</span></div>',
+                unsafe_allow_html=True,
+            )
             ts = message.get("timestamp")
             if ts:
                 st.markdown(message_timestamp(ts), unsafe_allow_html=True)

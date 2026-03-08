@@ -129,6 +129,8 @@ def _initialize_state() -> None:
     st.session_state.setdefault("generated_reports", {})
     st.session_state.setdefault("provider_status", None)
     st.session_state.setdefault("deep_analysis_enabled", False)
+    st.session_state.setdefault("streaming_active", False)
+    st.session_state.setdefault("partial_response", None)
 
 
 if __name__ == "__main__":
