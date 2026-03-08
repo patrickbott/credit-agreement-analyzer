@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import TypedDict
 
 import streamlit as st
 import streamlit.components.v1 as components
 
 from credit_analyzer.config import validate_config
+from credit_analyzer.generation.qa_engine import QAResponse
+from credit_analyzer.generation.report_generator import GeneratedReport
 from credit_analyzer.llm.base import LLMProvider
 from credit_analyzer.llm.factory import get_provider
 from credit_analyzer.retrieval.embedder import Embedder
@@ -21,6 +24,61 @@ from credit_analyzer.ui.theme import (
     def_tooltip_click_script,
 )
 from credit_analyzer.ui.workflows import ProcessedDocument
+
+# ---------------------------------------------------------------------------
+# Session state schema (documentation; Streamlit state is still dynamic)
+# ---------------------------------------------------------------------------
+
+
+class _ChatMessage(TypedDict, total=False):
+    """Shape of a single chat message in session state."""
+
+    role: str  # "user" | "assistant" | "assistant_cancelled" | "assistant_notice"
+    question: str  # user messages
+    response: QAResponse  # assistant messages
+    text: str  # cancelled/notice messages
+    timestamp: str
+
+
+class _PartialResponse(TypedDict):
+    """Partial streaming response tracked for cancellation recovery."""
+
+    doc_id: str
+    text: str
+
+
+class _ProviderStatus(TypedDict, total=False):
+    """Cached LLM provider probe result."""
+
+    provider: LLMProvider | None
+    ready: bool
+    provider_name: str
+    model_name: str
+    message: str
+
+
+class _SessionState(TypedDict, total=False):  # pyright: ignore[reportUnusedClass]
+    """Expected shape of ``st.session_state``.
+
+    This TypedDict is NOT enforced at runtime — Streamlit session state
+    is always a plain dict.  It exists purely to document the expected
+    keys and their types so that developers can navigate the codebase.
+    """
+
+    documents: dict[str, ProcessedDocument]
+    active_document_id: str | None
+    chat_messages: dict[str, list[_ChatMessage]]
+    pending_chat_questions: dict[str, str]
+    prompt_edit_index: dict[str, int]
+    prompt_edit_draft: dict[str, str]
+    generated_reports: dict[str, GeneratedReport]
+    provider_status: _ProviderStatus | None
+    deep_analysis_enabled: bool
+    cite_sources_enabled: bool
+    commentary_enabled: bool
+    streaming_active: bool
+    partial_response: _PartialResponse | None
+    upload_counter: int
 
 st.set_page_config(
     page_title="Credit Agreement Analyzer | RBC",
@@ -131,7 +189,6 @@ def _initialize_state() -> None:
     st.session_state.setdefault("deep_analysis_enabled", False)
     st.session_state.setdefault("streaming_active", False)
     st.session_state.setdefault("partial_response", None)
-    st.session_state.setdefault("compare_mode", False)
     st.session_state.setdefault("upload_counter", 0)
 
 
