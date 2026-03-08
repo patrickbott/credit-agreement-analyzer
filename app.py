@@ -175,8 +175,6 @@ def _initialize_state() -> None:
     st.session_state.setdefault("generated_reports", {})
     st.session_state.setdefault("provider_status", None)
     st.session_state.setdefault("deep_analysis_enabled", False)
-    st.session_state.setdefault("cross_reference_mode", False)
-    st.session_state.setdefault("concise_mode", False)
 
 
 def _clear_prompt_edit(document_id: str) -> None:
@@ -774,34 +772,15 @@ def _render_main(
 
     _render_prompt_editor(active_document, provider)
 
-    # Chat input chips — toggleable options
-    # (state_key, off_label, on_label)
-    _CHAT_CHIPS: list[tuple[str, str, str]] = [
-        ("deep_analysis_enabled", "Extended Thinking", "\u2715 Extended Thinking"),
-        ("cross_reference_mode", "Cross-Reference", "\u2715 Cross-Reference"),
-        ("concise_mode", "Concise", "\u2715 Concise"),
-    ]
-
-    # Active chips — blue pills above the input (CSS order: -1)
-    # Always render the container to keep keys stable across reruns.
-    # Each chip key is stable regardless of on/off state to avoid
-    # Streamlit widget-key errors on rerun.
-    with st.container(key="chat-chips-on"):
-        for state_key, _off_label, on_label in _CHAT_CHIPS:
-            if st.session_state.get(state_key, False) and st.button(
-                on_label, key=f"chip-{state_key}",
-            ):
-                st.session_state[state_key] = False
-                st.rerun()
-
-    # Inactive chips — outlined pills below the input (CSS order: 10)
-    with st.container(key="chat-chips-off"):
-        for state_key, off_label, _on_label in _CHAT_CHIPS:
-            if not st.session_state.get(state_key, False) and st.button(
-                off_label, key=f"chip-{state_key}",
-            ):
-                st.session_state[state_key] = True
-                st.rerun()
+    # Extended Thinking chip — rendered in a keyed container that JS
+    # relocates into stBottom so it sits below the chat input bar.
+    deep = st.session_state.get("deep_analysis_enabled", False)
+    chip_label = "\u2715 Extended Thinking" if deep else "Extended Thinking"
+    chip_container_key = "chip-on" if deep else "chip-off"
+    with st.container(key=chip_container_key):
+        if st.button(chip_label, key="chip-extended-thinking"):
+            st.session_state["deep_analysis_enabled"] = not deep
+            st.rerun()
 
     # Chat input
     user_question = st.chat_input(
@@ -814,7 +793,7 @@ def _render_main(
             _queue_chat_question(active_document, cleaned)
             st.rerun()
 
-    # Relocate chips into the bottom bar and scroll-to-top button
+    # Relocate chip into the bottom bar and scroll-to-top button
     components.html(
         chat_chips_relocate_script() + scroll_to_top_script("section.main"),
         height=0,
@@ -898,14 +877,10 @@ def _run_pending_chat_question(
             first_token = True
 
             deep = st.session_state.get("deep_analysis_enabled", False)
-            concise = st.session_state.get("concise_mode", False)
-            cross_ref = st.session_state.get("cross_reference_mode", False)
-            if deep:
-                status_label = "Deep analysis: searching relevant sections..."
-            elif cross_ref:
-                status_label = "Cross-referencing provisions..."
-            else:
-                status_label = "Searching relevant sections..."
+            status_label = (
+                "Extended thinking: searching relevant sections..."
+                if deep else "Searching relevant sections..."
+            )
             status_placeholder.markdown(
                 stream_status(status_label),
                 unsafe_allow_html=True,
@@ -914,8 +889,7 @@ def _run_pending_chat_question(
 
             for item in qa_engine.ask_stream(
                 question, document.document_id,
-                deep_analysis=deep or cross_ref,
-                concise=concise,
+                deep_analysis=deep,
             ):
                 if isinstance(item, QAResponse):
                     final_response = item

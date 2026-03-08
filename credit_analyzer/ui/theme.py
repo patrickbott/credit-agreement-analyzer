@@ -123,22 +123,6 @@ _CHIP_ICON_THINKING = (
     "%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/%3E"
     "%3C/svg%3E"
 )
-# Cross-Reference — git-merge / link icon
-_CHIP_ICON_CROSSREF = (
-    f"data:image/svg+xml,{_CIC}"
-    "%3Ccircle cx='18' cy='18' r='3'/%3E"
-    "%3Ccircle cx='6' cy='6' r='3'/%3E"
-    "%3Cpath d='M6 21V9a9 9 0 009 9'/%3E"
-    "%3C/svg%3E"
-)
-# Concise — minimize / compress icon
-_CHIP_ICON_CONCISE = (
-    f"data:image/svg+xml,{_CIC}"
-    "%3Cline x1='17' y1='10' x2='3' y2='10'/%3E"
-    "%3Cline x1='21' y1='6' x2='3' y2='6'/%3E"
-    "%3Cline x1='12' y1='14' x2='3' y2='14'/%3E"
-    "%3C/svg%3E"
-)
 
 APP_CSS = f"""
 <style>
@@ -2180,58 +2164,51 @@ div[data-testid="stDownloadButton"] > button:hover {{
   box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }}
 
-/* ---- Chat chips (toggleable options near input bar) ---- */
+/* ---- Extended Thinking chip (near chat input bar) ---- */
 
-/* Hide chips in their original DOM position; JS moves them into stBottom */
-.st-key-chat-chips-off,
-.st-key-chat-chips-on {{
+/* Hide chip in its original DOM position; JS moves it into stBottom */
+.st-key-chip-on,
+.st-key-chip-off {{
   display: none !important;
 }}
 
-/* When relocated inside stBottom, show them */
-[data-testid="stBottom"] .st-key-chat-chips-off,
-[data-testid="stBottom"] .st-key-chat-chips-on {{
+/* When relocated inside stBottom, show it */
+[data-testid="stBottom"] .st-key-chip-on,
+[data-testid="stBottom"] .st-key-chip-off {{
   display: block !important;
+  text-align: center;
   order: 10;
+  padding-top: 0.3rem;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-on {{
+/* ON state renders above the input */
+[data-testid="stBottom"] .st-key-chip-on {{
   order: -1;
-  padding-bottom: 0.35rem;
+  text-align: left;
+  padding-top: 0;
+  padding-bottom: 0.3rem;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-off {{
-  padding-top: 0.35rem;
+/* Flatten all Streamlit wrapper divs so the button responds to text-align */
+[data-testid="stBottom"] .st-key-chip-on > div,
+[data-testid="stBottom"] .st-key-chip-off > div,
+[data-testid="stBottom"] .st-key-chip-on [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chip-off [data-testid="stVerticalBlock"],
+[data-testid="stBottom"] .st-key-chip-on [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chip-off [data-testid="stVerticalBlock"] > div,
+[data-testid="stBottom"] .st-key-chip-on div[data-testid="stButton"],
+[data-testid="stBottom"] .st-key-chip-off div[data-testid="stButton"] {{
+  display: contents !important;
 }}
 
-/* Make the inner vertical-block lay out horizontally */
-[data-testid="stBottom"] .st-key-chat-chips-off > div > [data-testid="stVerticalBlock"],
-[data-testid="stBottom"] .st-key-chat-chips-on > div > [data-testid="stVerticalBlock"] {{
-  display: flex !important;
-  flex-direction: row !important;
-  justify-content: center;
-  gap: 0.5rem;
-}}
-
-/* ON chips left-align instead of center */
-[data-testid="stBottom"] .st-key-chat-chips-on > div > [data-testid="stVerticalBlock"] {{
-  justify-content: flex-start;
-}}
-
-/* Collapse Streamlit's per-element wrappers so they don't force full-width */
-[data-testid="stBottom"] .st-key-chat-chips-off [data-testid="stVerticalBlock"] > div,
-[data-testid="stBottom"] .st-key-chat-chips-on [data-testid="stVerticalBlock"] > div {{
-  width: auto !important;
-  flex: none !important;
-}}
-
-/* Shared chip button base */
-[data-testid="stBottom"] .st-key-chat-chips-off button,
-[data-testid="stBottom"] .st-key-chat-chips-on button {{
+/* Chip button — shared base */
+[data-testid="stBottom"] .st-key-chip-extended-thinking button {{
+  display: inline-flex !important;
+  align-items: center;
   border-radius: 999px !important;
   font-size: 0.78rem !important;
   font-weight: 500 !important;
-  padding: 0.25rem 0.7rem !important;
+  padding: 0.25rem 0.75rem !important;
   min-height: unset !important;
   line-height: 1.4 !important;
   box-shadow: none !important;
@@ -2240,52 +2217,51 @@ div[data-testid="stDownloadButton"] > button:hover {{
   width: auto !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-off button p,
-[data-testid="stBottom"] .st-key-chat-chips-on button p {{
+[data-testid="stBottom"] .st-key-chip-extended-thinking button p {{
   font-size: 0.78rem !important;
   font-weight: 500 !important;
   margin: 0 !important;
 }}
 
-/* OFF state — outlined box with muted text */
-[data-testid="stBottom"] .st-key-chat-chips-off button {{
+/* OFF state — outlined box */
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button {{
   background: {SURFACE} !important;
   border: 1px solid {BORDER} !important;
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-off button:hover {{
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button:hover {{
   border-color: {NAVY_DEEP} !important;
   color: {NAVY_DEEP} !important;
   background: rgba(0, 61, 165, 0.04) !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-off button p {{
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button p {{
   color: {MUTED} !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-off button:hover p {{
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button:hover p {{
   color: {NAVY_DEEP} !important;
 }}
 
-/* ON state — solid blue with white text */
-[data-testid="stBottom"] .st-key-chat-chips-on button {{
+/* ON state — solid blue */
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button {{
   background: {NAVY_DEEP} !important;
   border: 1px solid {NAVY_DEEP} !important;
   color: white !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-on button:hover {{
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button:hover {{
   background: #002D7A !important;
   border-color: #002D7A !important;
 }}
 
-[data-testid="stBottom"] .st-key-chat-chips-on button p {{
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button p {{
   color: white !important;
 }}
 
-/* Chip icons via CSS ::before */
-[data-testid="stBottom"] [class*="st-key-chip-"] button p::before {{
+/* Chip icon via CSS ::before */
+[data-testid="stBottom"] .st-key-chip-extended-thinking button p::before {{
   content: "";
   display: inline-block;
   width: 14px;
@@ -2295,34 +2271,22 @@ div[data-testid="stDownloadButton"] > button:hover {{
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-}}
-
-/* OFF chip icons — muted */
-[data-testid="stBottom"] .st-key-chat-chips-off [class*="st-key-chip-"] button p::before {{
-  opacity: 0.6;
-}}
-
-[data-testid="stBottom"] .st-key-chat-chips-off [class*="st-key-chip-"] button:hover p::before {{
-  opacity: 0.85;
-}}
-
-/* ON chip icons — white via brightness filter */
-[data-testid="stBottom"] .st-key-chat-chips-on [class*="st-key-chip-"] button p::before {{
-  opacity: 1;
-  filter: brightness(0) invert(1);
-}}
-
-/* Individual chip icon assignments */
-[data-testid="stBottom"] .st-key-chip-deep_analysis_enabled button p::before {{
   background-image: url("{_CHIP_ICON_THINKING}");
 }}
 
-[data-testid="stBottom"] .st-key-chip-cross_reference_mode button p::before {{
-  background-image: url("{_CHIP_ICON_CROSSREF}");
+/* OFF icon — muted */
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button p::before {{
+  opacity: 0.5;
 }}
 
-[data-testid="stBottom"] .st-key-chip-concise_mode button p::before {{
-  background-image: url("{_CHIP_ICON_CONCISE}");
+[data-testid="stBottom"] .st-key-chip-off .st-key-chip-extended-thinking button:hover p::before {{
+  opacity: 0.8;
+}}
+
+/* ON icon — white */
+[data-testid="stBottom"] .st-key-chip-on .st-key-chip-extended-thinking button p::before {{
+  opacity: 1;
+  filter: brightness(0) invert(1);
 }}
 
 /* Force stBottom to use flex column so order works */
@@ -3442,21 +3406,19 @@ def highlight_defined_terms(
 
 
 def chat_chips_relocate_script() -> str:
-    """Return a JS snippet that moves chat chip containers into stBottom.
+    """Return a JS snippet that moves the chip container into stBottom.
 
     Streamlit renders elements in DOM order in the main area.  The chip
-    containers need to live inside ``[data-testid="stBottom"]`` so they
-    sit visually adjacent to the chat input bar.  CSS ``order`` then
-    controls whether they appear above (ON chips) or below (OFF chips)
-    the input.
+    container needs to live inside ``[data-testid="stBottom"]`` so it
+    sits visually adjacent to the chat input bar.  CSS ``order`` then
+    controls whether it appears above (ON) or below (OFF) the input.
     """
     return """<script>
 (function() {
     var doc = parent.document;
     var bottom = doc.querySelector('[data-testid="stBottom"] > div');
     if (!bottom) return;
-    var ids = ['chat-chips-on', 'chat-chips-off'];
-    ids.forEach(function(id) {
+    ['chip-on', 'chip-off'].forEach(function(id) {
         var el = doc.querySelector('.st-key-' + id);
         if (el && !bottom.contains(el)) {
             bottom.appendChild(el);
