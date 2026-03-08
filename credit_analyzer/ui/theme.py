@@ -604,25 +604,6 @@ div[data-testid="stDownloadButton"] > button:hover {{
   opacity: 0.85;
 }}
 
-/* ---- Inline section picker (sidebar) ---- */
-
-.section-picker-container {{
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 10px;
-  padding: 0.5rem 0.6rem 0.3rem;
-  margin: 0.15rem 0;
-}}
-
-.section-picker-header {{
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: {MUTED};
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin-bottom: 0.25rem;
-}}
-
 /* Disabled sidebar buttons — fade icons too */
 [data-testid="stSidebar"] div[data-testid="stButton"] > button:disabled p::before {{
   opacity: 0.35;
