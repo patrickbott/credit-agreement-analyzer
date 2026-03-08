@@ -31,6 +31,7 @@ from credit_analyzer.ui.guide_dialog import show_guide_dialog
 from credit_analyzer.ui.report_dialog import show_report_dialog
 from credit_analyzer.ui.theme import (
     APP_CSS,
+    chat_chips_relocate_script,
     chat_welcome,
     context_strip,
     copy_button,
@@ -797,15 +798,21 @@ def _render_main(
     active_chips = [c for c in _CHAT_CHIPS if st.session_state.get(c[0], False)]
     inactive_chips = [c for c in _CHAT_CHIPS if not st.session_state.get(c[0], False)]
 
-    # Active chips render above the chat input as blue pills
+    # Active chips — blue pills above the input (CSS order: -1)
     if active_chips:
         with st.container(key="chat-chips-on"):
-            cols = st.columns(len(active_chips) + 2)  # extra cols for left-align
-            for i, (state_key, _off_label, on_label) in enumerate(active_chips):
-                with cols[i]:
-                    if st.button(on_label, key=f"chip-off-{state_key}"):
-                        st.session_state[state_key] = False
-                        st.rerun()
+            for state_key, _off_label, on_label in active_chips:
+                if st.button(on_label, key=f"chip-on-{state_key}"):
+                    st.session_state[state_key] = False
+                    st.rerun()
+
+    # Inactive chips — outlined pills below the input (CSS order: 10)
+    if inactive_chips:
+        with st.container(key="chat-chips-off"):
+            for state_key, off_label, _on_label in inactive_chips:
+                if st.button(off_label, key=f"chip-off-{state_key}"):
+                    st.session_state[state_key] = True
+                    st.rerun()
 
     # Chat input
     user_question = st.chat_input(
@@ -818,18 +825,11 @@ def _render_main(
             _queue_chat_question(active_document, cleaned)
             st.rerun()
 
-    # Inactive chips render below the chat input as outlined pills
-    if inactive_chips:
-        with st.container(key="chat-chips-off"):
-            cols = st.columns(len(inactive_chips))
-            for i, (state_key, off_label, _on_label) in enumerate(inactive_chips):
-                with cols[i]:
-                    if st.button(off_label, key=f"chip-on-{state_key}"):
-                        st.session_state[state_key] = True
-                        st.rerun()
-
-    # Scroll-to-top button for chat area
-    components.html(scroll_to_top_script("section.main"), height=0)
+    # Relocate chips into the bottom bar and scroll-to-top button
+    components.html(
+        chat_chips_relocate_script() + scroll_to_top_script("section.main"),
+        height=0,
+    )
 
 
 def _render_suggestions(active_document: ProcessedDocument) -> None:

@@ -111,6 +111,35 @@ _ICON_DISCARD = (
     "%3C/svg%3E"
 )
 
+# Chat chip icons (14px, lighter stroke for smaller context)
+_CIC = (
+    "%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' "
+    "viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' "
+    "stroke-linecap='round' stroke-linejoin='round'%3E"
+)
+# Extended Thinking — zap icon
+_CHIP_ICON_THINKING = (
+    f"data:image/svg+xml,{_CIC}"
+    "%3Cpolygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/%3E"
+    "%3C/svg%3E"
+)
+# Verbose — align-left icon
+_CHIP_ICON_VERBOSE = (
+    f"data:image/svg+xml,{_CIC}"
+    "%3Cline x1='17' y1='10' x2='3' y2='10'/%3E"
+    "%3Cline x1='21' y1='6' x2='3' y2='6'/%3E"
+    "%3Cline x1='21' y1='14' x2='3' y2='14'/%3E"
+    "%3Cline x1='17' y1='18' x2='3' y2='18'/%3E"
+    "%3C/svg%3E"
+)
+# Definitions — book-open icon
+_CHIP_ICON_DEFS = (
+    f"data:image/svg+xml,{_CIC}"
+    "%3Cpath d='M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z'/%3E"
+    "%3Cpath d='M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z'/%3E"
+    "%3C/svg%3E"
+)
+
 APP_CSS = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
@@ -2153,73 +2182,143 @@ div[data-testid="stDownloadButton"] > button:hover {{
 
 /* ---- Chat chips (toggleable options near input bar) ---- */
 
-/* Container for inactive chips — centered below the input */
-.st-key-chat-chips-off {{
-  display: flex;
-  justify-content: center;
-  gap: 0.4rem;
-  padding-top: 0.35rem;
+/* Hide chips in their original DOM position; JS moves them into stBottom */
+.st-key-chat-chips-off,
+.st-key-chat-chips-on {{
+  display: none !important;
 }}
 
-.st-key-chat-chips-off div[data-testid="stButton"] > button {{
-  background: transparent !important;
-  border: 1px solid {BORDER} !important;
+/* When relocated inside stBottom, show them */
+[data-testid="stBottom"] .st-key-chat-chips-off,
+[data-testid="stBottom"] .st-key-chat-chips-on {{
+  display: flex !important;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}}
+
+/* OFF chips — centered below the input */
+[data-testid="stBottom"] .st-key-chat-chips-off {{
+  justify-content: center;
+  padding-top: 0.35rem;
+  order: 10;  /* render after the chat input */
+}}
+
+/* ON chips — left-aligned above the input */
+[data-testid="stBottom"] .st-key-chat-chips-on {{
+  justify-content: flex-start;
+  padding-bottom: 0.35rem;
+  order: -1;  /* render before the chat input */
+}}
+
+/* Shared chip button base */
+[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button,
+[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button {{
   border-radius: 999px !important;
-  color: {MUTED} !important;
   font-size: 0.78rem !important;
   font-weight: 500 !important;
-  padding: 0.2rem 0.75rem !important;
+  padding: 0.25rem 0.7rem !important;
   min-height: unset !important;
   line-height: 1.4 !important;
   box-shadow: none !important;
   cursor: pointer !important;
   transition: all 0.15s ease;
+  width: auto !important;
 }}
 
-.st-key-chat-chips-off div[data-testid="stButton"] > button:hover {{
+[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button p,
+[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button p {{
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+}}
+
+/* OFF state — outlined with muted text */
+[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button {{
+  background: {SURFACE} !important;
+  border: 1px solid {BORDER} !important;
+  color: {MUTED} !important;
+}}
+
+[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button:hover {{
   border-color: {NAVY_DEEP} !important;
   color: {NAVY_DEEP} !important;
   background: rgba(0, 61, 165, 0.04) !important;
 }}
 
-.st-key-chat-chips-off div[data-testid="stButton"] > button p {{
-  font-size: 0.78rem !important;
-  font-weight: 500 !important;
-  margin: 0 !important;
+[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button p {{
+  color: {MUTED} !important;
 }}
 
-/* Container for active chips — left-aligned above the input */
-.st-key-chat-chips-on {{
-  display: flex;
-  justify-content: flex-start;
-  gap: 0.4rem;
-  padding-bottom: 0.35rem;
+[data-testid="stBottom"] .st-key-chat-chips-off div[data-testid="stButton"] > button:hover p {{
+  color: {NAVY_DEEP} !important;
 }}
 
-.st-key-chat-chips-on div[data-testid="stButton"] > button {{
+/* ON state — solid blue with white text */
+[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button {{
   background: {NAVY_DEEP} !important;
-  border: none !important;
-  border-radius: 999px !important;
+  border: 1px solid {NAVY_DEEP} !important;
   color: white !important;
-  font-size: 0.78rem !important;
-  font-weight: 500 !important;
-  padding: 0.2rem 0.75rem !important;
-  min-height: unset !important;
-  line-height: 1.4 !important;
-  box-shadow: none !important;
-  cursor: pointer !important;
-  transition: all 0.15s ease;
 }}
 
-.st-key-chat-chips-on div[data-testid="stButton"] > button:hover {{
+[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button:hover {{
   background: #002D7A !important;
+  border-color: #002D7A !important;
 }}
 
-.st-key-chat-chips-on div[data-testid="stButton"] > button p {{
-  font-size: 0.78rem !important;
-  font-weight: 500 !important;
-  margin: 0 !important;
+[data-testid="stBottom"] .st-key-chat-chips-on div[data-testid="stButton"] > button p {{
   color: white !important;
+}}
+
+/* Chip icons via CSS ::before */
+[data-testid="stBottom"] [class*="st-key-chip-"] button p::before {{
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  vertical-align: -2px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}}
+
+/* OFF chip icons — use muted stroke */
+[data-testid="stBottom"] .st-key-chat-chips-off [class*="st-key-chip-"] button p::before {{
+  opacity: 0.6;
+  filter: none;
+}}
+
+[data-testid="stBottom"] .st-key-chat-chips-off [class*="st-key-chip-"] button:hover p::before {{
+  opacity: 0.85;
+}}
+
+/* ON chip icons — white via brightness filter */
+[data-testid="stBottom"] .st-key-chat-chips-on [class*="st-key-chip-"] button p::before {{
+  opacity: 1;
+  filter: brightness(0) invert(1);
+}}
+
+/* Individual chip icon assignments */
+[data-testid="stBottom"] .st-key-chip-on-deep_analysis_enabled button p::before,
+[data-testid="stBottom"] .st-key-chip-off-deep_analysis_enabled button p::before {{
+  background-image: url("{_CHIP_ICON_THINKING}");
+}}
+
+[data-testid="stBottom"] .st-key-chip-on-verbose_answers button p::before,
+[data-testid="stBottom"] .st-key-chip-off-verbose_answers button p::before {{
+  background-image: url("{_CHIP_ICON_VERBOSE}");
+}}
+
+[data-testid="stBottom"] .st-key-chip-on-show_definitions button p::before,
+[data-testid="stBottom"] .st-key-chip-off-show_definitions button p::before {{
+  background-image: url("{_CHIP_ICON_DEFS}");
+}}
+
+/* Force stBottom to use flex column so order works */
+[data-testid="stBottom"] > div {{
+  display: flex !important;
+  flex-direction: column !important;
 }}
 
 </style>
@@ -3330,6 +3429,31 @@ def highlight_defined_terms(
         html = "".join(new_segments)
 
     return html
+
+
+def chat_chips_relocate_script() -> str:
+    """Return a JS snippet that moves chat chip containers into stBottom.
+
+    Streamlit renders elements in DOM order in the main area.  The chip
+    containers need to live inside ``[data-testid="stBottom"]`` so they
+    sit visually adjacent to the chat input bar.  CSS ``order`` then
+    controls whether they appear above (ON chips) or below (OFF chips)
+    the input.
+    """
+    return """<script>
+(function() {
+    var doc = parent.document;
+    var bottom = doc.querySelector('[data-testid="stBottom"] > div');
+    if (!bottom) return;
+    var ids = ['chat-chips-on', 'chat-chips-off'];
+    ids.forEach(function(id) {
+        var el = doc.querySelector('.st-key-' + id);
+        if (el && !bottom.contains(el)) {
+            bottom.appendChild(el);
+        }
+    });
+})();
+</script>"""
 
 
 def stop_button_relocate_script() -> str:
