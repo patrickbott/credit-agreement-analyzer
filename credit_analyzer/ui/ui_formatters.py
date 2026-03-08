@@ -1194,10 +1194,20 @@ def stop_button_relocate_script() -> str:
     return """<script>
 (function() {
     var doc = parent.document;
-    var stopBtn = doc.querySelector('.st-key-stop-chat-generation');
-    var chatInput = doc.querySelector('[data-testid="stChatInput"]');
-    if (stopBtn && chatInput && !chatInput.contains(stopBtn)) {
-        chatInput.appendChild(stopBtn);
+    function tryRelocate() {
+        var stopBtn = doc.querySelector('.st-key-stop-chat-generation');
+        var chatInput = doc.querySelector('[data-testid="stChatInput"]');
+        if (stopBtn && chatInput && !chatInput.contains(stopBtn)) {
+            chatInput.appendChild(stopBtn);
+            return true;
+        }
+        return !!(stopBtn && chatInput && chatInput.contains(stopBtn));
+    }
+    if (!tryRelocate()) {
+        var n = 0;
+        var iv = setInterval(function() {
+            if (tryRelocate() || ++n > 50) clearInterval(iv);
+        }, 100);
     }
 })();
 </script>"""
