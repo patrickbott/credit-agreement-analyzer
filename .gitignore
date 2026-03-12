@@ -38,6 +38,13 @@ Thumbs.db
 *.so
 *.pyd
 
+# Docker artifacts
+credit-analyzer-images.tar.gz
+nginx/.htpasswd
+
+# Internal LLM provider override (work-specific, not tracked)
+/internal_provider.py
+
 # Runtime data / local artifacts
 chroma_data/
 chroma_validation/
