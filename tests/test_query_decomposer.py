@@ -17,7 +17,10 @@ class TestParseSubQueries:
     """Tests for parsing LLM decomposition output."""
 
     def test_parses_numbered_list(self) -> None:
-        text = "1. What provisions allow IP transfer to unrestricted subsidiaries?\n2. Are there restrictions on designating unrestricted subsidiaries?"
+        text = (
+            "1. What provisions allow IP transfer to unrestricted subsidiaries?\n"
+            "2. Are there restrictions on designating unrestricted subsidiaries?"
+        )
         queries = parse_sub_queries(text)
         assert len(queries) == 2
         assert "IP transfer" in queries[0]

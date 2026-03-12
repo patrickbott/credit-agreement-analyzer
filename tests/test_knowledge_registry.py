@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from credit_analyzer.knowledge.registry import (
-    ConceptMatch,
-    DomainRegistry,
-)
+from credit_analyzer.knowledge.registry import DomainRegistry
 
 
 class TestDomainRegistry:
