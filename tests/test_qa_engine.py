@@ -549,7 +549,11 @@ class TestQAEngine:
         assert isinstance(resp, QAResponse)
 
     def test_retriever_called_with_correct_args(self) -> None:
-        """Verify retriever is called with the right document_id, top_k, and exclude."""
+        """Verify retriever is called with the right document_id, top_k, and exclude.
+
+        Query expansion may produce multiple retrieval calls, so we check
+        that *every* call uses the correct document_id, top_k, and exclude.
+        """
         retriever = MagicMock(spec=HybridRetriever)
         retriever.retrieve.return_value = _make_retrieval_result()
 
@@ -564,11 +568,12 @@ class TestQAEngine:
         )
         engine.ask("What is the revolver?", "ribbon_2024")
 
-        retriever.retrieve.assert_called_once()
-        call_kwargs = retriever.retrieve.call_args.kwargs
-        assert call_kwargs["document_id"] == "ribbon_2024"
-        assert call_kwargs["top_k"] == 7
-        assert call_kwargs["section_types_exclude"] == ("definitions", "miscellaneous")
+        assert retriever.retrieve.call_count >= 1
+        for call in retriever.retrieve.call_args_list:
+            call_kwargs = call.kwargs
+            assert call_kwargs["document_id"] == "ribbon_2024"
+            assert call_kwargs["top_k"] == 7
+            assert call_kwargs["section_types_exclude"] == ("definitions", "miscellaneous")
 
     def test_temperature_always_zero(self) -> None:
         """LLM calls always use temperature=0.0 for determinism."""
