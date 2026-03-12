@@ -8,15 +8,30 @@ Local-first Streamlit app for leveraged finance teams to analyze credit agreemen
 - Ask targeted questions with confidence signal and section/page citations
 - Generate a 10-section analyst report and export it as PDF
 - Switch LLM backends via config: `claude`, `ollama`, or `internal`
+- Domain-aware knowledge layer for leveraged finance jargon (J.Crew, Serta, freebie baskets, etc.)
+- Docker Compose deployment with Nginx reverse proxy and basic auth
 
 ## Quick Start
 
-### Prerequisites
+### Option A: Docker (recommended for sharing with your team)
+
+```bash
+cp .env.example .env
+# Edit .env — set ANTHROPIC_API_KEY or LLM_PROVIDER
+
+docker compose up -d --build
+```
+
+Open `http://localhost` in a browser. See [Deployment Guide](docs/DEPLOYMENT.md) for full setup including basic auth and offline transfer.
+
+### Option B: Local development
+
+#### Prerequisites
 
 - Python 3.11+
 - Anthropic API key (if using `LLM_PROVIDER=claude`)
 
-### Install
+#### Install
 
 ```bash
 python -m venv .venv
@@ -30,19 +45,49 @@ copy .env.example .env  # Windows
 
 Set `ANTHROPIC_API_KEY` in `.env` when using Claude.
 
-### Run
+#### Run
 
 ```bash
 streamlit run app.py
 ```
 
-## Configuration
+## Architecture
 
-All runtime knobs live in [credit_analyzer/config.py](credit_analyzer/config.py).  
-Reference docs:
+```
+PDF Upload
+  |
+  v
+[Processing Pipeline]
+  pdf_extractor -> section_detector -> chunker -> definitions
+  |
+  v
+[Indexing]
+  VectorStore (ChromaDB) + BM25Store
+  |
+  v
+[Query Processing]
+  Knowledge Layer (concept matching + synonym expansion)
+  -> HybridRetriever (vector + BM25 + RRF + reranking)
+  -> Quality Gate (score + term overlap check)
+  -> Conditional LLM Decomposition (complex queries only)
+  |
+  v
+[Generation]
+  QAEngine (streaming Q&A) or ReportGenerator (10-section report)
+  |
+  v
+[UI]
+  Chat-centric Streamlit app with citations, definitions, and report export
+```
 
-- [Configuration Reference](docs/CONFIG_REFERENCE.md)
-- [Retrieval Architecture](docs/RETRIEVAL_ARCHITECTURE.md)
+## Documentation
+
+| Document | Description |
+|---|---|
+| [Deployment Guide](docs/DEPLOYMENT.md) | Docker Compose setup, offline transfer, user management |
+| [Workstation Setup](docs/WORKSTATION_SETUP.md) | Step-by-step guide for deploying on a work computer |
+| [Configuration Reference](docs/CONFIG_REFERENCE.md) | All environment variables and tuning knobs |
+| [Retrieval Architecture](docs/RETRIEVAL_ARCHITECTURE.md) | Retrieval pipeline stages and knowledge layer |
 
 ## Development
 
@@ -55,4 +100,5 @@ Reference docs:
 ## Repository Notes
 
 - `demo_uploads/` and `chroma_data/` are local runtime data folders.
-- The docs set was pruned to keep only current, implementation-backed references.
+- The `components/` directory contains custom Streamlit components (chat input bar).
+- Knowledge layer data lives in `credit_analyzer/knowledge/` (YAML files for concepts and synonyms).
