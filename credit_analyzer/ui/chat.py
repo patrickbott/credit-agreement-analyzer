@@ -11,7 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from components.chat_bar import chat_bar
-from credit_analyzer.generation.qa_engine import QAEngine, QAResponse
+from credit_analyzer.generation.qa_engine import QAEngine, QAResponse, QAStatusEvent
 from credit_analyzer.llm.base import LLMProvider
 from credit_analyzer.ui.demo_report import SUGGESTED_QUESTIONS
 from credit_analyzer.ui.guide_content import QUICK_START_STEPS
@@ -21,8 +21,11 @@ from credit_analyzer.ui.theme import (
     CHIP_ICON_DISMISS,
     CHIP_ICON_THINKING,
     chat_welcome,
+    concept_status,
     context_strip,
     copy_button,
+    decomposed_search_status,
+    escalation_status,
     format_chat_answer,
     guide_step_card,
     highlight_defined_terms,
@@ -276,6 +279,22 @@ def run_pending_chat_question(
             ):
                 if isinstance(item, QAResponse):
                     final_response = item
+                elif isinstance(item, QAStatusEvent):
+                    if item.stage == "concept_match":
+                        status_placeholder.markdown(
+                            concept_status([item.detail]),
+                            unsafe_allow_html=True,
+                        )
+                    elif item.stage == "escalation":
+                        status_placeholder.markdown(
+                            escalation_status(),
+                            unsafe_allow_html=True,
+                        )
+                    elif item.stage == "decomposed_search":
+                        status_placeholder.markdown(
+                            decomposed_search_status(item.detail),
+                            unsafe_allow_html=True,
+                        )
                 else:
                     if first_token:
                         status_placeholder.markdown(
@@ -358,6 +377,8 @@ def run_pending_chat_question(
                         final_response.confidence, chunk_count,
                         sections_used, duration,
                         retrieval_rounds=rounds,
+                        concepts=final_response.concepts_matched if final_response.concepts_matched else None,
+                        escalated=final_response.escalated,
                     ),
                     unsafe_allow_html=True,
                 )
@@ -648,6 +669,8 @@ def render_chat_message(
             context_strip(
                 response.confidence, chunk_count, sections_used, duration,
                 retrieval_rounds=rounds,
+                concepts=response.concepts_matched if response.concepts_matched else None,
+                escalated=response.escalated,
             ),
             unsafe_allow_html=True,
         )

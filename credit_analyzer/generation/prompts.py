@@ -210,6 +210,7 @@ def build_context_prompt(
     question: str,
     preamble_text: str | None = None,
     preamble_page_numbers: Sequence[int] | None = None,
+    concept_context: str | None = None,
 ) -> tuple[str, list[HybridChunk]]:
     """Assemble the user prompt from retrieved context, definitions, history.
 
@@ -229,6 +230,8 @@ def build_context_prompt(
         question: The current user question.
         preamble_text: Optional preamble/recitals text to always inject.
         preamble_page_numbers: Optional page numbers for the preamble text.
+        concept_context: Optional domain concept context from the knowledge
+            registry, injected after definitions and before history.
 
     Returns:
         A tuple of (prompt_string, numbered_chunks) where numbered_chunks
@@ -299,6 +302,9 @@ def build_context_prompt(
             for term, defn in filtered_defs.items():
                 truncated = truncate_definition(defn)
                 parts.append(f'"{term}" means {truncated}')
+
+    if concept_context:
+        parts.append(f"\n{concept_context}")
 
     if history:
         parts.append("\n=== PREVIOUS Q&A IN THIS SESSION ===")

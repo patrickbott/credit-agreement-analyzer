@@ -909,3 +909,107 @@ class TestPromptAddendums:
         """Commentary should instruct the LLM that it's optional, not required."""
         lower = COMMENTARY_ADDENDUM.lower()
         assert "omit" in lower or "only when" in lower or "if relevant" in lower or "do not" in lower
+
+
+# ---------------------------------------------------------------------------
+# Knowledge layer integration
+# ---------------------------------------------------------------------------
+
+
+class TestQAEngineKnowledgeLayer:
+    """Tests for knowledge layer integration in QAEngine."""
+
+    @staticmethod
+    def _make_engine(
+        retrieval_result: RetrievalResult | None = None,
+        llm_text: str | None = None,
+    ) -> QAEngine:
+        """Build a QAEngine with mocked retriever and LLM."""
+        retriever = MagicMock(spec=HybridRetriever)
+        retriever.retrieve.return_value = retrieval_result or _make_retrieval_result()
+
+        llm = MagicMock()
+        llm.complete = MagicMock(return_value=_mock_llm_response(llm_text or (
+            "The Total Leverage Ratio must not exceed 4.50:1.00 per Section 7.11.\n\n"
+            "Confidence: HIGH\n"
+            "Sources: Section 7.11 (pp. 45-46)"
+        )))
+        llm.model_name = MagicMock(return_value="test-model")
+
+        return QAEngine(retriever=retriever, llm=llm)
+
+    def test_concept_context_injected(self) -> None:
+        """When concepts match, DOMAIN CONCEPT CONTEXT appears in user prompt."""
+        from unittest.mock import patch
+
+        from credit_analyzer.knowledge.registry import ConceptMatch
+
+        concept = ConceptMatch(
+            concept_id="j_crew_provision",
+            matched_alias="J Crew",
+            search_terms=["investment", "unrestricted subsidiary"],
+            description="Allows value transfer to unrestricted subsidiaries.",
+            sections=["7.06"],
+        )
+
+        engine = self._make_engine()
+
+        with patch(
+            "credit_analyzer.generation.qa_engine.expand_query_with_concepts",
+            return_value=(["What is the J Crew provision?"], [concept]),
+        ), patch(
+            "credit_analyzer.generation.qa_engine.check_retrieval_quality",
+        ):
+            engine.ask("What is the J Crew provision?", "doc1")
+
+        llm = engine._llm  # noqa: SLF001
+        user_prompt: str = llm.complete.call_args.kwargs["user_prompt"]
+        assert "DOMAIN CONCEPT CONTEXT" in user_prompt
+
+    def test_response_tracks_concepts_matched(self) -> None:
+        """QAResponse.concepts_matched is populated when concepts match."""
+        from unittest.mock import patch
+
+        from credit_analyzer.knowledge.registry import ConceptMatch
+
+        concept = ConceptMatch(
+            concept_id="j_crew_provision",
+            matched_alias="J Crew",
+            search_terms=["investment", "unrestricted subsidiary"],
+            description="Test description.",
+            sections=["7.06"],
+        )
+
+        engine = self._make_engine()
+
+        with patch(
+            "credit_analyzer.generation.qa_engine.expand_query_with_concepts",
+            return_value=(["What is the J Crew provision?"], [concept]),
+        ), patch(
+            "credit_analyzer.generation.qa_engine.check_retrieval_quality",
+        ):
+            resp = engine.ask("What is the J Crew provision?", "doc1")
+
+        assert resp.concepts_matched == ["j_crew_provision"]
+
+    def test_response_tracks_escalated(self) -> None:
+        """QAResponse.escalated defaults to False for simple queries."""
+        engine = self._make_engine()
+        resp = engine.ask("What is the leverage ratio?", "doc1")
+        assert resp.escalated is False
+
+    def test_simple_query_no_escalation(self) -> None:
+        """Simple queries (no concept match) don't trigger escalation."""
+        from unittest.mock import patch
+
+        engine = self._make_engine()
+
+        with patch(
+            "credit_analyzer.generation.qa_engine.expand_query_with_concepts",
+            return_value=(["What is the leverage ratio?"], []),
+        ) as mock_expand:
+            resp = engine.ask("What is the leverage ratio?", "doc1")
+
+        mock_expand.assert_called_once()
+        assert resp.escalated is False
+        assert resp.concepts_matched == []
