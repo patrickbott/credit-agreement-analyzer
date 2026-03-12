@@ -28,8 +28,12 @@ from credit_analyzer.generation.prompts import (
     build_context_prompt,
     build_reformulation_prompt,
 )
+from credit_analyzer.generation.query_decomposer import decompose_query
 from credit_analyzer.generation.query_expansion import (
     expand_query as _expand_query,
+)
+from credit_analyzer.generation.query_expansion import (
+    expand_query_with_concepts,
 )
 from credit_analyzer.generation.query_expansion import (
     extract_needs_context as _extract_needs_context,
@@ -55,6 +59,7 @@ from credit_analyzer.retrieval.hybrid_retriever import (
     HybridRetriever,
     RetrievalResult,
 )
+from credit_analyzer.retrieval.quality_gate import GateDecision, check_retrieval_quality
 from credit_analyzer.utils.text_cleaning import strip_markdown as _strip_markdown
 
 logger = logging.getLogger(__name__)
@@ -84,6 +89,16 @@ class QAResponse:
     llm_response: LLMResponse
     inline_citations: list[InlineCitation] = field(default_factory=lambda: list[InlineCitation]())
     retrieval_rounds: int = 1
+    concepts_matched: list[str] = field(default_factory=list)
+    escalated: bool = False
+
+
+@dataclass
+class QAStatusEvent:
+    """Status event yielded during streaming for UI updates."""
+
+    stage: str  # "concept_match", "escalation", "decomposed_search"
+    detail: str  # human-readable detail
 
 
 _DEEP_ANALYSIS_MAX_ROUNDS = 3
@@ -173,7 +188,8 @@ class QAEngine:
 
         retrieval_query = self._maybe_reformulate(question)
 
-        queries = _expand_query(retrieval_query)
+        queries, concept_matches = expand_query_with_concepts(retrieval_query)
+        concepts_matched = [m.concept_id for m in concept_matches]
         result: RetrievalResult = _retrieve_multi_query(
             self._retriever,
             queries,
@@ -182,6 +198,41 @@ class QAEngine:
             section_types_exclude=self._section_types_exclude,
         )
         logger.debug("Retrieved %d chunks for QA", len(result.chunks))
+
+        # Knowledge layer: quality gate + decomposition when concepts matched
+        escalated = False
+        concept_context: str | None = None
+        if concept_matches:
+            gate = check_retrieval_quality(result, question)
+            if gate == GateDecision.INSUFFICIENT:
+                from credit_analyzer.knowledge.registry import DomainRegistry
+                registry = DomainRegistry()
+                concept_context = registry.get_concept_context(concept_matches)
+                sub_queries = decompose_query(
+                    self._llm, question, concept_context=concept_context,
+                )
+                for sq in sub_queries:
+                    sq_queries = _expand_query(sq)
+                    sq_result = _retrieve_multi_query(
+                        self._retriever,
+                        sq_queries,
+                        document_id,
+                        top_k=self._max_chunks,
+                        section_types_exclude=self._section_types_exclude,
+                    )
+                    result = _merge_retrieval_results(
+                        result, sq_result, self._max_chunks * 2,
+                    )
+                escalated = True
+                logger.info(
+                    "Knowledge layer escalation: %d sub-queries for concepts %r",
+                    len(sub_queries), concepts_matched,
+                )
+            else:
+                # Gate passed — still build concept context for LLM injection
+                from credit_analyzer.knowledge.registry import DomainRegistry
+                registry = DomainRegistry()
+                concept_context = registry.get_concept_context(concept_matches)
 
         system_prompt = QA_SYSTEM_PROMPT
         if concise:
@@ -207,6 +258,7 @@ class QAEngine:
             question=question,
             preamble_text=self._preamble_text,
             preamble_page_numbers=self._preamble_page_numbers,
+            concept_context=concept_context,
         )
 
         llm_start = time.perf_counter()
@@ -248,6 +300,7 @@ class QAEngine:
                     question=question,
                     preamble_text=self._preamble_text,
                     preamble_page_numbers=self._preamble_page_numbers,
+                    concept_context=concept_context,
                 )
                 # On the final allowed round, drop the addendum to force a
                 # complete answer without another <needs_context> tag.
@@ -290,6 +343,8 @@ class QAEngine:
             llm_response=llm_response,
             inline_citations=inline_citations,
             retrieval_rounds=retrieval_rounds,
+            concepts_matched=concepts_matched,
+            escalated=escalated,
         )
 
     def ask_stream(
@@ -301,20 +356,22 @@ class QAEngine:
         concise: bool = False,
         cite_sources: bool = False,
         commentary: bool = False,
-    ) -> Generator[str | QAResponse, None, None]:
+    ) -> Generator[str | QAResponse | QAStatusEvent, None, None]:
         """Stream an answer, yielding tokens then the final QAResponse.
 
         Yields str tokens as they arrive from the LLM, then yields a
         final QAResponse object with parsed citations and confidence.
+        May also yield QAStatusEvent objects for UI status updates.
         Callers should check isinstance() to distinguish tokens from
-        the final response.
+        the final response and status events.
 
         When ``deep_analysis`` is True, preliminary retrieval rounds run
         synchronously (non-streamed) before the final answer is streamed.
         """
         retrieval_query = self._maybe_reformulate(question)
 
-        queries = _expand_query(retrieval_query)
+        queries, concept_matches = expand_query_with_concepts(retrieval_query)
+        concepts_matched = [m.concept_id for m in concept_matches]
         result: RetrievalResult = _retrieve_multi_query(
             self._retriever,
             queries,
@@ -322,6 +379,50 @@ class QAEngine:
             top_k=self._max_chunks,
             section_types_exclude=self._section_types_exclude,
         )
+
+        # Knowledge layer: concept matching, quality gate, decomposition
+        escalated = False
+        concept_context: str | None = None
+        if concept_matches:
+            concept_names = [
+                m.concept_id.replace("_", " ").title()
+                for m in concept_matches
+            ]
+            yield QAStatusEvent(
+                "concept_match",
+                ", ".join(concept_names[:3]),
+            )
+            gate = check_retrieval_quality(result, question)
+            if gate == GateDecision.INSUFFICIENT:
+                from credit_analyzer.knowledge.registry import DomainRegistry
+                registry = DomainRegistry()
+                concept_context = registry.get_concept_context(concept_matches)
+                yield QAStatusEvent("escalation", "Generating targeted searches")
+                sub_queries = decompose_query(
+                    self._llm, question, concept_context=concept_context,
+                )
+                for sq in sub_queries:
+                    yield QAStatusEvent("decomposed_search", sq)
+                    sq_queries = _expand_query(sq)
+                    sq_result = _retrieve_multi_query(
+                        self._retriever,
+                        sq_queries,
+                        document_id,
+                        top_k=self._max_chunks,
+                        section_types_exclude=self._section_types_exclude,
+                    )
+                    result = _merge_retrieval_results(
+                        result, sq_result, self._max_chunks * 2,
+                    )
+                escalated = True
+                logger.info(
+                    "Knowledge layer escalation (stream): %d sub-queries for concepts %r",
+                    len(sub_queries), concepts_matched,
+                )
+            else:
+                from credit_analyzer.knowledge.registry import DomainRegistry
+                registry = DomainRegistry()
+                concept_context = registry.get_concept_context(concept_matches)
 
         system_prompt = QA_SYSTEM_PROMPT
         if concise:
@@ -350,6 +451,7 @@ class QAEngine:
                     question=question,
                     preamble_text=self._preamble_text,
                     preamble_page_numbers=self._preamble_page_numbers,
+                    concept_context=concept_context,
                 )
                 preliminary = self._llm.complete(
                     system_prompt=system_prompt,
@@ -387,6 +489,7 @@ class QAEngine:
             question=question,
             preamble_text=self._preamble_text,
             preamble_page_numbers=self._preamble_page_numbers,
+            concept_context=concept_context,
         )
 
         # Stream tokens from LLM
@@ -428,6 +531,8 @@ class QAEngine:
             ),
             inline_citations=inline_citations,
             retrieval_rounds=retrieval_rounds,
+            concepts_matched=concepts_matched,
+            escalated=escalated,
         )
 
     def add_history_turn(self, question: str, answer: str) -> None:

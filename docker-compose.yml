@@ -1,0 +1,24 @@
+services:
+  app:
+    build: .
+    container_name: credit-analyzer-app
+    env_file: .env
+    volumes:
+      - ./chroma_data:/app/chroma_data
+      # Uncomment to override the internal LLM provider stub with a real implementation:
+      # - ./internal_provider.py:/app/credit_analyzer/llm/internal_provider.py:ro
+    expose:
+      - "8501"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: credit-analyzer-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+    depends_on:
+      - app
+    restart: unless-stopped

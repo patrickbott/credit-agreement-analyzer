@@ -1,0 +1,492 @@
+# credit_analyzer/knowledge/concepts.yaml
+#
+# Leveraged Finance Concept Registry
+#
+# Each concept maps a well-known deal/market term to:
+#   aliases:      Trigger phrases users might type (matched case-insensitively)
+#   search_terms: Phrases to search for in the actual document text
+#   description:  Brief explanation injected into LLM context when concept is matched
+#   sections:     Optional list of section_types most likely to contain this concept
+
+concepts:
+
+  j_crew_provision:
+    aliases:
+      - "j.crew"
+      - "j crew"
+      - "jcrew"
+      - "j-crew"
+      - "trap door"
+      - "trap-door"
+      - "trapdoor"
+      - "ip stripping"
+      - "ip transfer provision"
+    search_terms:
+      - "intellectual property"
+      - "unrestricted subsidiary"
+      - "transfer"
+      - "designation"
+      - "material assets"
+      - "excluded assets"
+    description: >
+      J.Crew provisions (also called trap-door provisions) allow a borrower to
+      transfer valuable intellectual property or other material assets to an
+      unrestricted subsidiary, moving them beyond the reach of secured lenders.
+      Named after the 2017 J.Crew transaction where the borrower transferred its
+      IP to an unrestricted subsidiary and used it as collateral for new financing.
+    sections:
+      - negative_covenants
+      - definitions
+
+  serta_provision:
+    aliases:
+      - "serta"
+      - "uptier"
+      - "up-tier"
+      - "priming"
+      - "anti-serta"
+      - "serta protection"
+      - "uptier protection"
+    search_terms:
+      - "uptier"
+      - "priming"
+      - "subordinat"
+      - "open market purchase"
+      - "lien priority"
+      - "junior lien"
+      - "pari passu"
+      - "sacred right"
+    description: >
+      Serta provisions relate to uptier/priming transactions where a borrower
+      issues new super-priority debt that primes existing lenders. Named after the
+      Serta Simmons 2020 transaction. Anti-Serta protections are lender
+      safeguards requiring pro rata treatment or sacred-right protections against
+      subordination without individual lender consent.
+    sections:
+      - negative_covenants
+      - miscellaneous
+
+  chewy_provision:
+    aliases:
+      - "chewy"
+      - "petsmart"
+      - "dividend recapture"
+      - "unrestricted subsidiary ipo"
+    search_terms:
+      - "unrestricted subsidiary"
+      - "initial public offering"
+      - "equity issuance"
+      - "redesignation"
+      - "restricted payment"
+      - "dividend"
+      - "distribution"
+    description: >
+      Chewy provisions allow a borrower to designate a subsidiary as
+      unrestricted, IPO that subsidiary, and then capture the IPO proceeds.
+      Named after the PetSmart/Chewy transaction where the borrower IPO'd
+      Chewy as an unrestricted subsidiary. Protections may require redesignation
+      tests or restrict proceeds from unrestricted subsidiary equity issuances.
+    sections:
+      - negative_covenants
+      - definitions
+
+  freebie_basket:
+    aliases:
+      - "freebie"
+      - "free and clear"
+      - "free-and-clear"
+      - "gratis basket"
+      - "no-proceeds basket"
+      - "freebie incremental"
+    search_terms:
+      - "free and clear"
+      - "without compliance"
+      - "without satisfying"
+      - "without giving effect"
+      - "incremental"
+      - "Fixed Incremental Amount"
+    description: >
+      A freebie basket (or free-and-clear basket) allows the borrower to incur
+      incremental debt up to a fixed dollar amount without needing to satisfy any
+      leverage ratio test. The amount is available regardless of the borrower's
+      financial condition.
+    sections:
+      - negative_covenants
+      - definitions
+
+  mfn_provision:
+    aliases:
+      - "mfn"
+      - "most favored nation"
+      - "most-favored-nation"
+      - "mfn sunset"
+      - "yield protection"
+      - "mfn protection"
+    search_terms:
+      - "most favored nation"
+      - "yield protection"
+      - "margin ratchet"
+      - "incremental"
+      - "spread"
+      - "interest rate protection"
+    description: >
+      Most Favored Nation (MFN) provisions protect existing lenders by requiring
+      that if incremental term loans are issued at a higher yield, the margin on
+      existing term loans is increased to within a specified threshold (typically
+      50 bps). MFN sunsets specify when this protection expires (commonly 6-18
+      months after closing).
+    sections:
+      - facility_terms
+      - negative_covenants
+
+  ahydo:
+    aliases:
+      - "ahydo"
+      - "applicable high yield discount obligation"
+      - "oid limitation"
+    search_terms:
+      - "applicable high yield discount obligation"
+      - "AHYDO"
+      - "original issue discount"
+      - "OID"
+      - "yield"
+    description: >
+      AHYDO (Applicable High Yield Discount Obligation) refers to IRS rules
+      limiting the amount of original issue discount (OID) on high yield debt.
+      Credit agreements often include AHYDO savings clauses that allow the
+      borrower to make mandatory redemptions to avoid AHYDO classification.
+    sections:
+      - facility_terms
+      - definitions
+
+  builder_basket:
+    aliases:
+      - "builder basket"
+      - "builder"
+      - "cumulative credit"
+      - "available amount"
+      - "grower basket"
+      - "growing basket"
+      - "starter amount"
+    search_terms:
+      - "Available Amount"
+      - "Cumulative Credit"
+      - "builder"
+      - "retained excess cash flow"
+      - "50%"
+      - "Consolidated Net Income"
+    description: >
+      A builder basket (or Available Amount / Cumulative Credit) allows the
+      borrower to accumulate capacity for restricted payments, investments, and
+      debt prepayments based on retained earnings, typically starting from a
+      fixed amount and growing by 50% of Consolidated Net Income and other
+      specified credits. Grower baskets use a formula of the greater of a
+      fixed dollar amount and a percentage of a financial metric (e.g.,
+      Total Assets or EBITDA).
+    sections:
+      - negative_covenants
+      - definitions
+
+  covenant_lite:
+    aliases:
+      - "cov-lite"
+      - "cov lite"
+      - "covenant lite"
+      - "covenant-lite"
+      - "no maintenance covenant"
+      - "no financial covenant"
+      - "incurrence only"
+    search_terms:
+      - "financial covenant"
+      - "maintenance covenant"
+      - "incurrence"
+      - "springing"
+      - "Total Net Leverage Ratio"
+    description: >
+      Covenant-lite (cov-lite) refers to term loan facilities that lack
+      maintenance financial covenants, relying only on incurrence-based tests.
+      A springing financial covenant activates only when a revolving facility is
+      drawn above a threshold (typically 35-40%).
+    sections:
+      - financial_covenants
+      - facility_terms
+
+  ecf_sweep:
+    aliases:
+      - "ecf sweep"
+      - "excess cash flow"
+      - "cash sweep"
+      - "ecf"
+      - "cash flow sweep"
+    search_terms:
+      - "Excess Cash Flow"
+      - "mandatory prepayment"
+      - "sweep"
+      - "step-down"
+      - "net of"
+    description: >
+      Excess Cash Flow (ECF) sweeps require mandatory prepayment of a percentage
+      of excess cash flow, typically with step-downs based on leverage ratio
+      (e.g., 50% above 3.0x, 25% between 2.5x-3.0x, 0% below 2.5x). Key
+      terms include the ECF definition itself, permitted deductions, and any
+      voluntary prepayment credits.
+    sections:
+      - facility_terms
+      - definitions
+
+  portability:
+    aliases:
+      - "portability"
+      - "portable"
+      - "change of control portability"
+      - "coc portability"
+    search_terms:
+      - "portability"
+      - "Change of Control"
+      - "change of control"
+      - "Permitted Holder"
+      - "leverage"
+    description: >
+      Portability provisions allow a change of control to occur without
+      triggering a mandatory prepayment or event of default, provided certain
+      conditions are met (typically a leverage ratio test). This lets the
+      borrower be acquired without refinancing the existing credit facility.
+    sections:
+      - events_of_default
+      - definitions
+
+  yank_a_bank:
+    aliases:
+      - "yank-a-bank"
+      - "yank a bank"
+      - "yankbank"
+      - "replacement lender"
+      - "defaulting lender"
+    search_terms:
+      - "yank-a-bank"
+      - "replacement"
+      - "Defaulting Lender"
+      - "non-consenting lender"
+      - "assignment"
+      - "remove"
+    description: >
+      Yank-a-bank provisions allow the borrower to replace a lender that
+      refuses to consent to an amendment or waiver, or that has defaulted on
+      its funding obligations. The borrower can force assignment of the
+      non-consenting or defaulting lender's position to a replacement lender.
+    sections:
+      - miscellaneous
+      - agents
+
+  snooze_you_lose:
+    aliases:
+      - "snooze you lose"
+      - "snooze-you-lose"
+      - "deemed consent"
+      - "non-responsive lender"
+    search_terms:
+      - "deemed consent"
+      - "snooze"
+      - "non-responsive"
+      - "failure to respond"
+      - "business days"
+    description: >
+      Snooze-you-lose provisions deem a lender to have consented to an
+      amendment or waiver if it fails to respond within a specified period
+      (typically 10 business days). Prevents holdout lenders from blocking
+      amendments through inaction.
+    sections:
+      - miscellaneous
+
+  ebitda_addbacks:
+    aliases:
+      - "ebitda addback"
+      - "ebitda add-back"
+      - "addback"
+      - "add-back"
+      - "cost savings"
+      - "synergies"
+      - "run-rate"
+      - "pro forma adjustment"
+    search_terms:
+      - "add back"
+      - "addback"
+      - "cost savings"
+      - "synergies"
+      - "run-rate"
+      - "pro forma"
+      - "Consolidated EBITDA"
+      - "restructuring"
+    description: >
+      EBITDA addbacks allow the borrower to adjust Consolidated EBITDA upward
+      for projected cost savings, synergies, and other non-recurring items.
+      Key terms include caps on addbacks (often 15-25% of EBITDA), realization
+      periods (12-24 months), and types of permitted adjustments.
+    sections:
+      - definitions
+
+  equity_cure:
+    aliases:
+      - "equity cure"
+      - "cure right"
+      - "equity contribution"
+      - "equity cure right"
+    search_terms:
+      - "equity cure"
+      - "cure"
+      - "equity contribution"
+      - "Specified Equity Contribution"
+      - "financial covenant"
+    description: >
+      Equity cure rights allow the borrower (or its sponsor) to inject equity
+      to cure a financial covenant default. Key terms include the number of
+      permitted cures (typically 2 per year, 5 lifetime), minimum/maximum cure
+      amounts, and whether the cure is applied to increase EBITDA, reduce debt,
+      or both.
+    sections:
+      - financial_covenants
+
+  asset_sale_mandatory_prepayment:
+    aliases:
+      - "asset sale sweep"
+      - "asset disposition"
+      - "reinvestment"
+      - "reinvestment period"
+      - "net cash proceeds"
+    search_terms:
+      - "asset sale"
+      - "disposition"
+      - "Net Cash Proceeds"
+      - "mandatory prepayment"
+      - "reinvestment"
+      - "365"
+      - "Reinvestment Period"
+    description: >
+      Asset sale mandatory prepayment provisions require the borrower to prepay
+      debt with net cash proceeds from asset sales, subject to reinvestment
+      rights (typically 12-18 months to reinvest, with a 6-month extension).
+      Step-downs may reduce the prepayment percentage at lower leverage levels.
+    sections:
+      - facility_terms
+
+  incremental_facility:
+    aliases:
+      - "incremental"
+      - "accordion"
+      - "incremental term loan"
+      - "incremental equivalent"
+      - "incremental revolving"
+    search_terms:
+      - "incremental"
+      - "Incremental Term Loan"
+      - "Incremental Equivalent"
+      - "accordion"
+      - "Available Incremental Amount"
+      - "Fixed Incremental Amount"
+      - "ratio"
+    description: >
+      Incremental facility provisions allow the borrower to add additional
+      debt capacity (term loans or revolving commitments) under the existing
+      credit agreement. Key terms include the fixed dollar basket, ratio-based
+      capacity, MFN protections, and incremental equivalent debt (debt incurred
+      outside the credit agreement but with similar terms).
+    sections:
+      - negative_covenants
+      - facility_terms
+      - definitions
+
+  restricted_payment:
+    aliases:
+      - "restricted payment"
+      - "dividend"
+      - "distribution"
+      - "share repurchase"
+      - "buyback"
+      - "rp basket"
+    search_terms:
+      - "Restricted Payment"
+      - "dividend"
+      - "distribution"
+      - "repurchase"
+      - "redemption"
+      - "Available Amount"
+    description: >
+      Restricted payment covenants limit the borrower's ability to pay
+      dividends, make distributions, repurchase equity, or make other
+      payments to equity holders. Key baskets include the general RP basket,
+      Available Amount/builder basket, ratio-conditioned basket, and
+      specific carve-outs for tax distributions and management fees.
+    sections:
+      - negative_covenants
+      - definitions
+
+  permitted_acquisition:
+    aliases:
+      - "permitted acquisition"
+      - "acquisition basket"
+      - "acquisition"
+      - "tuck-in"
+    search_terms:
+      - "Permitted Acquisition"
+      - "acquisition"
+      - "investment"
+      - "purchase"
+      - "similar business"
+      - "material adverse effect"
+    description: >
+      Permitted acquisition provisions define the conditions under which
+      the borrower may make acquisitions, typically requiring that the target
+      be in a similar line of business, no event of default exists, pro forma
+      compliance with financial covenants (if any), and the acquisition
+      satisfies specified size thresholds or leverage tests.
+    sections:
+      - negative_covenants
+      - definitions
+
+  springing_covenant:
+    aliases:
+      - "springing"
+      - "springing covenant"
+      - "springing financial covenant"
+      - "revolver test"
+      - "utilization trigger"
+    search_terms:
+      - "springing"
+      - "utilization"
+      - "drawn"
+      - "revolving"
+      - "Total Net Leverage Ratio"
+      - "35%"
+      - "40%"
+    description: >
+      A springing financial covenant only activates when the revolving credit
+      facility utilization exceeds a specified threshold (typically 35-40% of
+      total revolving commitments, excluding undrawn letters of credit up to a
+      threshold). Common in cov-lite structures where the term loan has no
+      maintenance covenants.
+    sections:
+      - financial_covenants
+
+  margin_ratchet:
+    aliases:
+      - "margin ratchet"
+      - "pricing grid"
+      - "step-down"
+      - "step down"
+      - "leverage-based pricing"
+    search_terms:
+      - "Applicable Rate"
+      - "Applicable Margin"
+      - "pricing grid"
+      - "step-down"
+      - "Total Net Leverage Ratio"
+      - "Level"
+      - "Tier"
+    description: >
+      A margin ratchet (or pricing grid) adjusts the interest rate spread
+      based on a leverage ratio. As the borrower deleverages, the spread
+      steps down; as leverage increases, the spread steps up. Key terms
+      include the applicable ratio, number of tiers, and spread at each level.
+    sections:
+      - facility_terms
+      - definitions

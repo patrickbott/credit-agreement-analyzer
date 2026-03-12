@@ -280,6 +280,8 @@ def context_strip(
     duration_seconds: float,
     *,
     retrieval_rounds: int = 1,
+    concepts: list[str] | None = None,
+    escalated: bool = False,
 ) -> str:
     """Render the compact context indicator below an assistant message."""
     rounds_html = (
@@ -287,9 +289,18 @@ def context_strip(
         f'<span>&middot;</span>'
         if retrieval_rounds > 1 else ""
     )
+    concept_html = ""
+    if concepts:
+        names = ", ".join(c.replace("_", " ").title() for c in concepts[:3])
+        concept_html = f'<span class="concept-badge">{safe_html(names)}</span><span>&middot;</span>'
+    escalated_html = ""
+    if escalated:
+        escalated_html = '<span>deep search</span><span>&middot;</span>'
     return (
         '<div class="context-strip">'
         f'{rounds_html}'
+        f'{concept_html}'
+        f'{escalated_html}'
         f'<span>{chunk_count} chunks</span>'
         f'<span>&middot;</span>'
         f'<span>{safe_html(sections_used)}</span>'
@@ -307,6 +318,23 @@ def stream_status(label: str) -> str:
         f'<span>{safe_html(label)}</span>'
         '</div>'
     )
+
+
+def concept_status(concept_names: list[str]) -> str:
+    """Render status line for identified domain concepts."""
+    names = ", ".join(concept_names[:3])
+    return stream_status(f"Identified concept: {names} — expanding search...")
+
+
+def escalation_status() -> str:
+    """Render status line for query escalation."""
+    return stream_status("Analyzing query — generating targeted searches...")
+
+
+def decomposed_search_status(query: str) -> str:
+    """Render status for a decomposed sub-query search."""
+    truncated = query[:60] + "..." if len(query) > 60 else query
+    return stream_status(f"Searching: {truncated}")
 
 
 def message_timestamp(time_str: str) -> str:
@@ -1113,6 +1141,9 @@ __all__ = [
     "guide_section_block",
     "context_strip",
     "stream_status",
+    "concept_status",
+    "escalation_status",
+    "decomposed_search_status",
     "message_timestamp",
     "indexing_step",
     "compact_stats_grid",

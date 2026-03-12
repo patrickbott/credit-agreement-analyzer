@@ -644,6 +644,14 @@ div[data-testid="stDownloadButton"] > button:hover {{
 .ctx-dot-medium {{ background: #D97706; }}
 .ctx-dot-low {{ background: #DC2626; }}
 
+.concept-badge {{
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}}
+
 .msg-timestamp {{
   font-size: 0.72rem;
   color: {MUTED};

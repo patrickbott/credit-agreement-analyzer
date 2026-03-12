@@ -1,13 +1,16 @@
 """Query expansion and multi-query retrieval helpers for the Q&A engine.
 
 Provides rule-based query expansion and helpers for merging retrieval
-results across multiple queries.
+results across multiple queries.  When the domain concept registry is
+available, concept alias matching and synonym expansion are applied
+before the existing keyword/alias heuristics.
 """
 
 from __future__ import annotations
 
 import re
 from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING
 
 from credit_analyzer.retrieval.hybrid_retriever import (
     HybridChunk,
@@ -16,12 +19,30 @@ from credit_analyzer.retrieval.hybrid_retriever import (
     merge_multi_query_results,
 )
 
+if TYPE_CHECKING:
+    from credit_analyzer.knowledge.registry import ConceptMatch, DomainRegistry
+
 __all__ = [
     "expand_query",
+    "expand_query_with_concepts",
     "extract_needs_context",
     "merge_retrieval_results",
     "retrieve_multi_query",
 ]
+
+# ---------------------------------------------------------------------------
+# Lazy domain-registry singleton
+# ---------------------------------------------------------------------------
+_registry: DomainRegistry | None = None
+
+
+def _get_registry() -> DomainRegistry:
+    """Return the module-level DomainRegistry, creating it on first use."""
+    global _registry
+    if _registry is None:
+        from credit_analyzer.knowledge.registry import DomainRegistry as _Cls
+        _registry = _Cls()
+    return _registry
 
 # ---------------------------------------------------------------------------
 # Deep-analysis helpers
@@ -93,17 +114,14 @@ _TERM_ALIASES: dict[str, str] = {
 }
 
 
-def expand_query(question: str) -> list[str]:
-    """Generate additional retrieval queries from a question.
+def _expand_baseline(question: str, max_queries: int = 3) -> list[str]:
+    """Run the original alias/keyword expansion logic.
 
-    Uses rule-based expansion to create complementary queries that search
-    different aspects of the same question. This is cheaper than LLM-based
-    expansion and catches cases where key terms appear in definitions,
-    schedules, or different section types.
-
-    Returns 1-3 queries (always includes the original).
+    This is the pre-registry expansion: defined-term detection, term-alias
+    lookup, and financial-keyword broadening.  Extracted so that both
+    ``expand_query`` and ``expand_query_with_concepts`` can reuse it.
     """
-    queries = [question]
+    queries: list[str] = [question]
     question_lower = question.lower()
 
     # Extract key noun phrases that might be defined terms
@@ -140,13 +158,91 @@ def expand_query(question: str) -> list[str]:
     }
     matched_keywords = [kw for kw in financial_keywords if kw in question_lower]
 
-    if matched_keywords and len(queries) < 3:
+    if matched_keywords and len(queries) < max_queries:
         # Add a query that targets the likely section type
         broad_query = question + " " + " ".join(matched_keywords[:3])
         if broad_query != question:
             queries.append(broad_query)
 
-    return queries[:3]  # Cap at 3 queries
+    return queries[:max_queries]
+
+
+def expand_query_with_concepts(
+    question: str,
+) -> tuple[list[str], list[ConceptMatch]]:
+    """Generate expanded retrieval queries using the domain concept registry.
+
+    Works in three phases:
+
+    1. **Concept matching** -- Checks the question against the domain concept
+       registry.  When aliases match, builds additional queries from the
+       concept's curated search terms (3-4 terms per query).
+    2. **Synonym expansion** -- Adds canonical/alternative terms found via
+       the synonym dictionary.
+    3. **Baseline expansion** -- Runs the existing alias/keyword heuristics.
+
+    Returns ``(queries, concept_matches)`` where *queries* always starts
+    with the original question and *concept_matches* is the list of
+    :class:`ConceptMatch` objects (empty when nothing matched).
+
+    The query cap is **5** when concepts are matched, **3** otherwise.
+    """
+    from credit_analyzer.knowledge.registry import ConceptMatch as _CM  # noqa: F811
+
+    registry = _get_registry()
+    concept_matches: list[_CM] = registry.match_concepts(question)
+
+    max_queries = 5 if concept_matches else 3
+
+    queries: list[str] = [question]
+    seen: set[str] = {question}
+
+    # Phase 1: concept search-term queries
+    for match in concept_matches:
+        # Combine 3-4 search terms into a single query
+        terms = match.search_terms
+        for i in range(0, len(terms), 4):
+            batch = terms[i : i + 4]
+            concept_query = " ".join(batch)
+            if concept_query not in seen:
+                queries.append(concept_query)
+                seen.add(concept_query)
+            if len(queries) >= max_queries:
+                break
+        if len(queries) >= max_queries:
+            break
+
+    # Phase 2: synonym expansion
+    if len(queries) < max_queries:
+        synonym_terms = registry.expand_synonyms(question)
+        if synonym_terms:
+            syn_query = question + " " + " ".join(synonym_terms[:3])
+            if syn_query not in seen:
+                queries.append(syn_query)
+                seen.add(syn_query)
+
+    # Phase 3: baseline alias/keyword expansion
+    baseline = _expand_baseline(question, max_queries=max_queries)
+    for bq in baseline[1:]:  # skip the original (already first)
+        if bq not in seen and len(queries) < max_queries:
+            queries.append(bq)
+            seen.add(bq)
+
+    return queries[:max_queries], concept_matches
+
+
+def expand_query(question: str) -> list[str]:
+    """Generate additional retrieval queries from a question.
+
+    Uses the domain concept registry (when aliases match) and rule-based
+    expansion to create complementary queries that search different aspects
+    of the same question.
+
+    Returns 1-5 queries (always includes the original).  Backward compatible
+    -- callers that only need the query list can continue using this function.
+    """
+    queries, _matches = expand_query_with_concepts(question)
+    return queries
 
 
 def retrieve_multi_query(
