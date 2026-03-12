@@ -1,0 +1,155 @@
+# credit_analyzer/knowledge/synonyms.yaml
+#
+# Leveraged Finance Synonym Dictionary
+#
+# Maps informal/alternative terms to canonical forms. Used for query expansion
+# and sibling filtering. Extends the existing LEGAL_SYNONYMS and _TERM_ALIASES.
+#
+# Format: canonical_term -> list of synonyms (all matched case-insensitively)
+
+synonyms:
+
+  # Facility terms
+  applicable_margin:
+    canonical: "Applicable Margin"
+    alternatives:
+      - "applicable rate"
+      - "interest rate spread"
+      - "sofr spread"
+      - "abr spread"
+      - "pricing"
+      - "margin"
+      - "spread"
+
+  term_loan:
+    canonical: "Term Loan"
+    alternatives:
+      - "term facility"
+      - "TLB"
+      - "TLA"
+      - "term loan B"
+      - "term loan A"
+      - "first lien term loan"
+
+  revolving_facility:
+    canonical: "Revolving Credit Facility"
+    alternatives:
+      - "revolver"
+      - "RCF"
+      - "revolving commitment"
+      - "revolving loan"
+
+  # Financial metrics
+  ebitda:
+    canonical: "Consolidated EBITDA"
+    alternatives:
+      - "ebitda"
+      - "adjusted ebitda"
+      - "pro forma ebitda"
+
+  leverage_ratio:
+    canonical: "Total Net Leverage Ratio"
+    alternatives:
+      - "leverage ratio"
+      - "leverage test"
+      - "net leverage"
+      - "total leverage"
+      - "debt to ebitda"
+      - "debt/ebitda"
+
+  interest_coverage:
+    canonical: "Fixed Charge Coverage Ratio"
+    alternatives:
+      - "interest coverage"
+      - "coverage ratio"
+      - "FCCR"
+      - "ICR"
+      - "debt service coverage"
+
+  excess_cash_flow:
+    canonical: "Excess Cash Flow"
+    alternatives:
+      - "ECF"
+      - "cash sweep"
+      - "cash flow sweep"
+
+  # Covenant terms
+  indebtedness:
+    canonical: "Indebtedness"
+    alternatives:
+      - "debt"
+      - "borrowing"
+      - "obligation"
+      - "funded debt"
+
+  lien:
+    canonical: "Lien"
+    alternatives:
+      - "security interest"
+      - "encumbrance"
+      - "pledge"
+      - "mortgage"
+      - "charge"
+
+  restricted_payment:
+    canonical: "Restricted Payment"
+    alternatives:
+      - "dividend"
+      - "distribution"
+      - "share repurchase"
+      - "buyback"
+      - "equity distribution"
+
+  investment:
+    canonical: "Investment"
+    alternatives:
+      - "acquisition"
+      - "purchase"
+      - "capital contribution"
+      - "equity interest"
+
+  # Structural terms
+  unrestricted_subsidiary:
+    canonical: "Unrestricted Subsidiary"
+    alternatives:
+      - "excluded subsidiary"
+      - "non-guarantor subsidiary"
+      - "designated subsidiary"
+
+  permitted_holder:
+    canonical: "Permitted Holder"
+    alternatives:
+      - "sponsor"
+      - "private equity sponsor"
+      - "PE sponsor"
+      - "controlling shareholder"
+
+  material_adverse_effect:
+    canonical: "Material Adverse Effect"
+    alternatives:
+      - "MAE"
+      - "material adverse change"
+      - "MAC"
+
+  # Rates
+  sofr:
+    canonical: "SOFR"
+    alternatives:
+      - "Adjusted Term SOFR"
+      - "Term SOFR"
+      - "secured overnight financing rate"
+
+  base_rate:
+    canonical: "Alternate Base Rate"
+    alternatives:
+      - "ABR"
+      - "base rate"
+      - "prime rate"
+
+  # Amendment terms
+  required_lenders:
+    canonical: "Required Lenders"
+    alternatives:
+      - "majority lenders"
+      - "requisite lenders"
+      - "voting threshold"
