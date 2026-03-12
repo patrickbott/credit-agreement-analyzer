@@ -64,7 +64,7 @@ cd credit-agreement-analyzer
 At home (with internet):
 
 ```bash
-cd /mnt/c/users/kbott/projects/credit-analyzer
+cd /path/to/credit-analyzer
 
 # Build the Docker image (downloads all dependencies)
 docker compose build
@@ -347,3 +347,4 @@ Common causes:
 - Ensure Docker Desktop's WSL2 integration is enabled (Settings > Resources > WSL Integration)
 - Try `http://127.0.0.1` instead
 - Check Windows Firewall
+
