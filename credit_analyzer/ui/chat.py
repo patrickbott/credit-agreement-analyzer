@@ -309,13 +309,15 @@ def run_pending_chat_question(
                         _pending = ""
                         _last_flush = now
                         st.session_state.partial_response["text"] = streamed_text
-                        response_placeholder.markdown(streamed_text + "\u258c")
+                        preview_html = format_chat_answer(streamed_text) + '<span class="cursor-blink">\u258c</span>'
+                        response_placeholder.markdown(preview_html, unsafe_allow_html=True)
 
             # Flush any remaining buffered tokens
             if _pending:
                 streamed_text += _pending
                 st.session_state.partial_response["text"] = streamed_text
-                response_placeholder.markdown(streamed_text + "\u258c")
+                preview_html = format_chat_answer(streamed_text) + '<span class="cursor-blink">\u258c</span>'
+                response_placeholder.markdown(preview_html, unsafe_allow_html=True)
 
             elapsed = time.monotonic() - t0
             status_placeholder.empty()
